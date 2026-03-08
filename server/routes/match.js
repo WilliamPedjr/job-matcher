@@ -1,13 +1,22 @@
 const express = require('express');
 const multer = require('multer');
 const fs = require('fs');
+const mysql = require('mysql2/promise');
 const { extractTextFromPdf } = require('../services/pdfService');
 const { extractTextFromImage } = require('../services/imageService');
 const { matchJobs } = require('../services/jobMatcher');
-const jobs = require('../jobs.json');
 
 const router = express.Router();
 const upload = multer({ dest: 'uploads/', limits: { fileSize: 10 * 1024 * 1024 } });
+const pool = mysql.createPool({
+  host: process.env.DB_HOST || "localhost",
+  port: Number(process.env.DB_PORT || 3306),
+  user: process.env.DB_USER || "root",
+  password: process.env.DB_PASSWORD || "",
+  database: process.env.DB_NAME || "capstone_db",
+  waitForConnections: true,
+  connectionLimit: 10
+});
 
 router.post('/match', upload.single('cv'), async (req, res) => {
   let filePath = null;
@@ -31,6 +40,23 @@ router.post('/match', upload.single('cv'), async (req, res) => {
     }
 
     const cvText = extractedText.replace(/\s+/g, " ").trim().slice(0, 4000);
+    const [jobs] = await pool.query(
+      `
+        SELECT
+          id, title, description, status, department, location, type,
+          required_skills AS requiredSkills,
+          minimum_education AS minimumEducation,
+          minimum_experience_years AS minimumExperienceYears
+        FROM jobs
+        WHERE status = 'active'
+        ORDER BY id ASC
+      `
+    );
+
+    if (!jobs.length) {
+      return res.status(400).json({ success: false, error: "No active jobs available for matching." });
+    }
+
     const results = await matchJobs(cvText, jobs);
 
     res.json({

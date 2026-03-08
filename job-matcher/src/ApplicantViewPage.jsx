@@ -54,7 +54,7 @@ function ApplicantViewPage({ viewItem, onBack, onReanalyze }) {
         <div>
           <h2 className="candidate-name">{viewItem?.name || "(No name)"}</h2>
           <p className="candidate-role">
-            Applied for <strong>{viewItem?.matched_job_title || "No matched role yet"}</strong>
+            Applied for <strong>{viewItem?.applied_job_title || viewItem?.matched_job_title || "No matched role yet"}</strong>
           </p>
         </div>
         <div className="candidate-actions">

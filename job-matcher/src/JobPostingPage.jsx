@@ -1,68 +1,651 @@
+import { useEffect, useMemo, useState } from 'react'
 import './App.css'
+import CustomDropdown from './CustomDropdown'
 
-const JOB_POSTINGS = [
-  {
-    id: 1,
-    title: 'Secondary School English Teacher',
-    status: 'active',
-    department: 'Academic Affairs',
-    location: 'Manila, Philippines',
-    type: 'Full-time',
-    description:
-      "We are seeking a passionate and dedicated Secondary School English Teacher to join our academic team. The successful candidate will be responsible for planning and delivering engaging lessons aligned with the curriculum, assessing student performance, preparing instructional materials, and fostering a positive learning environment.",
-    applicants: 0
-  },
-  {
-    id: 2,
-    title: 'Junior Software Developer',
-    status: 'closed',
-    department: 'Information Technology',
-    location: 'Manila, Philippines',
-    type: 'Full-time',
-    description:
-      'We are seeking a motivated and detail-oriented Junior Software Developer to join our IT team. The successful candidate will assist in designing, developing, testing, and maintaining web-based applications. Responsibilities include writing clean and efficient code, debugging and troubleshooting system issues, and collaborating with senior developers.',
-    applicants: 1
+function JobPostingPage({ uploads = [], isEmployer = false, onViewApplicant, onDeleteApplicant, onJobsChanged }) {
+  const [jobs, setJobs] = useState([])
+  const [searchTerm, setSearchTerm] = useState("")
+  const [statusFilter, setStatusFilter] = useState("all")
+  const [selectedJobTitle, setSelectedJobTitle] = useState("")
+  const [modalSortConfig, setModalSortConfig] = useState({ key: "date", direction: "desc" })
+  const [actionsJobId, setActionsJobId] = useState(null)
+  const [isCreateModalOpen, setIsCreateModalOpen] = useState(false)
+  const [newJobTitle, setNewJobTitle] = useState("")
+  const [newJobDescription, setNewJobDescription] = useState("")
+  const [newJobDepartment, setNewJobDepartment] = useState("Information Technology")
+  const [newJobLocation, setNewJobLocation] = useState("Manila, Philippines")
+  const [newJobType, setNewJobType] = useState("Full-time")
+  const [newJobStatus, setNewJobStatus] = useState("active")
+  const [newRequiredSkills, setNewRequiredSkills] = useState("")
+  const [newMinimumEducation, setNewMinimumEducation] = useState("")
+  const [newMinimumExperienceYears, setNewMinimumExperienceYears] = useState("0")
+  const [newSalaryMin, setNewSalaryMin] = useState("")
+  const [newSalaryMax, setNewSalaryMax] = useState("")
+  const [isCreatingJob, setIsCreatingJob] = useState(false)
+  const [isLoading, setIsLoading] = useState(false)
+  const [error, setError] = useState("")
+  const [createJobStatus, setCreateJobStatus] = useState("")
+  const [createJobNotice, setCreateJobNotice] = useState("")
+
+  useEffect(() => {
+    if (!createJobStatus) return
+    const timer = setTimeout(() => {
+      setCreateJobStatus("")
+      setCreateJobNotice("")
+    }, 2600)
+    return () => clearTimeout(timer)
+  }, [createJobStatus])
+
+  const showCreateJobNotice = (status, notice) => {
+    setCreateJobStatus(status)
+    setCreateJobNotice(notice)
   }
-]
 
-function JobPostingPage() {
+  const fetchJobs = async ({ silent = false } = {}) => {
+    if (!silent) {
+      setIsLoading(true)
+    }
+    setError("")
+    try {
+      const response = await fetch("http://localhost:5000/jobs")
+      if (!response.ok) {
+        throw new Error("Failed to load jobs.")
+      }
+      const data = await response.json()
+      setJobs(Array.isArray(data) ? data : [])
+    } catch (err) {
+      setError(err.message || "Could not fetch job postings.")
+    } finally {
+      if (!silent) {
+        setIsLoading(false)
+      }
+    }
+  }
+
+  useEffect(() => {
+    fetchJobs()
+  }, [])
+
+  useEffect(() => {
+    if (actionsJobId == null) return
+    const onDocClick = () => setActionsJobId(null)
+    document.addEventListener("click", onDocClick)
+    return () => document.removeEventListener("click", onDocClick)
+  }, [actionsJobId])
+
+  const filteredJobs = useMemo(() => {
+    return jobs.filter((job) => {
+      const query = searchTerm.trim().toLowerCase()
+      const status = String(job.status || "active").toLowerCase()
+
+      const matchesStatus = statusFilter === "all" ? true : status === statusFilter
+      if (!matchesStatus) return false
+
+      if (!query) return true
+      const haystack = `${job.title || ""} ${job.description || ""} ${job.department || ""} ${job.location || ""}`.toLowerCase()
+      return haystack.includes(query)
+    })
+  }, [jobs, searchTerm, statusFilter])
+
+  const selectedJobApplicants = useMemo(() => {
+    if (!selectedJobTitle) return []
+    return uploads
+      .filter((item) => {
+        const applied = String(item.applied_job_title || "").toLowerCase()
+        const matched = String(item.matched_job_title || "").toLowerCase()
+        return applied === selectedJobTitle.toLowerCase() || matched === selectedJobTitle.toLowerCase()
+      })
+  }, [uploads, selectedJobTitle])
+
+  const sortedSelectedJobApplicants = useMemo(() => {
+    const direction = modalSortConfig.direction === "asc" ? 1 : -1
+    return [...selectedJobApplicants].sort((a, b) => {
+      if (modalSortConfig.key === "name") {
+        return (String(a.name || "").localeCompare(String(b.name || ""))) * direction
+      }
+      if (modalSortConfig.key === "score") {
+        return (Number(a.match_score || 0) - Number(b.match_score || 0)) * direction
+      }
+      return (new Date(a.uploaded_at || 0) - new Date(b.uploaded_at || 0)) * direction
+    })
+  }, [selectedJobApplicants, modalSortConfig])
+
+  const toggleModalSort = (key) => {
+    setModalSortConfig((prev) => {
+      if (prev.key === key) {
+        return { key, direction: prev.direction === "asc" ? "desc" : "asc" }
+      }
+      const defaultDirection = key === "date" || key === "score" ? "desc" : "asc"
+      return { key, direction: defaultDirection }
+    })
+  }
+
+  const statusOptions = [
+    { value: "all", label: "All Status" },
+    { value: "active", label: "Active" },
+    { value: "closed", label: "Closed" }
+  ]
+
+  const updateJobStatus = async (jobId, status) => {
+    try {
+      const response = await fetch(`http://localhost:5000/jobs/${jobId}/status`, {
+        method: "PUT",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ status })
+      })
+      if (!response.ok) {
+        throw new Error("Failed to update status.")
+      }
+      setActionsJobId(null)
+      await fetchJobs({ silent: true })
+      await onJobsChanged?.()
+    } catch (err) {
+      setError(err.message || "Failed to update job status.")
+    }
+  }
+
+  const deleteJobPost = async (jobId) => {
+    const confirmed = window.confirm("Delete this job post?")
+    if (!confirmed) return
+
+    try {
+      const response = await fetch(`http://localhost:5000/jobs/${jobId}`, {
+        method: "DELETE"
+      })
+      if (!response.ok) {
+        throw new Error("Failed to delete job post.")
+      }
+      setActionsJobId(null)
+      await fetchJobs({ silent: true })
+      await onJobsChanged?.()
+    } catch (err) {
+      setError(err.message || "Failed to delete job post.")
+    }
+  }
+
+  const handleDeleteApplicantInJobModal = async (applicantId) => {
+    const deleted = await onDeleteApplicant?.(applicantId)
+    if (!deleted) return
+    await fetchJobs({ silent: true })
+    await onJobsChanged?.()
+  }
+
+  const createJobPost = async () => {
+    const hasMissingField = (
+      !newJobTitle.trim() ||
+      !newJobDescription.trim() ||
+      !newJobDepartment.trim() ||
+      !newJobLocation.trim() ||
+      !newJobType.trim() ||
+      !newJobStatus.trim() ||
+      !newRequiredSkills.trim() ||
+      !newMinimumEducation.trim() ||
+      newMinimumExperienceYears === "" ||
+      newSalaryMin === "" ||
+      newSalaryMax === ""
+    )
+
+    if (hasMissingField) {
+      showCreateJobNotice("fail", "Please fill in all fields before creating the job post.")
+      return
+    }
+
+    const minExp = Number(newMinimumExperienceYears)
+    const salaryMin = Number(newSalaryMin)
+    const salaryMax = Number(newSalaryMax)
+
+    if (Number.isNaN(minExp) || minExp < 0) {
+      showCreateJobNotice("fail", "Minimum experience must be a valid non-negative number.")
+      return
+    }
+
+    if (Number.isNaN(salaryMin) || Number.isNaN(salaryMax) || salaryMin < 0 || salaryMax < 0) {
+      showCreateJobNotice("fail", "Salary range must be valid non-negative numbers.")
+      return
+    }
+
+    if (salaryMax < salaryMin) {
+      showCreateJobNotice("fail", "Salary Range (Max) must be greater than or equal to Salary Range (Min).")
+      return
+    }
+
+    setIsCreatingJob(true)
+    setError("")
+    try {
+      const response = await fetch("http://localhost:5000/jobs", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          title: newJobTitle.trim(),
+          description: newJobDescription.trim(),
+          department: newJobDepartment.trim(),
+          location: newJobLocation.trim(),
+          type: newJobType.trim(),
+          status: newJobStatus,
+          requiredSkills: newRequiredSkills.trim(),
+          minimumEducation: newMinimumEducation,
+          minimumExperienceYears: minExp,
+          salaryMin,
+          salaryMax
+        })
+      })
+
+      if (!response.ok) {
+        const payload = await response.json().catch(() => null)
+        throw new Error(payload?.message || "Failed to create job post.")
+      }
+
+      setIsCreateModalOpen(false)
+      setNewJobTitle("")
+      setNewJobDescription("")
+      setNewJobDepartment("Information Technology")
+      setNewJobLocation("Manila, Philippines")
+      setNewJobType("Full-time")
+      setNewJobStatus("active")
+      setNewRequiredSkills("")
+      setNewMinimumEducation("")
+      setNewMinimumExperienceYears("0")
+      setNewSalaryMin("")
+      setNewSalaryMax("")
+      showCreateJobNotice("success", "Job post created successfully.")
+      await fetchJobs()
+      await onJobsChanged?.()
+    } catch (err) {
+      showCreateJobNotice("fail", err.message || "Failed to create job post.")
+    } finally {
+      setIsCreatingJob(false)
+    }
+  }
+
   return (
     <section className="jobs-panel">
       <h1 className="jobs-title">New Jobs</h1>
       <p className="jobs-subtitle">Overview of Job List and Requirements</p>
 
       <div className="jobs-controls">
-        <input className="input jobs-search" type="text" placeholder="Search jobs.." />
-        <select className="input jobs-filter">
-          <option>All Status</option>
-          <option>Active</option>
-          <option>Closed</option>
-        </select>
+        <input
+          className="input jobs-search"
+          type="text"
+          placeholder="Search jobs.."
+          value={searchTerm}
+          onChange={(e) => setSearchTerm(e.target.value)}
+        />
+        <CustomDropdown
+          className="jobs-filter"
+          options={statusOptions}
+          value={statusFilter}
+          onChange={setStatusFilter}
+          placeholder="All Status"
+        />
+        {!isEmployer && (
+          <button
+            type="button"
+            className="btn jobs-create-btn"
+            onClick={() => setIsCreateModalOpen(true)}
+          >
+            + Create Job
+          </button>
+        )}
       </div>
 
       <div className="jobs-list">
-        {JOB_POSTINGS.map((job) => (
-          <article key={job.id} className="job-card">
-            <div className="job-card-top">
-              <div className="job-main">
-                <h2>{job.title}</h2>
-                <span className={`job-status ${job.status}`}>{job.status}</span>
+        {isLoading ? (
+          <p className="muted">Loading jobs...</p>
+        ) : error ? (
+          <p className="muted">{error}</p>
+        ) : filteredJobs.length === 0 ? (
+          <p className="muted">No jobs found.</p>
+        ) : (
+          filteredJobs.map((job) => (
+            <article key={job.id} className="job-card">
+              <div className="job-card-top">
+                <div className="job-main">
+                  <h2>{job.title}</h2>
+                  <span className={`job-status ${String(job.status || "active").toLowerCase()}`}>
+                    {String(job.status || "active").toLowerCase()}
+                  </span>
+                </div>
+                {!isEmployer && (
+                  <>
+                    <button
+                      className="job-more"
+                      type="button"
+                      onClick={(e) => {
+                        e.stopPropagation()
+                        setActionsJobId((prev) => (prev === job.id ? null : job.id))
+                      }}
+                    >
+                      ...
+                    </button>
+                    {actionsJobId === job.id && (
+                      <div className="job-actions-menu" onClick={(e) => e.stopPropagation()}>
+                        <button
+                          type="button"
+                          className="actions-menu-item"
+                          onClick={() => updateJobStatus(job.id, "active")}
+                        >
+                          Set Active
+                        </button>
+                        <button
+                          type="button"
+                          className="actions-menu-item"
+                          onClick={() => updateJobStatus(job.id, "closed")}
+                        >
+                          Set Closed
+                        </button>
+                        <button
+                          type="button"
+                          className="actions-menu-item danger"
+                          onClick={() => deleteJobPost(job.id)}
+                        >
+                          Delete Post
+                        </button>
+                      </div>
+                    )}
+                  </>
+                )}
               </div>
-              <button className="job-more" type="button">...</button>
+
+              <p className="job-meta">
+                {job.department}  |  {job.location}  |  {job.type}
+              </p>
+
+              <p className="job-description">{job.description}</p>
+
+              <button
+                className="job-applicants"
+                type="button"
+                onClick={() => setSelectedJobTitle(job.title)}
+              >
+                {Number(job.applicants || 0)} Applicants
+              </button>
+            </article>
+          ))
+        )}
+      </div>
+
+      {selectedJobTitle && (
+        <div className="modal-overlay" onClick={() => setSelectedJobTitle("")}>
+          <div className="modal-card modal-modern job-applicants-modal" onClick={(e) => e.stopPropagation()}>
+            <div className="modal-header">
+              <h3>Applicants for {selectedJobTitle}</h3>
+              <button type="button" className="close-x" onClick={() => setSelectedJobTitle("")}>×</button>
             </div>
 
-            <p className="job-meta">
-              {job.department}  |  {job.location}  |  {job.type}
-            </p>
+            {selectedJobApplicants.length === 0 ? (
+              <p className="muted">No analyzed applicants found for this job.</p>
+            ) : (
+              <div>
+                <div className="panel-meta">
+                  <p>Showing {sortedSelectedJobApplicants.length} applicants</p>
+                  <div className="sort-wrap">
+                    <span>Sort by:</span>
+                    <button
+                      className={`sort-btn ${modalSortConfig.key === "name" ? "active" : ""}`}
+                      onClick={() => toggleModalSort("name")}
+                    >
+                      Name {modalSortConfig.key === "name" ? (modalSortConfig.direction === "asc" ? "↑" : "↓") : ""}
+                    </button>
+                    <button
+                      className={`sort-btn ${modalSortConfig.key === "date" ? "active" : ""}`}
+                      onClick={() => toggleModalSort("date")}
+                    >
+                      Date {modalSortConfig.key === "date" ? (modalSortConfig.direction === "asc" ? "↑" : "↓") : ""}
+                    </button>
+                    <button
+                      className={`sort-btn ${modalSortConfig.key === "score" ? "active" : ""}`}
+                      onClick={() => toggleModalSort("score")}
+                    >
+                      Score {modalSortConfig.key === "score" ? (modalSortConfig.direction === "asc" ? "↑" : "↓") : ""}
+                    </button>
+                  </div>
+                </div>
+                <div className="table-wrap">
+                  <table className="records-table">
+                    <thead>
+                      <tr>
+                        <th>#</th>
+                        <th>Applicant</th>
+                        <th>Phone</th>
+                        <th>Score</th>
+                        <th>Classification</th>
+                        <th>Uploaded File</th>
+                        <th>Uploaded At</th>
+                        <th className="actions-col">Actions</th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {sortedSelectedJobApplicants.map((item, index) => (
+                        <tr key={item.id}>
+                          <td>{index + 1}</td>
+                          <td>
+                            <div className="applicant-cell">
+                              <strong>{item.name || "(No name)"}</strong>
+                              <span>{item.email || "No email"}</span>
+                            </div>
+                          </td>
+                          <td>{item.phone || "No phone"}</td>
+                          <td>{item.match_score != null ? `${Number(item.match_score).toFixed(2)}%` : "-"}</td>
+                          <td>{item.classification || "-"}</td>
+                          <td>{item.original_name || "-"}</td>
+                          <td>{item.uploaded_at ? new Date(item.uploaded_at).toLocaleString() : "-"}</td>
+                          <td className="actions-cell actions-col">
+                            <div className="job-applicant-actions">
+                              <button
+                                type="button"
+                                className="action-btn action-trigger"
+                                onClick={() => {
+                                  setSelectedJobTitle("")
+                                  onViewApplicant?.(item)
+                                }}
+                              >
+                                View
+                              </button>
+                              <a
+                                className="action-btn action-download"
+                                href={`http://localhost:5000/uploads/${item.id}/download`}
+                              >
+                                Download
+                              </a>
+                              <button
+                                type="button"
+                                className="action-btn action-delete"
+                                onClick={() => handleDeleteApplicantInJobModal(item.id)}
+                              >
+                                Delete
+                              </button>
+                            </div>
+                          </td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                </div>
+              </div>
+            )}
+          </div>
+        </div>
+      )}
 
-            <p className="job-description">{job.description}</p>
+      {isCreateModalOpen && (
+        <div className="modal-overlay" onClick={() => setIsCreateModalOpen(false)}>
+          <div className="modal-card modal-modern create-job-modal" onClick={(e) => e.stopPropagation()}>
+            <div className="modal-header create-job-header">
+              <div>
+                <h3>Job Details</h3>
+                <p className="create-job-subtitle">Basic information about the position</p>
+              </div>
+              <button type="button" className="close-x" onClick={() => setIsCreateModalOpen(false)}>×</button>
+            </div>
 
-            <button className="job-applicants" type="button">
-              {job.applicants} Applicants
-            </button>
-          </article>
-        ))}
-      </div>
+            <div className="modal-grid">
+              <div className="field-group">
+                <label>Job Title</label>
+                <input
+                  className="input"
+                  type="text"
+                  value={newJobTitle}
+                  onChange={(e) => setNewJobTitle(e.target.value)}
+                  placeholder="e.g., Senior Software Engineer"
+                />
+              </div>
+
+              <div className="field-group">
+                <label>Department</label>
+                <input
+                  className="input"
+                  type="text"
+                  value={newJobDepartment}
+                  onChange={(e) => setNewJobDepartment(e.target.value)}
+                  placeholder="e.g., Engineering"
+                />
+              </div>
+            </div>
+
+            <div className="modal-grid">
+              <div className="field-group">
+                <label>Location</label>
+                <input
+                  className="input"
+                  type="text"
+                  value={newJobLocation}
+                  onChange={(e) => setNewJobLocation(e.target.value)}
+                  placeholder="e.g., Manila, Philippines"
+                />
+              </div>
+
+              <div className="field-group">
+                <label>Employment Type</label>
+                <CustomDropdown
+                  className="input-dropdown"
+                  options={[
+                    { value: "Full-time", label: "Full-time" },
+                    { value: "Part-time", label: "Part-time" },
+                    { value: "Contract", label: "Contract" },
+                    { value: "Internship", label: "Internship" }
+                  ]}
+                  value={newJobType}
+                  onChange={setNewJobType}
+                  placeholder="Full-time"
+                />
+              </div>
+            </div>
+
+            <div className="field-group">
+              <label>Description</label>
+              <textarea
+                className="input create-job-description"
+                rows={6}
+                value={newJobDescription}
+                onChange={(e) => setNewJobDescription(e.target.value)}
+                placeholder="Describe the role, responsibilities and what you're looking for...."
+              />
+            </div>
+
+            <div className="field-group create-job-status-wrap">
+              <label>Status</label>
+              <CustomDropdown
+                className="input-dropdown create-job-status"
+                options={[
+                  { value: "active", label: "Active" },
+                  { value: "closed", label: "Closed" }
+                ]}
+                value={newJobStatus}
+                onChange={setNewJobStatus}
+                placeholder="Active"
+              />
+            </div>
+
+            <section className="create-job-requirements">
+              <h4>Requirements</h4>
+              <p className="create-job-subtitle">Define qualifications for applicant matching</p>
+
+              <div className="field-group">
+                <label>Required Skills</label>
+                <input
+                  className="input"
+                  type="text"
+                  value={newRequiredSkills}
+                  onChange={(e) => setNewRequiredSkills(e.target.value)}
+                  placeholder="Add a skill (e.g., Python, React, Project Management)"
+                />
+              </div>
+
+              <div className="modal-grid">
+                <div className="field-group">
+                  <label>Minimum Education</label>
+                  <CustomDropdown
+                    className="input-dropdown"
+                    options={[
+                      { value: "", label: "Select education level" },
+                      { value: "High School", label: "High School" },
+                      { value: "Associate Degree", label: "Associate Degree" },
+                      { value: "Bachelor's Degree", label: "Bachelor's Degree" },
+                      { value: "Master's Degree", label: "Master's Degree" },
+                      { value: "Doctorate", label: "Doctorate" }
+                    ]}
+                    value={newMinimumEducation}
+                    onChange={setNewMinimumEducation}
+                    placeholder="Select education level"
+                  />
+                </div>
+
+                <div className="field-group">
+                  <label>Minimum Experience (Years)</label>
+                  <input
+                    className="input"
+                    type="number"
+                    min="0"
+                    value={newMinimumExperienceYears}
+                    onChange={(e) => setNewMinimumExperienceYears(e.target.value)}
+                  />
+                </div>
+              </div>
+
+              <div className="modal-grid">
+                <div className="field-group">
+                  <label>Salary Range (Min)</label>
+                  <input
+                    className="input"
+                    type="number"
+                    min="0"
+                    value={newSalaryMin}
+                    onChange={(e) => setNewSalaryMin(e.target.value)}
+                    placeholder="e.g., 80000"
+                  />
+                </div>
+
+                <div className="field-group">
+                  <label>Salary Range (Max)</label>
+                  <input
+                    className="input"
+                    type="number"
+                    min="0"
+                    value={newSalaryMax}
+                    onChange={(e) => setNewSalaryMax(e.target.value)}
+                    placeholder="e.g., 120000"
+                  />
+                </div>
+              </div>
+            </section>
+
+            <div className="modal-actions">
+              <button className="btn" onClick={createJobPost} disabled={isCreatingJob}>
+                {isCreatingJob ? "Creating..." : "Create Job"}
+              </button>
+              <button className="btn btn-secondary" onClick={() => setIsCreateModalOpen(false)}>
+                Cancel
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {createJobStatus && (
+        <div className={`toast ${createJobStatus === "success" ? "toast-success" : "toast-fail"}`}>
+          {createJobNotice || (createJobStatus === "success" ? "Success" : "Fail")}
+        </div>
+      )}
     </section>
   )
 }

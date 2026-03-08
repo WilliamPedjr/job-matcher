@@ -1,9 +1,11 @@
 // React imports
-import { useEffect, useState } from 'react'
+import { useEffect, useMemo, useState } from 'react'
 import './App.css'
 import LoginPage from './LoginPage'
 import ApplicantViewPage from './ApplicantViewPage'
 import JobPostingPage from './JobPostingPage'
+import DashboardPage from './DashboardPage'
+import CustomDropdown from './CustomDropdown'
 
 function App() {
   const ADMIN_EMAIL = "admin"
@@ -24,9 +26,10 @@ function App() {
   const [isUploadModalOpen, setIsUploadModalOpen] = useState(false)
   // Keeps upload records returned by GET /uploads.
   const [uploads, setUploads] = useState([])
+  const [jobPosts, setJobPosts] = useState([])
   const [isLoadingUploads, setIsLoadingUploads] = useState(false)
   const [searchTerm, setSearchTerm] = useState("")
-  const [sortBy, setSortBy] = useState("date")
+  const [sortConfig, setSortConfig] = useState({ key: "date", direction: "desc" })
   const [actionsMenu, setActionsMenu] = useState(null)
   const [viewItem, setViewItem] = useState(null)
   const [activePage, setActivePage] = useState("applicants")
@@ -36,17 +39,31 @@ function App() {
   const [loginPassword, setLoginPassword] = useState("")
   const [loginError, setLoginError] = useState("")
   const [uploadStatus, setUploadStatus] = useState("")
+  const [uploadNotice, setUploadNotice] = useState("")
+  const [appliedJobTitle, setAppliedJobTitle] = useState("")
+  const [jobFilter, setJobFilter] = useState("all")
+  const [levelFilter, setLevelFilter] = useState("all")
   const isEmployer = userRole === "employer"
 
   useEffect(() => {
     if (!uploadStatus) return
-    const timer = setTimeout(() => setUploadStatus(""), 2200)
+    const timer = setTimeout(() => {
+      setUploadStatus("")
+      setUploadNotice("")
+    }, 2600)
     return () => clearTimeout(timer)
   }, [uploadStatus])
 
+  const showUploadNotice = (status, notice) => {
+    setUploadStatus(status)
+    setUploadNotice(notice)
+  }
+
   // Fetch all upload records
-  const fetchUploads = async () => {
-    setIsLoadingUploads(true)
+  const fetchUploads = async ({ silent = false } = {}) => {
+    if (!silent) {
+      setIsLoadingUploads(true)
+    }
     try {
       const response = await fetch("http://localhost:5000/uploads")
       if (!response.ok) {
@@ -57,13 +74,34 @@ function App() {
     } catch (error) {
       setMessage("Could not load upload records.")
     } finally {
-      setIsLoadingUploads(false)
+      if (!silent) {
+        setIsLoadingUploads(false)
+      }
     }
+  }
+
+  const fetchJobPosts = async () => {
+    try {
+      const response = await fetch("http://localhost:5000/jobs")
+      if (!response.ok) {
+        throw new Error("Failed to fetch job posts.")
+      }
+      const data = await response.json()
+      setJobPosts(Array.isArray(data) ? data : [])
+    } catch (error) {
+      setMessage("Could not load job posts.")
+    }
+  }
+
+  const openAddApplicantModal = async () => {
+    await fetchJobPosts()
+    setIsUploadModalOpen(true)
   }
 
   useEffect(() => {
     if (isAuthenticated) {
       fetchUploads()
+      fetchJobPosts()
     }
   }, [isAuthenticated])
 
@@ -153,13 +191,13 @@ function App() {
   // File upload handler
   const handleUpload = async () => {
     // Prevent upload attempts when required values are missing.
-    if (!name.trim() || !email.trim() || !phone.trim()) {
-      setUploadStatus("fail")
+    if (!name.trim() || !email.trim() || !phone.trim() || !appliedJobTitle.trim()) {
+      showUploadNotice("fail", "Please fill in all fields.")
       return
     }
 
     if (!file) {
-      setUploadStatus("fail")
+      showUploadNotice("fail", "Please upload a resume/CV file.")
       return
     }
 
@@ -168,6 +206,7 @@ function App() {
     formData.append("name", name.trim())
     formData.append("email", email.trim())
     formData.append("phone", phone.trim())
+    formData.append("appliedJobTitle", appliedJobTitle.trim())
     formData.append("file", file)
 
     try {
@@ -177,19 +216,21 @@ function App() {
       })
 
       if (response.ok) {
-        setUploadStatus("success")
+        showUploadNotice("success", "Applicant analyzed and added successfully.")
         setIsUploadModalOpen(false)
         setFile(null)
         setName("")
         setEmail("")
         setPhone("")
+        setAppliedJobTitle("")
         fetchUploads()
       } else {
-        setUploadStatus("fail")
+        const payload = await response.json().catch(() => null)
+        showUploadNotice("fail", payload?.message || "Failed to add applicant.")
       }
     } catch (error) {
       // Handles network/server errors where fetch throws before a response exists.
-      setUploadStatus("fail")
+      showUploadNotice("fail", "Failed to add applicant.")
     }
   }
 
@@ -202,13 +243,17 @@ function App() {
 
       if (!response.ok) {
         setMessage("Failed to delete record.")
-        return
+        return false
       }
 
+      // Update UI immediately so Jobs modal/Applicants table refresh without waiting for refetch.
+      setUploads((prev) => prev.filter((item) => item.id !== id))
       setMessage("Upload record deleted.")
-      fetchUploads()
+      fetchUploads({ silent: true })
+      return true
     } catch (error) {
       setMessage("Error deleting record.")
+      return false
     }
   }
 
@@ -235,20 +280,106 @@ function App() {
     }
   }
 
+  const handleViewApplicantFromJobs = (item) => {
+    if (!item) return
+    setViewItem(item)
+    setActionsMenu(null)
+    setActivePage("applicants")
+  }
+
+  const toggleSort = (key) => {
+    setSortConfig((prev) => {
+      if (prev.key === key) {
+        return { key, direction: prev.direction === "asc" ? "desc" : "asc" }
+      }
+      const defaultDirection = key === "date" || key === "score" ? "desc" : "asc"
+      return { key, direction: defaultDirection }
+    })
+  }
+
   const filteredUploads = uploads
     .filter((item) => {
+      const selectedJob = String(jobFilter || "all").toLowerCase()
+      const itemJob = String(item.applied_job_title || item.matched_job_title || "").toLowerCase()
+      if (selectedJob !== "all" && itemJob !== selectedJob) {
+        return false
+      }
+
       const q = searchTerm.trim().toLowerCase()
       if (!q) return true
 
-      const haystack = `${item.name || ""} ${item.email || ""} ${item.phone || ""} ${item.original_name || ""} ${item.matched_job_title || ""} ${item.classification || ""}`.toLowerCase()
+      const haystack = `${item.name || ""} ${item.email || ""} ${item.phone || ""} ${item.original_name || ""} ${item.applied_job_title || ""} ${item.matched_job_title || ""} ${item.classification || ""}`.toLowerCase()
       return haystack.includes(q)
     })
     .sort((a, b) => {
-      if (sortBy === "name") {
-        return (a.name || "").localeCompare(b.name || "")
+      const direction = sortConfig.direction === "asc" ? 1 : -1
+      if (sortConfig.key === "name") {
+        return (a.name || "").localeCompare(b.name || "") * direction
       }
-      return new Date(b.uploaded_at) - new Date(a.uploaded_at)
+      if (sortConfig.key === "score") {
+        return (Number(a.match_score || 0) - Number(b.match_score || 0)) * direction
+      }
+      return (new Date(a.uploaded_at) - new Date(b.uploaded_at)) * direction
     })
+
+  const activeJobPosts = jobPosts.filter(
+    (job) => String(job.status || "active").toLowerCase() === "active"
+  )
+
+  const applicantJobTitles = Array.from(
+    new Set(
+      uploads
+        .map((item) => String(item.applied_job_title || item.matched_job_title || "").trim())
+        .filter(Boolean)
+    )
+  ).sort((a, b) => a.localeCompare(b))
+
+  const jobFilterOptions = [
+    { value: "all", label: "All Jobs" },
+    ...applicantJobTitles.map((title) => ({ value: title, label: title }))
+  ]
+  const levelFilterOptions = [{ value: "all", label: "All Levels" }]
+  const appliedJobOptions = [
+    { value: "", label: "Select a job post" },
+    ...activeJobPosts.map((job) => ({ value: job.title, label: job.title }))
+  ]
+
+  const dashboardData = useMemo(() => {
+    const normalize = (value) => String(value || "").trim().toLowerCase()
+
+    let highlyQualified = 0
+    let moderatelyQualified = 0
+    let notQualified = 0
+
+    uploads.forEach((item) => {
+      const cls = normalize(item.classification)
+      if (cls.includes("not qualified")) {
+        notQualified += 1
+      } else if (cls.includes("moderately qualified")) {
+        moderatelyQualified += 1
+      } else if (cls.includes("highly qualified")) {
+        highlyQualified += 1
+      }
+    })
+
+    const recentApplicants = [...uploads]
+      .sort((a, b) => new Date(b.uploaded_at || 0) - new Date(a.uploaded_at || 0))
+      .slice(0, 4)
+
+    const recentJobs = [...jobPosts]
+      .sort((a, b) => Number(b.id || 0) - Number(a.id || 0))
+      .slice(0, 4)
+
+    return {
+      openJobs: jobPosts.filter((job) => String(job.status || "active").toLowerCase() === "active").length,
+      totalApplicants: uploads.length,
+      highlyQualified,
+      moderatelyQualified,
+      notQualified,
+      recentApplicants,
+      recentJobs
+    }
+  }, [uploads, jobPosts])
 
   if (!isAuthenticated) {
     return (
@@ -303,7 +434,7 @@ function App() {
               <h2 className="title">Applicants</h2>
               <p className="subtitle">View and manage all job applicants ranked by qualifications</p>
             </div>
-            <button className="btn" onClick={() => setIsUploadModalOpen(true)}>+ Add Applicant</button>
+            <button className="btn" onClick={openAddApplicantModal}>+ Add Applicant</button>
           </div>
 
           <div className="filters">
@@ -314,12 +445,20 @@ function App() {
               value={searchTerm}
               onChange={(e) => setSearchTerm(e.target.value)}
             />
-            <select className="input">
-              <option>All Jobs</option>
-            </select>
-            <select className="input">
-              <option>All Levels</option>
-            </select>
+            <CustomDropdown
+              className="input-dropdown"
+              options={jobFilterOptions}
+              value={jobFilter}
+              onChange={setJobFilter}
+              placeholder="All Jobs"
+            />
+            <CustomDropdown
+              className="input-dropdown"
+              options={levelFilterOptions}
+              value={levelFilter}
+              onChange={setLevelFilter}
+              placeholder="All Levels"
+            />
           </div>
 
           <div className="panel-meta">
@@ -327,16 +466,22 @@ function App() {
             <div className="sort-wrap">
               <span>Sort by:</span>
               <button
-                className={`sort-btn ${sortBy === "name" ? "active" : ""}`}
-                onClick={() => setSortBy("name")}
+                className={`sort-btn ${sortConfig.key === "name" ? "active" : ""}`}
+                onClick={() => toggleSort("name")}
               >
-                Name
+                Name {sortConfig.key === "name" ? (sortConfig.direction === "asc" ? "↑" : "↓") : ""}
               </button>
               <button
-                className={`sort-btn ${sortBy === "date" ? "active" : ""}`}
-                onClick={() => setSortBy("date")}
+                className={`sort-btn ${sortConfig.key === "date" ? "active" : ""}`}
+                onClick={() => toggleSort("date")}
               >
-                Date
+                Date {sortConfig.key === "date" ? (sortConfig.direction === "asc" ? "↑" : "↓") : ""}
+              </button>
+              <button
+                className={`sort-btn ${sortConfig.key === "score" ? "active" : ""}`}
+                onClick={() => toggleSort("score")}
+              >
+                Score {sortConfig.key === "score" ? (sortConfig.direction === "asc" ? "↑" : "↓") : ""}
               </button>
             </div>
           </div>
@@ -345,9 +490,9 @@ function App() {
 
       {activePage === "applicants" && isUploadModalOpen && (
         <div className="modal-overlay">
-          <div className="modal-card modal-modern">
+          <div className="modal-card modal-modern add-applicant-modal">
             <div className="modal-header">
-              <h3>Add New Applicant for: Junior Software Developer</h3>
+              <h3>Add New Applicant</h3>
               <button
                 type="button"
                 className="close-x"
@@ -356,6 +501,7 @@ function App() {
                   setName("")
                   setEmail("")
                   setPhone("")
+                  setAppliedJobTitle("")
                   setFile(null)
                 }}
               >
@@ -399,6 +545,17 @@ function App() {
             </div>
 
             <div className="field-group">
+              <label>Job Post Applied</label>
+              <CustomDropdown
+                className="input-dropdown"
+                options={appliedJobOptions}
+                value={appliedJobTitle}
+                onChange={setAppliedJobTitle}
+                placeholder="Select a job post"
+              />
+            </div>
+
+            <div className="field-group">
               <label>Upload Resume/CV for Analysis</label>
               <label className={`upload-dropzone ${file ? "has-file" : ""}`} htmlFor="resume-upload-input">
                 <input
@@ -423,6 +580,7 @@ function App() {
                   setName("")
                   setEmail("")
                   setPhone("")
+                  setAppliedJobTitle("")
                   setFile(null)
                 }}
               >
@@ -435,17 +593,28 @@ function App() {
 
       {uploadStatus && (
         <div className={`toast ${uploadStatus === "success" ? "toast-success" : "toast-fail"}`}>
-          {uploadStatus === "success" ? "Success" : "Fail"}
+          {uploadNotice || (uploadStatus === "success" ? "Success" : "Fail")}
         </div>
       )}
 
       {activePage === "jobs" ? (
-        <JobPostingPage />
+        <JobPostingPage
+          uploads={uploads}
+          isEmployer={isEmployer}
+          onViewApplicant={handleViewApplicantFromJobs}
+          onDeleteApplicant={handleDelete}
+          onJobsChanged={fetchJobPosts}
+        />
       ) : activePage === "dashboard" ? (
-        <section className="empty-state">
-          <h3>Dashboard</h3>
-          <p>Dashboard content is not set up yet.</p>
-        </section>
+        <DashboardPage
+          dashboardData={dashboardData}
+          onViewAllJobs={() => handleTopNav("jobs")}
+          onViewAllApplicants={() => handleTopNav("applicants")}
+          onViewApplicant={(item) => {
+            setViewItem(item)
+            setActivePage("applicants")
+          }}
+        />
       ) : viewItem ? (
         <ApplicantViewPage
           viewItem={viewItem}
@@ -487,7 +656,7 @@ function App() {
                     </div>
                   </td>
                   <td>{item.phone || "No phone"}</td>
-                  <td>{item.matched_job_title || "-"}</td>
+                  <td>{item.applied_job_title || item.matched_job_title || "-"}</td>
                   <td>{item.match_score != null ? `${Number(item.match_score).toFixed(2)}%` : "-"}</td>
                   <td>{item.classification || "-"}</td>
                   {/* <td>{item.original_name} ({item.size_bytes} bytes)</td> */}
