@@ -6,6 +6,7 @@ import ApplicantViewPage from './ApplicantViewPage'
 import JobPostingPage from './JobPostingPage'
 import DashboardPage from './DashboardPage'
 import CustomDropdown from './CustomDropdown'
+import profileIcon from './assets/circle-user-solid-full.svg'
 
 function App() {
   const ADMIN_EMAIL = "admin"
@@ -32,7 +33,7 @@ function App() {
   const [sortConfig, setSortConfig] = useState({ key: "date", direction: "desc" })
   const [actionsMenu, setActionsMenu] = useState(null)
   const [viewItem, setViewItem] = useState(null)
-  const [activePage, setActivePage] = useState("applicants")
+  const [activePage, setActivePage] = useState(() => localStorage.getItem("activePage") || "applicants")
   const [isAuthenticated, setIsAuthenticated] = useState(() => localStorage.getItem("isAuthenticated") === "true")
   const [userRole, setUserRole] = useState(() => localStorage.getItem("userRole") || "")
   const [loginEmail, setLoginEmail] = useState("")
@@ -106,6 +107,11 @@ function App() {
   }, [isAuthenticated])
 
   useEffect(() => {
+    if (!isAuthenticated) return
+    localStorage.setItem("activePage", activePage)
+  }, [activePage, isAuthenticated])
+
+  useEffect(() => {
     const closeActions = () => setActionsMenu(null)
     document.addEventListener("click", closeActions)
     window.addEventListener("resize", closeActions)
@@ -161,6 +167,7 @@ function App() {
     localStorage.removeItem("isAuthenticated")
     setUserRole("")
     localStorage.removeItem("userRole")
+    localStorage.removeItem("activePage")
     setActionsMenu(null)
     setViewItem(null)
     setActivePage("applicants")
@@ -427,7 +434,13 @@ function App() {
             Applicant
           </button>
         </nav>
-        <button className="btn btn-secondary" onClick={handleLogout}>Logout</button>
+        <div className="topbar-right">
+          <div className="topbar-profile" title="Profile">
+            <img src={profileIcon} alt="Profile" className="topbar-profile-icon" />
+            <span>{userRole === "admin" ? "Admin" : "Employer"}</span>
+          </div>
+          <button className="btn btn-secondary" onClick={handleLogout}>Logout</button>
+        </div>
       </header>
 
       {activePage === "applicants" && !viewItem && (

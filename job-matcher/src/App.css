@@ -88,6 +88,17 @@ body {
   margin-left: auto;
 }
 
+.topbar-right {
+  margin-left: auto;
+  display: inline-flex;
+  align-items: center;
+  gap: 10px;
+}
+
+.topbar-right .btn.btn-secondary {
+  margin-left: 0;
+}
+
 .brand {
   margin-right: 28px;
   margin-left: 0;
@@ -123,6 +134,26 @@ body {
 .topnav-link:focus-visible {
   outline: none;
   box-shadow: none;
+}
+
+.topbar-profile {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  padding: 6px 10px;
+  border: 1px solid #d1d7e3;
+  border-radius: 999px;
+  background: #ffffff;
+  color: #1f2937;
+  font-size: var(--fs-14);
+  font-weight: 600;
+  line-height: 1;
+}
+
+.topbar-profile-icon {
+  width: 18px;
+  height: 18px;
+  display: block;
 }
 
 .panel {
@@ -1990,6 +2021,10 @@ optgroup {
   }
 
   .topbar .btn.btn-secondary {
+    margin-left: 0;
+  }
+
+  .topbar-right {
     margin-left: 0;
   }
 
