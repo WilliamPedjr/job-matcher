@@ -1,5 +1,7 @@
 import idCardIcon from "./assets/id-card-solid-full.svg"
 import keyIcon from "./assets/key-solid-full.svg"
+import facebookIcon from "./assets/facebook-f-brands-solid-full.svg"
+import instagramIcon from "./assets/instagram-brands-solid-full.svg"
 
 function LoginPage({
   loginEmail,
@@ -31,12 +33,12 @@ function LoginPage({
                 <img src={idCardIcon} alt="" />
               </span>
               <input
-                id="login-email"
+                id="login-username"
                 className="login-input-modern"
                 type="text"
                 value={loginEmail}
                 onChange={(e) => setLoginEmail(e.target.value)}
-                placeholder="ID"
+                placeholder="Username"
                 required
               />
             </div>
@@ -144,8 +146,8 @@ function LoginPage({
           <div className="login-about-col">
             <h4>FOLLOW US</h4>
             <p className="login-social-row">
-              <span className="login-social-icon">f</span>
-              <span className="login-social-icon">◎</span>
+              <img className="login-social-icon" src={facebookIcon} alt="Facebook" />
+              <img className="login-social-icon" src={instagramIcon} alt="Instagram" />
             </p>
           </div>
         </div>

@@ -14,7 +14,7 @@ function DashboardPage({
 
       <div className="dashboard-kpis">
         <article className="kpi-card">
-          <h4>Open Jobs</h4>
+          <h4>Active Jobs</h4>
           <p>{dashboardData.openJobs}</p>
         </article>
         <article className="kpi-card">

@@ -42,8 +42,8 @@ function App() {
   const [uploadNotice, setUploadNotice] = useState("")
   const [appliedJobTitle, setAppliedJobTitle] = useState("")
   const [jobFilter, setJobFilter] = useState("all")
-  const [levelFilter, setLevelFilter] = useState("all")
   const isEmployer = userRole === "employer"
+  const normalizedPhone = phone.length ? `+63${phone}` : ""
 
   useEffect(() => {
     if (!uploadStatus) return
@@ -104,12 +104,6 @@ function App() {
       fetchJobPosts()
     }
   }, [isAuthenticated])
-
-  useEffect(() => {
-    if (isEmployer && activePage === "dashboard") {
-      setActivePage("jobs")
-    }
-  }, [isEmployer, activePage])
 
   useEffect(() => {
     const closeActions = () => setActionsMenu(null)
@@ -173,7 +167,6 @@ function App() {
   }
 
   const handleTopNav = (page) => {
-    if (isEmployer && page === "dashboard") return
     setActivePage(page)
     setActionsMenu(null)
     setIsUploadModalOpen(false)
@@ -188,11 +181,24 @@ function App() {
     setFile(e.target.files[0])
   }
 
+  const handlePhoneChange = (value) => {
+    const digitsOnly = String(value || "").replace(/\D/g, "")
+    const withoutCountryPrefix = digitsOnly.startsWith("63") ? digitsOnly.slice(2) : digitsOnly
+    const withoutLocalPrefix = withoutCountryPrefix.startsWith("0")
+      ? withoutCountryPrefix.slice(1)
+      : withoutCountryPrefix
+    setPhone(withoutLocalPrefix.slice(0, 10))
+  }
+
   // File upload handler
   const handleUpload = async () => {
     // Prevent upload attempts when required values are missing.
     if (!name.trim() || !email.trim() || !phone.trim() || !appliedJobTitle.trim()) {
       showUploadNotice("fail", "Please fill in all fields.")
+      return
+    }
+    if (phone.length !== 10) {
+      showUploadNotice("fail", "Phone number must be exactly 10 digits after +63.")
       return
     }
 
@@ -205,7 +211,7 @@ function App() {
     const formData = new FormData()
     formData.append("name", name.trim())
     formData.append("email", email.trim())
-    formData.append("phone", phone.trim())
+    formData.append("phone", normalizedPhone)
     formData.append("appliedJobTitle", appliedJobTitle.trim())
     formData.append("file", file)
 
@@ -338,7 +344,6 @@ function App() {
     { value: "all", label: "All Jobs" },
     ...applicantJobTitles.map((title) => ({ value: title, label: title }))
   ]
-  const levelFilterOptions = [{ value: "all", label: "All Levels" }]
   const appliedJobOptions = [
     { value: "", label: "Select a job post" },
     ...activeJobPosts.map((job) => ({ value: job.title, label: job.title }))
@@ -400,15 +405,13 @@ function App() {
       <header className="topbar">
         <div className="brand">JACDAS</div>
         <nav className="topnav">
-          {!isEmployer && (
-            <button
-              type="button"
-              className={`topnav-link ${activePage === "dashboard" ? "active" : ""}`}
-              onClick={() => handleTopNav("dashboard")}
-            >
-              Dashboard
-            </button>
-          )}
+          <button
+            type="button"
+            className={`topnav-link ${activePage === "dashboard" ? "active" : ""}`}
+            onClick={() => handleTopNav("dashboard")}
+          >
+            Dashboard
+          </button>
           <button
             type="button"
             className={`topnav-link ${activePage === "jobs" ? "active" : ""}`}
@@ -451,13 +454,6 @@ function App() {
               value={jobFilter}
               onChange={setJobFilter}
               placeholder="All Jobs"
-            />
-            <CustomDropdown
-              className="input-dropdown"
-              options={levelFilterOptions}
-              value={levelFilter}
-              onChange={setLevelFilter}
-              placeholder="All Levels"
             />
           </div>
 
@@ -535,13 +531,18 @@ function App() {
 
             <div className="field-group">
               <label>Phone</label>
-              <input
-                className="input"
-                type="text"
-                value={phone}
-                onChange={(e) => setPhone(e.target.value)}
-                placeholder="09..."
-              />
+              <div className="phone-input-wrap">
+                <span className="phone-prefix">+63</span>
+                <input
+                  className="input phone-local-input phone-number"
+                  type="text"
+                  inputMode="numeric"
+                  maxLength={10}
+                  value={phone}
+                  onChange={(e) => handlePhoneChange(e.target.value)}
+                  placeholder="9..."
+                />
+              </div>
             </div>
 
             <div className="field-group">

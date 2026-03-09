@@ -9,24 +9,24 @@ body {
   --fs-13: 13px;
   --fs-14: 14px;
   --fs-15: 15px;
-  --fs-16: 16px;
-  --fs-17: 17px;
-  --fs-18: 18px;
-  --fs-20: 20px;
-  --fs-22: 22px;
-  --fs-24: 24px;
-  --fs-26: 26px;
-  --fs-28: 28px;
-  --fs-30: 30px;
-  --fs-31: 31px;
-  --fs-32: 32px;
-  --fs-34: 34px;
-  --fs-43: 43px;
-  --fs-44: 44px;
-  --fs-46: 46px;
-  --fs-52: 52px;
-  --fs-72: 72px;
-  --fs-76: 76px;
+  --fs-16: 14px;
+  --fs-17: 16px;
+  --fs-18: 17px;
+  --fs-20: 19px;
+  --fs-22: 19px;
+  --fs-24: 20px;
+  --fs-26: 20px;
+  --fs-28: 27px;
+  --fs-30: 25px;
+  --fs-31: 30px;
+  --fs-32: 31px;
+  --fs-34: 30px;
+  --fs-43: 40px;
+  --fs-44: 41px;
+  --fs-46: 35px;
+  --fs-52: 49px;
+  --fs-72: 69px;
+  --fs-76: 65px;
 }
 
 * {
@@ -133,7 +133,7 @@ body {
 
 .title {
   margin: 0;
-  font-size: var(--fs-46);
+  font-size: var(--fs-44);
   font-weight: 800;
   line-height: 1;
 }
@@ -219,6 +219,32 @@ body {
   font-size: var(--fs-16);
   background-color: white;
   color-scheme: light;
+}
+
+.phone-input-wrap {
+  display: flex;
+  align-items: center;
+  gap: 0;
+  width: 100%;
+}
+
+.phone-prefix {
+  min-width: 56px;
+  margin-top: -3px;
+  border-right: 1px solid #c8cfd8;
+  border-radius: 5px 0 0 5px;
+  /* background: #ffffff; */
+  text-align: center;
+  font-size: var(--fs-14);
+  font-weight: 500;
+  color: #1f2937;
+  line-height: 1;
+  z-index: 1;
+}
+
+.phone-local-input {
+  margin-bottom: 0;
+  border-radius: 0 5px 5px 0;
 }
 
 .custom-dropdown {
@@ -584,8 +610,13 @@ optgroup {
 
 .modal-modern .input {
   font-size: var(--fs-22);
-  padding: 14px 16px;
+  padding: 14px 36px;
   border-radius: 5px;
+}
+
+.modal-modern .input.phone-number {
+  padding-left: 65px;
+  margin-left: -55px;
 }
 
 .upload-dropzone {
@@ -731,9 +762,9 @@ optgroup {
 
 .skill-pill {
   border: 1px solid #c5cfdb;
-  border-radius: 999px;
+  border-radius: 5px;
   padding: 8px 12px;
-  font-size: var(--fs-22);
+  font-size: var(--fs-19);
   background: #f7f9fc;
 }
 
@@ -1150,7 +1181,7 @@ optgroup {
 
 .job-main h2 {
   margin: 0;
-  font-size: var(--fs-30);
+  font-size: var(--fs-24);
   word-break: break-word;
 }
 
@@ -1271,7 +1302,7 @@ optgroup {
 .login-heading-modern {
   margin: 0;
   max-width: 620px;
-  font-size: var(--fs-46);
+  font-size: var(--fs-28);
   line-height: 1.25;
   text-align: center;
   font-weight: 800;
@@ -1291,7 +1322,7 @@ optgroup {
 }
 
 .login-input-wrap-modern {
-  height: 56px;
+  height: 46px;
   border: 1px solid #91a1ba;
   border-radius: 999px;
   background: #fff;
@@ -1489,7 +1520,7 @@ optgroup {
 
 .dashboard-panel h3 {
   margin: 0;
-  font-size: var(--fs-44);
+  font-size: var(--fs-32);
 }
 
 .dashboard-link-btn {
@@ -1522,7 +1553,7 @@ optgroup {
 .dashboard-item-title {
   margin: 0;
   color: #16202d;
-  font-size: var(--fs-30);
+  font-size: var(--fs-20);
   font-weight: 700;
   word-break: break-word;
 }
@@ -1593,7 +1624,7 @@ optgroup {
   color: #ffffff;
   width: 100%;
   max-width: none;
-  margin: 0;
+  margin-top: 60px;
   padding: 18px var(--layout-gutter) 20px;
   overflow-wrap: anywhere;
 }
@@ -1729,7 +1760,7 @@ optgroup {
   .modal-header h3,
   .create-job-header h3,
   .dashboard-panel h3 {
-    font-size: var(--fs-30);
+    font-size: var(--fs-24);
   }
 
   .create-job-modal .field-group label,
@@ -1743,7 +1774,7 @@ optgroup {
   }
 
   .dashboard-item-title {
-    font-size: var(--fs-22);
+    font-size: var(--fs-17);
   }
 
   .kpi-card p {
