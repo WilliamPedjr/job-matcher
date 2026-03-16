@@ -1,0 +1,78 @@
+.job-view-page {
+  max-width: 100%;
+  margin: 0 auto;
+  padding: 18px 0 32px;
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+}
+
+.job-view-header {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+
+.job-view-back {
+  border: none;
+  background: transparent;
+  font-size: var(--fs-22);
+  cursor: pointer;
+}
+
+.job-view-header h2 {
+  margin: 0;
+  font-size: var(--fs-24);
+}
+
+.job-view-subtitle {
+  margin: 2px 0 0;
+  font-size: var(--fs-14);
+  color: #6b7280;
+}
+
+.job-view-card {
+  border: 1px solid #9ca3af;
+  border-radius: 2px;
+  padding: 16px 18px;
+  background: #fff;
+}
+
+.job-view-card h3 {
+  margin: 0 0 10px;
+  font-size: var(--fs-20);
+}
+
+.job-view-content p {
+  margin: 0 0 8px;
+  font-size: var(--fs-14);
+  color: #111827;
+}
+
+.job-view-section {
+  margin: 10px 0;
+}
+
+.job-view-section p {
+  margin: 6px 0 0;
+}
+
+.job-view-footer {
+  display: flex;
+  justify-content: flex-end;
+}
+
+.job-apply-modal {
+  width: min(900px, 96vw);
+}
+
+.job-apply-textarea {
+  min-height: 140px;
+  resize: vertical;
+}
+
+.job-apply-error {
+  margin: 8px 0 0;
+  color: #b91c1c;
+  font-size: var(--fs-14);
+}

@@ -1,4 +1,4 @@
-import "./App.css"
+import "./DashboardPage.css"
 
 function DashboardPage({
   dashboardData,
@@ -13,32 +13,128 @@ function DashboardPage({
       </div>
 
       <div className="dashboard-kpis">
-        <article className="kpi-card">
-          <h4>Active Jobs</h4>
+        <article className="kpi-card kpi-large">
+          <div className="kpi-head">
+            <h4>Active Jobs</h4>
+            <span className="kpi-icon">📄</span>
+          </div>
           <p>{dashboardData.openJobs}</p>
         </article>
-        <article className="kpi-card">
-          <h4>Total Applicants</h4>
+        <article className="kpi-card kpi-large">
+          <div className="kpi-head">
+            <h4>Total Applicants</h4>
+            <span className="kpi-icon">🧑‍💼</span>
+          </div>
           <p>{dashboardData.totalApplicants}</p>
         </article>
-        <article className="kpi-card kpi-good">
-          <h4>Highly Qualified</h4>
-          <p>{dashboardData.highlyQualified}</p>
-        </article>
-        <article className="kpi-card kpi-warn">
-          <h4>Moderately Qualified</h4>
-          <p>{dashboardData.moderatelyQualified}</p>
-        </article>
-        <article className="kpi-card kpi-bad">
-          <h4>Not Qualified</h4>
-          <p>{dashboardData.notQualified}</p>
-        </article>
+      </div>
+
+      <div className="dashboard-analytics">
+        <section className="analytics-card">
+          <div className="analytics-card-head">
+            <h3>Applicant Classification Distribution</h3>
+          </div>
+          <div className="graph">
+            {(() => {
+              const qualified = Number(dashboardData.highlyQualified || 0)
+              const moderate = Number(dashboardData.moderatelyQualified || 0)
+              const notQualified = Number(dashboardData.notQualified || 0)
+              const total = qualified + moderate + notQualified || 1
+              const qualifiedPct = Math.round((qualified / total) * 100)
+              const moderatePct = Math.round((moderate / total) * 100)
+              const notPct = Math.max(0, 100 - qualifiedPct - moderatePct)
+              return (
+                <div className="donut-wrap">
+                  <div
+                    className="donut-chart"
+                    style={{
+                      background: `conic-gradient(#22c55e 0% ${qualifiedPct}%, #f59e0b ${qualifiedPct}% ${qualifiedPct + moderatePct}%, #ef4444 ${qualifiedPct + moderatePct}% 100%)`
+                    }}
+                  />
+                  <ul className="donut-legend">
+                    <li>
+                      <span className="dot dot-green" />
+                      Qualified
+                      <strong>{qualifiedPct}%</strong>
+                    </li>
+                    <li>
+                      <span className="dot dot-amber" />
+                      Moderately Qualified
+                      <strong>{moderatePct}%</strong>
+                    </li>
+                    <li>
+                      <span className="dot dot-red" />
+                      Not Qualified
+                      <strong>{notPct}%</strong>
+                    </li>
+                  </ul>
+                </div>
+              )
+            })()}
+          </div>
+        </section>
+
+        <section className="analytics-card">
+          <div className="analytics-card-head">
+            <h3>Application Trends</h3>
+          </div>
+          <div className="graph">
+            {(() => {
+              const points = dashboardData.applicantsByMonth
+              const maxCount = Math.max(1, ...points.map((item) => Number(item.count || 0)))
+              const roundedMax = Math.max(10, Math.ceil(maxCount / 10) * 10)
+              const width = 640
+              const height = 220
+              const paddingX = 36
+              const paddingY = 20
+              const usableWidth = width - paddingX * 2
+              const usableHeight = height - paddingY * 2
+              const step = points.length > 1 ? usableWidth / (points.length - 1) : 0
+              const coords = points.map((item, index) => {
+                const value = Number(item.count || 0)
+                const x = paddingX + step * index
+                const y = paddingY + (1 - value / roundedMax) * usableHeight
+                return { ...item, x, y, value }
+              })
+              const path = coords
+                .map((point, index) => `${index === 0 ? "M" : "L"}${point.x},${point.y}`)
+                .join(" ")
+              const gridLines = [0, 0.25, 0.5, 0.75, 1].map((ratio) => {
+                const y = paddingY + usableHeight * ratio
+                const value = Math.round(roundedMax * (1 - ratio))
+                return { y, value }
+              })
+
+              return (
+                <div className="line-chart trend-chart">
+                  <svg viewBox={`0 0 ${width} ${height}`} aria-hidden="true">
+                    {gridLines.map((line) => (
+                      <g key={`grid-${line.value}`}>
+                        <line
+                          x1={paddingX}
+                          x2={width - paddingX}
+                          y1={line.y}
+                          y2={line.y}
+                          className="trend-grid"
+                        />
+                        <text x={8} y={line.y + 4} className="trend-label">
+                          {line.value}
+                        </text>
+                      </g>
+                    ))}
+                    <path d={path} className="trend-line" />
+                  </svg>
+                </div>
+              )
+            })()}
+          </div>
+        </section>
       </div>
 
       <div className="dashboard-grid">
         <section className="dashboard-panel">
           <div className="dashboard-panel-head">
-            <h3>Recent Job Postings</h3>
+            <h3>Available Job Positions</h3>
             <button type="button" className="dashboard-link-btn" onClick={onViewAllJobs}>View All →</button>
           </div>
           {dashboardData.recentJobs.length === 0 ? <p className="muted">No job posts yet.</p> : (
@@ -63,7 +159,7 @@ function DashboardPage({
 
         <section className="dashboard-panel">
           <div className="dashboard-panel-head">
-            <h3>Recent Applicants</h3>
+            <h3>Recently Applied Applicants</h3>
             <button type="button" className="dashboard-link-btn" onClick={onViewAllApplicants}>View All →</button>
           </div>
           {dashboardData.recentApplicants.length === 0 ? <p className="muted">No applicants yet.</p> : (

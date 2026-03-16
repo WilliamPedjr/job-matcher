@@ -2,7 +2,57 @@
   {
     "id": 1,
     "title": "Frontend Developer",
-    "description": "We are seeking a skilled and detail-oriented Front-End Developer to join our team who will be responsible for designing, developing, and maintaining responsive and user-friendly web applications. The ideal candidate should have strong proficiency in HTML5, CSS3, and JavaScript (ES6+), with hands-on experience in modern front-end frameworks such as React, Angular, or Vue. The role involves translating UI/UX design wireframes into high-quality functional code, ensuring cross-browser compatibility, optimizing applications for maximum speed and scalability, and integrating RESTful APIs in collaboration with back-end developers. Candidates should have a bachelor’s degree in Computer Science, Information Technology, or a related field (or equivalent experience), along with experience using Git for version control and applying best practices for clean, maintainable code. Knowledge of responsive design principles, CSS frameworks like Bootstrap or Tailwind, and testing tools such as Jest or Cypress is an advantage. The successful applicant must possess strong problem-solving skills, attention to detail, good communication abilities, and the capability to work effectively in a collaborative and fast-paced environment while meeting project deadlines.",
-    "status": "active"
+    "description": "We are seeking a Frontend Developer to design, build, and maintain responsive, user-friendly web interfaces. The role includes translating UI/UX designs into high-quality code, integrating APIs, optimizing performance, and ensuring accessibility across browsers and devices. You will collaborate with backend engineers and product teams to deliver clean, maintainable, and scalable front-end features.",
+    "status": "active",
+    "department": "Information Technology",
+    "location": "Leyte Normal University",
+    "type": "Full-time",
+    "requiredSkills": "HTML5, CSS3, JavaScript (ES6+), React, Responsive Design, REST APIs, Git",
+    "minimumEducation": "Bachelor's Degree",
+    "minimumExperienceYears": 1,
+    "salaryMin": 30000,
+    "salaryMax": 60000
+  },
+  {
+    "id": 2,
+    "title": "Backend Developer",
+    "description": "We are seeking a Backend Developer to design, build, and maintain reliable server-side applications and APIs. The role includes developing RESTful services, integrating databases, optimizing performance, and ensuring security and scalability. You will collaborate with frontend engineers and product teams to deliver robust features, write clean and testable code, and contribute to system architecture decisions.",
+    "status": "active",
+    "department": "Information Technology",
+    "location": "Leyte Normal University",
+    "type": "Full-time",
+    "requiredSkills": "Node.js, Express, REST APIs, SQL, MySQL, Authentication, Git",
+    "minimumEducation": "Bachelor's Degree",
+    "minimumExperienceYears": 1,
+    "salaryMin": 30000,
+    "salaryMax": 60000
+  },
+  {
+    "id": 3,
+    "title": "Instructor",
+    "description": "We are seeking an Instructor to deliver engaging, student-centered instruction and develop lesson plans, assessments, and learning materials. The role includes classroom management, mentoring students, coordinating with department colleagues, and contributing to curriculum development and academic initiatives.",
+    "status": "active",
+    "department": "English Department",
+    "location": "Leyte Normal University",
+    "type": "Full-time",
+    "requiredSkills": "Lesson Planning, Classroom Management, Curriculum Development, Communication, Assessment, Academic Writing, MS Office",
+    "minimumEducation": "Bachelor's Degree",
+    "minimumExperienceYears": 1,
+    "salaryMin": 25000,
+    "salaryMax": 45000
+  },
+  {
+    "id": 4,
+    "title": "Administrative Staff",
+    "description": "We are seeking an Administrative Staff member to support daily office operations, handle records and documentation, coordinate schedules, and assist with finance and administrative tasks. The role requires strong organization, attention to detail, and effective communication with internal and external stakeholders.",
+    "status": "active",
+    "department": "Administration and Finance Office",
+    "location": "Leyte Normal University",
+    "type": "Full-time",
+    "requiredSkills": "Office Administration, Records Management, Scheduling, Communication, Attention to Detail, MS Office, Basic Accounting",
+    "minimumEducation": "Bachelor's Degree",
+    "minimumExperienceYears": 1,
+    "salaryMin": 22000,
+    "salaryMax": 40000
   }
 ]

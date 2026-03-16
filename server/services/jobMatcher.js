@@ -7,11 +7,89 @@ const { analyzeResume } = require("./atsAnalyzer");
 const WEIGHTS = { skill: 0.50, experience: 0.20, project: 0.15, education: 0.10, embedding: 0.05 };
 
 const normalizeSkill = (value) => String(value || "").trim().toLowerCase();
+const escapeRegExp = (value) => String(value || "").replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+const canonicalizeSkillText = (value) =>
+  String(value || "")
+    .toLowerCase()
+    .replace(/[^a-z0-9+#]+/g, " ")
+    .replace(/\s+/g, " ")
+    .trim();
+
+const aliasVariants = (normalizedSkill) => {
+  const variants = new Set();
+  const value = String(normalizedSkill || "");
+  if (!value) return variants;
+
+  if (/\bnode(\.js)?\b/.test(value)) {
+    variants.add("node");
+    variants.add("nodejs");
+    variants.add("node js");
+  }
+  if (/\breact(\.js)?\b/.test(value)) {
+    variants.add("react");
+    variants.add("reactjs");
+    variants.add("react js");
+  }
+  if (/\bnext(\.js)?\b/.test(value)) {
+    variants.add("next");
+    variants.add("nextjs");
+    variants.add("next js");
+  }
+  if (/\bvue(\.js)?\b/.test(value)) {
+    variants.add("vue");
+    variants.add("vuejs");
+    variants.add("vue js");
+  }
+  if (/\bexpress(\.js)?\b/.test(value)) {
+    variants.add("express");
+    variants.add("expressjs");
+    variants.add("express js");
+  }
+
+  return variants;
+};
+
+const buildSkillVariants = (skill) => {
+  const normalized = normalizeSkill(skill);
+  const canonical = canonicalizeSkillText(skill);
+  const compact = canonical.replace(/\s+/g, "");
+  const variants = new Set([normalized, canonical, compact]);
+
+  for (const alias of aliasVariants(normalized)) {
+    const aliasCanonical = canonicalizeSkillText(alias);
+    variants.add(alias);
+    variants.add(aliasCanonical);
+    variants.add(aliasCanonical.replace(/\s+/g, ""));
+  }
+
+  return Array.from(variants).filter(Boolean);
+};
+
+const resumeIncludesSkill = (cvRawText, cvCanonicalText, cvCompactText, skill) => {
+  const variants = buildSkillVariants(skill);
+
+  for (const variant of variants) {
+    if (!variant) continue;
+
+    if (variant.includes(" ")) {
+      if (cvCanonicalText.includes(variant)) return true;
+      if (cvCompactText.includes(variant.replace(/\s+/g, ""))) return true;
+      continue;
+    }
+
+    const tokenRegex = new RegExp(`\\b${escapeRegExp(variant)}\\b`, "i");
+    if (tokenRegex.test(cvRawText)) return true;
+    if (cvCanonicalText.includes(variant)) return true;
+    if (cvCompactText.includes(variant)) return true;
+  }
+
+  return false;
+};
 
 const parseRequiredSkills = (value) =>
   String(value || "")
-    .split(/[,;\n]/)
-    .map((part) => part.trim())
+    .split(/[,;\n|]/)
+    .map((part) => part.replace(/^[\-*•]+/, "").trim())
     .filter(Boolean);
 
 const EDUCATION_LEVEL_RANKS = {
@@ -69,14 +147,18 @@ async function safeEmbedding(text) {
 }
 
 async function matchJobs(cvText, jobs) {
-  const cvAnalysis = analyzeResume(cvText);
-  const cvEmbedding = await safeEmbedding(cvText);
-  const cvEducationRank = getCvEducationRank(cvText);
-  const cvYears = getMaxYearsMentioned(cvText);
+  const cvRawText = String(cvText || "");
+  const cvCanonicalText = canonicalizeSkillText(cvRawText);
+  const cvCompactText = cvCanonicalText.replace(/\s+/g, "");
+  const cvAnalysis = analyzeResume(cvRawText);
+  const cvEmbedding = await safeEmbedding(cvRawText);
+  const cvEducationRank = getCvEducationRank(cvRawText);
+  const cvYears = getMaxYearsMentioned(cvRawText);
+  const cvSkillSet = new Set(cvAnalysis.skillsFound.map(normalizeSkill));
   let results = [];
 
   for (let job of jobs) {
-    const jobText = job.description.replace(/\s+/g, " ").slice(0, 4000);
+    const jobText = String(job.description || "").replace(/\s+/g, " ").slice(0, 4000);
     const jobAnalysis = analyzeResume(jobText);
     const jobEmbedding = await safeEmbedding(jobText);
     const explicitRequiredSkills = parseRequiredSkills(job.requiredSkills);
@@ -85,17 +167,24 @@ async function matchJobs(cvText, jobs) {
     const uniqueTargetSkills = Array.from(
       sourceSkills.reduce((map, rawSkill) => {
         const normalized = normalizeSkill(rawSkill);
-        if (!normalized || map.has(normalized)) return map;
-        map.set(normalized, rawSkill.trim());
+        const canonical = canonicalizeSkillText(rawSkill);
+        const dedupeKey = canonical || normalized;
+        if (!dedupeKey || map.has(dedupeKey)) return map;
+        map.set(dedupeKey, rawSkill.trim());
         return map;
       }, new Map())
     );
-    const cvSkillSet = new Set(cvAnalysis.skillsFound.map(normalizeSkill));
     const matchedSkills = uniqueTargetSkills
-      .filter(([normalized]) => cvSkillSet.has(normalized))
+      .filter(([, raw]) => {
+        const normalizedRaw = normalizeSkill(raw);
+        return cvSkillSet.has(normalizedRaw) || resumeIncludesSkill(cvRawText, cvCanonicalText, cvCompactText, raw);
+      })
       .map(([, raw]) => raw);
     const missingSkills = uniqueTargetSkills
-      .filter(([normalized]) => !cvSkillSet.has(normalized))
+      .filter(([, raw]) => {
+        const normalizedRaw = normalizeSkill(raw);
+        return !(cvSkillSet.has(normalizedRaw) || resumeIncludesSkill(cvRawText, cvCanonicalText, cvCompactText, raw));
+      })
       .map(([, raw]) => raw);
     const skillScore = uniqueTargetSkills.length === 0 ? 0 : matchedSkills.length / uniqueTargetSkills.length;
     const requiredYears = Number(job.minimumExperienceYears || 0);

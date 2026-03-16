@@ -1,7 +1,9 @@
+import "./LoginPage.css"
 import idCardIcon from "./assets/id-card-solid-full.svg"
 import keyIcon from "./assets/key-solid-full.svg"
 import facebookIcon from "./assets/facebook-f-brands-solid-full.svg"
 import instagramIcon from "./assets/instagram-brands-solid-full.svg"
+import appLogo from "./assets/647074929_927367613014494_5748890545922654578_n.png"
 
 function LoginPage({
   loginEmail,
@@ -9,12 +11,15 @@ function LoginPage({
   loginPassword,
   setLoginPassword,
   loginError,
-  onSubmit
+  onSubmit,
+  onRegister
 }) {
   return (
     <main className="login-shell">
       <header className="topbar login-topbar-shared">
-        <div className="brand">JACDAS</div>
+        <div className="brand">
+          <img src={appLogo} alt="LNU RecruitIQ" />
+        </div>
         <nav className="topnav login-topnav-shared">
           <button type="button" className="topnav-link">Services</button>
           <button type="button" className="topnav-link">About Us</button>
@@ -73,7 +78,10 @@ function LoginPage({
           </form>
 
           <p className="login-register-modern">
-            Don't have Account? <button type="button" className="link-btn-modern">Register</button>
+            Don't have Account?{" "}
+            <button type="button" className="link-btn-modern" onClick={onRegister}>
+              Register
+            </button>
           </p>
         </div>
 

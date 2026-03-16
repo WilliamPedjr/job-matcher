@@ -10,6 +10,7 @@ const matchRoute = require('./routes/match');
 const { extractTextFromPdf } = require("./services/pdfService");
 const { extractTextFromImage } = require("./services/imageService");
 const { matchJobs } = require("./services/jobMatcher");
+const { initDb } = require("./db/initDb");
 
 // Environment configuration
 dotenv.config();
@@ -40,6 +41,25 @@ const storage = multer.diskStorage({
 
 const upload = multer({ storage });
 
+const normalizePhilippinePhone = (value) => {
+  const digitsOnly = String(value || "").replace(/\D/g, "");
+  if (!digitsOnly) return null;
+
+  let local = digitsOnly;
+  if (local.startsWith("63")) {
+    local = local.slice(2);
+  }
+  if (local.startsWith("0")) {
+    local = local.slice(1);
+  }
+
+  if (!/^\d{10}$/.test(local)) {
+    return null;
+  }
+
+  return `+63${local}`;
+};
+
 const readJobsSeed = () => {
   try {
     const raw = fs.readFileSync(jobsSeedPath, "utf-8");
@@ -51,16 +71,95 @@ const readJobsSeed = () => {
   }
 };
 
-// MySQL connection pool
-const pool = mysql.createPool({
-  host: process.env.DB_HOST || "localhost",
-  port: Number(process.env.DB_PORT || 3306),
-  user: process.env.DB_USER || "root",
-  password: process.env.DB_PASSWORD || "",
-  database: process.env.DB_NAME || "capstone_db",
-  waitForConnections: true,
-  connectionLimit: 10
+const normalizeJobTitleKey = (value) =>
+  String(value || "").trim().toLowerCase();
+
+const toSeedJob = (seed) => ({
+  id: null,
+  templateId: Number(seed.id) || null,
+  source: "template",
+  title: String(seed.title || "").trim(),
+  description: String(seed.description || "").trim(),
+  status: String(seed.status || "active").toLowerCase() === "closed" ? "closed" : "active",
+  department: seed.department || "Information Technology",
+  location: seed.location || "Manila, Philippines",
+  type: seed.type || "Full-time",
+  requiredSkills: seed.requiredSkills || "",
+  minimumEducation: seed.minimumEducation || "",
+  minimumExperienceYears: Number(seed.minimumExperienceYears || 0),
+  salaryMin: seed.salaryMin ?? null,
+  salaryMax: seed.salaryMax ?? null
 });
+
+const mergeJobsSeedWithDb = async () => {
+  const seedJobs = readJobsSeed().filter((job) => job?.title && job?.description);
+  const dbJobs = await getJobsFromDb();
+
+  const dbByTitle = new Map(
+    dbJobs.map((job) => [normalizeJobTitleKey(job.title), job])
+  );
+
+  const merged = [];
+  for (const seed of seedJobs) {
+    const normalizedTitle = normalizeJobTitleKey(seed.title);
+    const dbJob = dbByTitle.get(normalizedTitle);
+    if (!dbJob) {
+      merged.push(toSeedJob(seed));
+      continue;
+    }
+    // DB wins when there is a matching title.
+    merged.push({
+      ...dbJob,
+      source: "db",
+      requiredSkills: dbJob.requiredSkills || "",
+      minimumEducation: dbJob.minimumEducation || "",
+      minimumExperienceYears: Number(dbJob.minimumExperienceYears || 0),
+      salaryMin: dbJob.salaryMin ?? null,
+      salaryMax: dbJob.salaryMax ?? null
+    });
+    dbByTitle.delete(normalizedTitle);
+  }
+
+  // Include DB-only jobs not present in jobs.json.
+  for (const dbJob of dbByTitle.values()) {
+    merged.push({
+      ...dbJob,
+      source: "db",
+      requiredSkills: dbJob.requiredSkills || "",
+      minimumEducation: dbJob.minimumEducation || "",
+      minimumExperienceYears: Number(dbJob.minimumExperienceYears || 0),
+      salaryMin: dbJob.salaryMin ?? null,
+      salaryMax: dbJob.salaryMax ?? null
+    });
+  }
+
+  return merged;
+};
+
+// MySQL connection pool (initialized after ensuring the database exists)
+let pool;
+
+const ensureDatabaseExists = async () => {
+  const host = process.env.DB_HOST || "localhost";
+  const port = Number(process.env.DB_PORT || 3306);
+  const user = process.env.DB_USER || "root";
+  const password = process.env.DB_PASSWORD || "";
+  const database = process.env.DB_NAME || "capstone_db";
+
+  const adminConn = await mysql.createConnection({ host, port, user, password });
+  await adminConn.query(`CREATE DATABASE IF NOT EXISTS \`${database}\``);
+  await adminConn.end();
+
+  pool = mysql.createPool({
+    host,
+    port,
+    user,
+    password,
+    database,
+    waitForConnections: true,
+    connectionLimit: 10
+  });
+};
 
 const getJobsFromDb = async () => {
   const [rows] = await pool.query(
@@ -79,167 +178,6 @@ const getJobsFromDb = async () => {
   return rows;
 };
 
-// Database initialization
-const initDb = async () => {
-  await pool.query(`
-    CREATE TABLE IF NOT EXISTS uploads (
-      id INT AUTO_INCREMENT PRIMARY KEY,
-      original_name VARCHAR(255) NOT NULL,
-      saved_name VARCHAR(255) NOT NULL,
-      file_path VARCHAR(500) NOT NULL,
-      mime_type VARCHAR(100),
-      size_bytes BIGINT,
-      uploaded_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
-    )
-  `);
-
-  // Backward-compatible schema updates for existing tables.
-  try {
-    await pool.query("ALTER TABLE uploads ADD COLUMN name VARCHAR(255) NULL AFTER id");
-  } catch (error) {
-    if (error.code !== "ER_DUP_FIELDNAME") {
-      throw error;
-    }
-  }
-
-  try {
-    await pool.query("ALTER TABLE uploads ADD COLUMN email VARCHAR(255) NULL AFTER name");
-  } catch (error) {
-    if (error.code !== "ER_DUP_FIELDNAME") {
-      throw error;
-    }
-  }
-
-  try {
-    await pool.query("ALTER TABLE uploads ADD COLUMN phone VARCHAR(50) NULL AFTER email");
-  } catch (error) {
-    if (error.code !== "ER_DUP_FIELDNAME") {
-      throw error;
-    }
-  }
-
-  try {
-    await pool.query("ALTER TABLE uploads ADD COLUMN applied_job_title VARCHAR(255) NULL AFTER phone");
-  } catch (error) {
-    if (error.code !== "ER_DUP_FIELDNAME") {
-      throw error;
-    }
-  }
-
-  try {
-    await pool.query("ALTER TABLE uploads ADD COLUMN matched_job_title VARCHAR(255) NULL AFTER phone");
-  } catch (error) {
-    if (error.code !== "ER_DUP_FIELDNAME") {
-      throw error;
-    }
-  }
-
-  try {
-    await pool.query("ALTER TABLE uploads ADD COLUMN match_score DECIMAL(6,2) NULL AFTER matched_job_title");
-  } catch (error) {
-    if (error.code !== "ER_DUP_FIELDNAME") {
-      throw error;
-    }
-  }
-
-  try {
-    await pool.query("ALTER TABLE uploads ADD COLUMN classification VARCHAR(100) NULL AFTER match_score");
-  } catch (error) {
-    if (error.code !== "ER_DUP_FIELDNAME") {
-      throw error;
-    }
-  }
-
-  try {
-    await pool.query("ALTER TABLE uploads ADD COLUMN matched_skills TEXT NULL AFTER classification");
-  } catch (error) {
-    if (error.code !== "ER_DUP_FIELDNAME") {
-      throw error;
-    }
-  }
-
-  try {
-    await pool.query("ALTER TABLE uploads ADD COLUMN extracted_text LONGTEXT NULL AFTER matched_skills");
-  } catch (error) {
-    if (error.code !== "ER_DUP_FIELDNAME") {
-      throw error;
-    }
-  }
-
-  try {
-    await pool.query("ALTER TABLE uploads ADD COLUMN missing_skills TEXT NULL AFTER extracted_text");
-  } catch (error) {
-    if (error.code !== "ER_DUP_FIELDNAME") {
-      throw error;
-    }
-  }
-
-  try {
-    await pool.query("ALTER TABLE uploads ADD COLUMN project_score DECIMAL(6,2) NULL AFTER match_score");
-  } catch (error) {
-    if (error.code !== "ER_DUP_FIELDNAME") {
-      throw error;
-    }
-  }
-
-  await pool.query(`
-    CREATE TABLE IF NOT EXISTS jobs (
-      id INT AUTO_INCREMENT PRIMARY KEY,
-      title VARCHAR(255) NOT NULL UNIQUE,
-      description LONGTEXT NOT NULL,
-      status VARCHAR(20) NOT NULL DEFAULT 'active',
-      department VARCHAR(255) NULL,
-      location VARCHAR(255) NULL,
-      type VARCHAR(100) NULL,
-      required_skills TEXT NULL,
-      minimum_education VARCHAR(255) NULL,
-      minimum_experience_years INT NOT NULL DEFAULT 0,
-      salary_min DECIMAL(12,2) NULL,
-      salary_max DECIMAL(12,2) NULL,
-      created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-      updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP
-    )
-  `);
-
-  // Keep jobs.json as pre-made templates and sync them into DB at startup.
-  const seedJobs = readJobsSeed();
-  for (const seed of seedJobs) {
-    if (!seed?.title || !seed?.description) continue;
-    await pool.execute(
-      `
-        INSERT INTO jobs (
-          title, description, status, department, location, type,
-          required_skills, minimum_education, minimum_experience_years, salary_min, salary_max
-        )
-        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-        ON DUPLICATE KEY UPDATE
-          description = VALUES(description),
-          status = VALUES(status),
-          department = VALUES(department),
-          location = VALUES(location),
-          type = VALUES(type),
-          required_skills = VALUES(required_skills),
-          minimum_education = VALUES(minimum_education),
-          minimum_experience_years = VALUES(minimum_experience_years),
-          salary_min = VALUES(salary_min),
-          salary_max = VALUES(salary_max)
-      `,
-      [
-        String(seed.title).trim(),
-        String(seed.description).trim(),
-        String(seed.status || "active").toLowerCase() === "closed" ? "closed" : "active",
-        seed.department || "Information Technology",
-        seed.location || "Manila, Philippines",
-        seed.type || "Full-time",
-        seed.requiredSkills || null,
-        seed.minimumEducation || null,
-        Number(seed.minimumExperienceYears || 0),
-        seed.salaryMin ?? null,
-        seed.salaryMax ?? null
-      ]
-    );
-  }
-};
 
 const analyzeResumeData = async (filePath, mimeType, appliedJobTitle = "") => {
   let extractedText = "";
@@ -308,6 +246,378 @@ app.get("/api", (req, res) => {
   res.json({ status: "ok", message: "Server is running" });
 });
 
+// Job seeker registration
+app.post("/job-seekers/register", async (req, res) => {
+  const {
+    fullName = "",
+    username = "",
+    email = "",
+    phone = "",
+    password = "",
+    status = "active"
+  } = req.body || {};
+
+  const normalizedFullName = String(fullName).trim();
+  const normalizedUsername = String(username).trim();
+  const normalizedEmail = String(email).trim().toLowerCase();
+  const normalizedPhone = String(phone).trim();
+  const normalizedPassword = String(password).trim();
+  const normalizedStatus = String(status || "active").trim().toLowerCase();
+
+  if (!normalizedFullName || !normalizedUsername || !normalizedEmail || !normalizedPhone || !normalizedPassword) {
+    return res.status(400).json({ message: "All fields are required." });
+  }
+
+  if (!["active", "inactive"].includes(normalizedStatus)) {
+    return res.status(400).json({ message: "Status must be active or inactive." });
+  }
+
+  try {
+    const [existing] = await pool.execute(
+      "SELECT id FROM job_seekers WHERE LOWER(username) = LOWER(?) OR LOWER(email) = LOWER(?) LIMIT 1",
+      [normalizedUsername, normalizedEmail]
+    );
+    if (existing.length) {
+      return res.status(409).json({ message: "Username or email already exists." });
+    }
+
+    const [result] = await pool.execute(
+      `
+        INSERT INTO job_seekers (full_name, username, email, phone, password, status)
+        VALUES (?, ?, ?, ?, ?, ?)
+      `,
+      [
+        normalizedFullName,
+        normalizedUsername,
+        normalizedEmail,
+        normalizedPhone,
+        normalizedPassword,
+        normalizedStatus
+      ]
+    );
+
+    return res.status(201).json({ message: "Job seeker registered.", id: result.insertId });
+  } catch (error) {
+    console.error("Register job seeker error:", error);
+    return res.status(500).json({ message: "Failed to register job seeker." });
+  }
+});
+
+// Job seeker login
+app.post("/job-seekers/login", async (req, res) => {
+  const { identifier = "", password = "" } = req.body || {};
+  const normalizedIdentifier = String(identifier).trim().toLowerCase();
+  const normalizedPassword = String(password).trim();
+
+  if (!normalizedIdentifier || !normalizedPassword) {
+    return res.status(400).json({ message: "Identifier and password are required." });
+  }
+
+  try {
+    const [rows] = await pool.execute(
+      `
+        SELECT id, full_name, username, email, phone, status, password, created_at
+        FROM job_seekers
+        WHERE LOWER(username) = LOWER(?) OR LOWER(email) = LOWER(?)
+        LIMIT 1
+      `,
+      [normalizedIdentifier, normalizedIdentifier]
+    );
+
+    if (!rows.length) {
+      return res.status(401).json({ message: "Invalid credentials." });
+    }
+
+    const seeker = rows[0];
+    if (String(seeker.password) !== normalizedPassword) {
+      return res.status(401).json({ message: "Invalid credentials." });
+    }
+
+    return res.json({
+      id: seeker.id,
+      fullName: seeker.full_name,
+      username: seeker.username,
+      email: seeker.email,
+      phone: seeker.phone,
+      status: seeker.status,
+      createdAt: seeker.created_at
+    });
+  } catch (error) {
+    console.error("Login job seeker error:", error);
+    return res.status(500).json({ message: "Failed to login job seeker." });
+  }
+});
+
+// Job seeker profile
+app.get("/job-seekers/:id", async (req, res) => {
+  const seekerId = Number(req.params.id);
+  if (!Number.isInteger(seekerId) || seekerId <= 0) {
+    return res.status(400).json({ message: "Invalid job seeker id." });
+  }
+
+  try {
+    const [rows] = await pool.execute(
+      `
+        SELECT id, full_name, username, email, phone, status, created_at, location, about_text, linkedin_url
+        FROM job_seekers
+        WHERE id = ?
+        LIMIT 1
+      `,
+      [seekerId]
+    );
+
+    if (!rows.length) {
+      return res.status(404).json({ message: "Job seeker not found." });
+    }
+
+    const seeker = rows[0];
+    const [education] = await pool.execute(
+      `
+        SELECT id, school, program, year
+        FROM job_seeker_education
+        WHERE job_seeker_id = ?
+        ORDER BY id DESC
+      `,
+      [seekerId]
+    );
+    const [experience] = await pool.execute(
+      `
+        SELECT id, title, company, year
+        FROM job_seeker_experience
+        WHERE job_seeker_id = ?
+        ORDER BY id DESC
+      `,
+      [seekerId]
+    );
+    return res.json({
+      id: seeker.id,
+      fullName: seeker.full_name,
+      username: seeker.username,
+      email: seeker.email,
+      phone: seeker.phone,
+      status: seeker.status,
+      location: seeker.location,
+      aboutText: seeker.about_text,
+      linkedInUrl: seeker.linkedin_url,
+      createdAt: seeker.created_at,
+      education,
+      experience
+    });
+  } catch (error) {
+    console.error("Fetch job seeker profile error:", error);
+    return res.status(500).json({ message: "Failed to fetch job seeker profile." });
+  }
+});
+
+app.put("/job-seekers/:id", async (req, res) => {
+  const seekerId = Number(req.params.id);
+  if (!Number.isInteger(seekerId) || seekerId <= 0) {
+    return res.status(400).json({ message: "Invalid job seeker id." });
+  }
+
+    const {
+      fullName = "",
+      username = "",
+      email = "",
+      phone = "",
+      status = "",
+      location = "",
+      aboutText = "",
+      linkedInUrl = ""
+    } = req.body || {};
+
+  try {
+    await pool.execute(
+      `
+        UPDATE job_seekers
+        SET full_name = ?, username = ?, email = ?, phone = ?, status = ?, location = ?, about_text = ?, linkedin_url = ?
+        WHERE id = ?
+      `,
+      [
+        String(fullName || "").trim(),
+        String(username || "").trim(),
+        String(email || "").trim().toLowerCase(),
+        String(phone || "").trim(),
+        String(status || "").trim().toLowerCase(),
+        String(location || "").trim(),
+        String(aboutText || "").trim(),
+        String(linkedInUrl || "").trim(),
+        seekerId
+      ]
+    );
+
+    return res.json({ message: "Profile updated." });
+  } catch (error) {
+    console.error("Update job seeker profile error:", error);
+    return res.status(500).json({ message: "Failed to update job seeker profile." });
+  }
+});
+
+app.post("/job-seekers/:id/education", async (req, res) => {
+  const seekerId = Number(req.params.id);
+  if (!Number.isInteger(seekerId) || seekerId <= 0) {
+    return res.status(400).json({ message: "Invalid job seeker id." });
+  }
+  const { school = "", program = "", year = "" } = req.body || {};
+  if (!String(school).trim()) {
+    return res.status(400).json({ message: "School is required." });
+  }
+
+  try {
+    const [result] = await pool.execute(
+      `
+        INSERT INTO job_seeker_education (job_seeker_id, school, program, year)
+        VALUES (?, ?, ?, ?)
+      `,
+      [seekerId, String(school).trim(), String(program).trim(), String(year).trim()]
+    );
+    return res.status(201).json({ id: result.insertId });
+  } catch (error) {
+    console.error("Add education error:", error);
+    return res.status(500).json({ message: "Failed to add education." });
+  }
+});
+
+app.put("/job-seekers/:id/education/:educationId", async (req, res) => {
+  const seekerId = Number(req.params.id);
+  const educationId = Number(req.params.educationId);
+  if (!Number.isInteger(seekerId) || seekerId <= 0 || !Number.isInteger(educationId) || educationId <= 0) {
+    return res.status(400).json({ message: "Invalid id." });
+  }
+  const { school = "", program = "", year = "" } = req.body || {};
+  if (!String(school).trim()) {
+    return res.status(400).json({ message: "School is required." });
+  }
+
+  try {
+    await pool.execute(
+      `
+        UPDATE job_seeker_education
+        SET school = ?, program = ?, year = ?
+        WHERE id = ? AND job_seeker_id = ?
+      `,
+      [String(school).trim(), String(program).trim(), String(year).trim(), educationId, seekerId]
+    );
+    return res.json({ message: "Education updated." });
+  } catch (error) {
+    console.error("Update education error:", error);
+    return res.status(500).json({ message: "Failed to update education." });
+  }
+});
+
+app.delete("/job-seekers/:id/education/:educationId", async (req, res) => {
+  const seekerId = Number(req.params.id);
+  const educationId = Number(req.params.educationId);
+  if (!Number.isInteger(seekerId) || seekerId <= 0 || !Number.isInteger(educationId) || educationId <= 0) {
+    return res.status(400).json({ message: "Invalid id." });
+  }
+
+  try {
+    await pool.execute(
+      "DELETE FROM job_seeker_education WHERE id = ? AND job_seeker_id = ?",
+      [educationId, seekerId]
+    );
+    return res.json({ message: "Education deleted." });
+  } catch (error) {
+    console.error("Delete education error:", error);
+    return res.status(500).json({ message: "Failed to delete education." });
+  }
+});
+
+app.post("/job-seekers/:id/experience", async (req, res) => {
+  const seekerId = Number(req.params.id);
+  if (!Number.isInteger(seekerId) || seekerId <= 0) {
+    return res.status(400).json({ message: "Invalid job seeker id." });
+  }
+  const { title = "", company = "", year = "" } = req.body || {};
+  if (!String(title).trim()) {
+    return res.status(400).json({ message: "Title is required." });
+  }
+
+  try {
+    const [result] = await pool.execute(
+      `
+        INSERT INTO job_seeker_experience (job_seeker_id, title, company, year)
+        VALUES (?, ?, ?, ?)
+      `,
+      [seekerId, String(title).trim(), String(company).trim(), String(year).trim()]
+    );
+    return res.status(201).json({ id: result.insertId });
+  } catch (error) {
+    console.error("Add experience error:", error);
+    return res.status(500).json({ message: "Failed to add experience." });
+  }
+});
+
+app.put("/job-seekers/:id/experience/:experienceId", async (req, res) => {
+  const seekerId = Number(req.params.id);
+  const experienceId = Number(req.params.experienceId);
+  if (!Number.isInteger(seekerId) || seekerId <= 0 || !Number.isInteger(experienceId) || experienceId <= 0) {
+    return res.status(400).json({ message: "Invalid id." });
+  }
+  const { title = "", company = "", year = "" } = req.body || {};
+  if (!String(title).trim()) {
+    return res.status(400).json({ message: "Title is required." });
+  }
+
+  try {
+    await pool.execute(
+      `
+        UPDATE job_seeker_experience
+        SET title = ?, company = ?, year = ?
+        WHERE id = ? AND job_seeker_id = ?
+      `,
+      [String(title).trim(), String(company).trim(), String(year).trim(), experienceId, seekerId]
+    );
+    return res.json({ message: "Experience updated." });
+  } catch (error) {
+    console.error("Update experience error:", error);
+    return res.status(500).json({ message: "Failed to update experience." });
+  }
+});
+
+app.delete("/job-seekers/:id/experience/:experienceId", async (req, res) => {
+  const seekerId = Number(req.params.id);
+  const experienceId = Number(req.params.experienceId);
+  if (!Number.isInteger(seekerId) || seekerId <= 0 || !Number.isInteger(experienceId) || experienceId <= 0) {
+    return res.status(400).json({ message: "Invalid id." });
+  }
+
+  try {
+    await pool.execute(
+      "DELETE FROM job_seeker_experience WHERE id = ? AND job_seeker_id = ?",
+      [experienceId, seekerId]
+    );
+    return res.json({ message: "Experience deleted." });
+  } catch (error) {
+    console.error("Delete experience error:", error);
+    return res.status(500).json({ message: "Failed to delete experience." });
+  }
+});
+
+// Job template route sourced from jobs.json.
+app.get("/job-templates", async (req, res) => {
+  try {
+    const templates = readJobsSeed().map((seed) => ({
+      id: Number(seed.id) || null,
+      title: String(seed.title || "").trim(),
+      description: String(seed.description || "").trim(),
+      department: seed.department || "Information Technology",
+      location: seed.location || "Manila, Philippines",
+      type: seed.type || "Full-time",
+      requiredSkills: seed.requiredSkills || "",
+      minimumEducation: seed.minimumEducation || "",
+      minimumExperienceYears: Number(seed.minimumExperienceYears || 0),
+      salaryMin: seed.salaryMin ?? null,
+      salaryMax: seed.salaryMax ?? null
+    }));
+    res.json(templates);
+  } catch (error) {
+    console.error("Fetch job templates error:", error);
+    res.status(500).json({ message: "Failed to fetch job templates." });
+  }
+});
+
 // Job postings route sourced from MySQL jobs table.
 app.get("/jobs", async (req, res) => {
   try {
@@ -328,7 +638,9 @@ app.get("/jobs", async (req, res) => {
 
     const jobs = await getJobsFromDb();
     const payload = jobs.map((job) => ({
-      id: job.id,
+      id: job.id ?? null,
+      templateId: null,
+      source: "db",
       title: job.title,
       description: job.description,
       status: job.status || "active",
@@ -522,6 +834,10 @@ app.post("/upload", upload.single("file"), async (req, res) => {
   if (!name.trim() || !email.trim() || !phone.trim() || !String(appliedJobTitle).trim()) {
     return res.status(400).json({ message: "Name, email, phone, and job post are required." });
   }
+  const normalizedPhone = normalizePhilippinePhone(phone);
+  if (!normalizedPhone) {
+    return res.status(400).json({ message: "Phone must start with +63 and contain exactly 10 digits after it." });
+  }
 
   const [selectedJobRows] = await pool.execute(
     "SELECT id, title, status FROM jobs WHERE LOWER(title) = LOWER(?) LIMIT 1",
@@ -561,7 +877,7 @@ app.post("/upload", upload.single("file"), async (req, res) => {
       [
         name.trim(),
         email.trim(),
-        phone.trim(),
+        normalizedPhone,
         normalizedAppliedJobTitle,
         matchedJobTitle,
         matchScore,
@@ -584,7 +900,7 @@ app.post("/upload", upload.single("file"), async (req, res) => {
       file: {
         name: name.trim(),
         email: email.trim(),
-        phone: phone.trim(),
+        phone: normalizedPhone,
         appliedJobTitle: normalizedAppliedJobTitle,
         matchedJobTitle,
         matchScore,
@@ -799,7 +1115,8 @@ app.delete("/uploads/:id", async (req, res) => {
 });
 
 // App startup
-initDb()
+ensureDatabaseExists()
+  .then(() => initDb(pool, readJobsSeed()))
   .then(() => {
     app.listen(PORT, () => {
       console.log(`Server started on http://localhost:${PORT}`);

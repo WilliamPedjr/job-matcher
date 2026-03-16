@@ -1,9 +1,10 @@
 import { useEffect, useMemo, useState } from 'react'
-import './App.css'
+import './JobPostingPage.css'
 import CustomDropdown from './CustomDropdown'
 
-function JobPostingPage({ uploads = [], isEmployer = false, onViewApplicant, onDeleteApplicant, onJobsChanged }) {
+function JobPostingPage({ uploads = [], isEmployer = false, isJobSeeker = false, onViewApplicant, onDeleteApplicant, onJobsChanged, onViewJob }) {
   const [jobs, setJobs] = useState([])
+  const [templates, setTemplates] = useState([])
   const [searchTerm, setSearchTerm] = useState("")
   const [statusFilter, setStatusFilter] = useState("all")
   const [selectedJobTitle, setSelectedJobTitle] = useState("")
@@ -13,7 +14,7 @@ function JobPostingPage({ uploads = [], isEmployer = false, onViewApplicant, onD
   const [newJobTitle, setNewJobTitle] = useState("")
   const [newJobDescription, setNewJobDescription] = useState("")
   const [newJobDepartment, setNewJobDepartment] = useState("Information Technology")
-  const [newJobLocation, setNewJobLocation] = useState("Manila, Philippines")
+  const defaultJobLocation = "Leyte Normal University"
   const [newJobType, setNewJobType] = useState("Full-time")
   const [newJobStatus, setNewJobStatus] = useState("active")
   const [newRequiredSkills, setNewRequiredSkills] = useState("")
@@ -26,6 +27,7 @@ function JobPostingPage({ uploads = [], isEmployer = false, onViewApplicant, onD
   const [error, setError] = useState("")
   const [createJobStatus, setCreateJobStatus] = useState("")
   const [createJobNotice, setCreateJobNotice] = useState("")
+  const [isJobTitleOpen, setIsJobTitleOpen] = useState(false)
 
   useEffect(() => {
     if (!createJobStatus) return
@@ -62,8 +64,22 @@ function JobPostingPage({ uploads = [], isEmployer = false, onViewApplicant, onD
     }
   }
 
+  const fetchTemplates = async () => {
+    try {
+      const response = await fetch("http://localhost:5000/job-templates")
+      if (!response.ok) {
+        throw new Error("Failed to load templates.")
+      }
+      const data = await response.json()
+      setTemplates(Array.isArray(data) ? data : [])
+    } catch {
+      setTemplates([])
+    }
+  }
+
   useEffect(() => {
     fetchJobs()
+    fetchTemplates()
   }, [])
 
   useEffect(() => {
@@ -72,6 +88,18 @@ function JobPostingPage({ uploads = [], isEmployer = false, onViewApplicant, onD
     document.addEventListener("click", onDocClick)
     return () => document.removeEventListener("click", onDocClick)
   }, [actionsJobId])
+
+  useEffect(() => {
+    const onDocClick = () => setIsJobTitleOpen(false)
+    document.addEventListener("click", onDocClick)
+    return () => document.removeEventListener("click", onDocClick)
+  }, [])
+
+  useEffect(() => {
+    if (isJobSeeker && isCreateModalOpen) {
+      setIsCreateModalOpen(false)
+    }
+  }, [isJobSeeker, isCreateModalOpen])
 
   const filteredJobs = useMemo(() => {
     return jobs.filter((job) => {
@@ -86,6 +114,76 @@ function JobPostingPage({ uploads = [], isEmployer = false, onViewApplicant, onD
       return haystack.includes(query)
     })
   }, [jobs, searchTerm, statusFilter])
+
+  const jobTitleSuggestions = useMemo(() => {
+    const titles = [
+      ...jobs.map((job) => String(job.title || "").trim()),
+      ...templates.map((template) => String(template.title || "").trim())
+    ]
+    return Array.from(new Set(titles.filter(Boolean)))
+  }, [jobs, templates])
+
+  const filteredJobTitleSuggestions = useMemo(() => {
+    const query = newJobTitle.trim().toLowerCase()
+    if (!query) return jobTitleSuggestions.slice(0, 8)
+    return jobTitleSuggestions
+      .filter((title) => title.toLowerCase().includes(query))
+      .slice(0, 8)
+  }, [jobTitleSuggestions, newJobTitle])
+
+  const templateByTitle = useMemo(() => {
+    const map = new Map()
+    const sources = [
+      ...templates.map((item) => ({ ...item, source: "template" })),
+      ...jobs.map((item) => ({ ...item, source: "job" }))
+    ]
+    sources.forEach((item) => {
+      const title = String(item.title || "").trim()
+      if (!title) return
+      const key = title.toLowerCase()
+      if (map.has(key)) return
+      map.set(key, item)
+    })
+    return map
+  }, [templates, jobs])
+
+  const applyTemplate = (templateId) => {
+    const selected = templates.find((item) => String(item.id) === String(templateId))
+    if (!selected) return
+    setNewJobDescription(selected.description || "")
+    setNewJobDepartment(selected.department || "Information Technology")
+    setNewJobType(selected.type || "Full-time")
+    setNewRequiredSkills(selected.requiredSkills || "")
+    setNewMinimumEducation(selected.minimumEducation || "")
+    setNewMinimumExperienceYears(String(selected.minimumExperienceYears ?? 0))
+    setNewSalaryMin(selected.salaryMin != null ? String(selected.salaryMin) : "")
+    setNewSalaryMax(selected.salaryMax != null ? String(selected.salaryMax) : "")
+  }
+
+  const applyTemplateFromRecord = (record) => {
+    if (!record) return
+    setNewJobDescription(record.description || "")
+    setNewJobDepartment(record.department || "Information Technology")
+    setNewJobType(record.type || "Full-time")
+    setNewRequiredSkills(record.requiredSkills || "")
+    setNewMinimumEducation(record.minimumEducation || "")
+    setNewMinimumExperienceYears(String(record.minimumExperienceYears ?? 0))
+    setNewSalaryMin(record.salaryMin != null ? String(record.salaryMin) : "")
+    setNewSalaryMax(record.salaryMax != null ? String(record.salaryMax) : "")
+  }
+
+  useEffect(() => {
+    const key = newJobTitle.trim().toLowerCase()
+    if (!key) return
+    const matched = templateByTitle.get(key)
+    if (!matched) return
+    if (matched.source === "template") {
+      applyTemplate(matched.id)
+      return
+    }
+    applyTemplateFromRecord(matched)
+  }, [newJobTitle, templateByTitle])
+
 
   const selectedJobApplicants = useMemo(() => {
     if (!selectedJobTitle) return []
@@ -170,12 +268,16 @@ function JobPostingPage({ uploads = [], isEmployer = false, onViewApplicant, onD
     await onJobsChanged?.()
   }
 
+  const handleApplyJob = (job) => {
+    if (!job) return
+    alert(`Application submitted for ${job.title}.`)
+  }
+
   const createJobPost = async () => {
     const hasMissingField = (
       !newJobTitle.trim() ||
       !newJobDescription.trim() ||
       !newJobDepartment.trim() ||
-      !newJobLocation.trim() ||
       !newJobType.trim() ||
       !newJobStatus.trim() ||
       !newRequiredSkills.trim() ||
@@ -219,7 +321,7 @@ function JobPostingPage({ uploads = [], isEmployer = false, onViewApplicant, onD
           title: newJobTitle.trim(),
           description: newJobDescription.trim(),
           department: newJobDepartment.trim(),
-          location: newJobLocation.trim(),
+          location: defaultJobLocation,
           type: newJobType.trim(),
           status: newJobStatus,
           requiredSkills: newRequiredSkills.trim(),
@@ -239,7 +341,6 @@ function JobPostingPage({ uploads = [], isEmployer = false, onViewApplicant, onD
       setNewJobTitle("")
       setNewJobDescription("")
       setNewJobDepartment("Information Technology")
-      setNewJobLocation("Manila, Philippines")
       setNewJobType("Full-time")
       setNewJobStatus("active")
       setNewRequiredSkills("")
@@ -277,11 +378,14 @@ function JobPostingPage({ uploads = [], isEmployer = false, onViewApplicant, onD
           onChange={setStatusFilter}
           placeholder="All Status"
         />
-        {!isEmployer && (
+        {!isEmployer && !isJobSeeker && (
           <button
             type="button"
             className="btn jobs-create-btn"
-            onClick={() => setIsCreateModalOpen(true)}
+            onClick={() => {
+              if (isJobSeeker) return
+              setIsCreateModalOpen(true)
+            }}
           >
             + Create Job
           </button>
@@ -297,7 +401,7 @@ function JobPostingPage({ uploads = [], isEmployer = false, onViewApplicant, onD
           <p className="muted">No jobs found.</p>
         ) : (
           filteredJobs.map((job) => (
-            <article key={job.id} className="job-card">
+            <article key={job.id ?? `template-${job.title}`} className="job-card">
               <div className="job-card-top">
                 <div className="job-main">
                   <h2>{job.title}</h2>
@@ -305,7 +409,7 @@ function JobPostingPage({ uploads = [], isEmployer = false, onViewApplicant, onD
                     {String(job.status || "active").toLowerCase()}
                   </span>
                 </div>
-                {!isEmployer && (
+                {job.id != null && (
                   <>
                     <button
                       className="job-more"
@@ -319,27 +423,42 @@ function JobPostingPage({ uploads = [], isEmployer = false, onViewApplicant, onD
                     </button>
                     {actionsJobId === job.id && (
                       <div className="job-actions-menu" onClick={(e) => e.stopPropagation()}>
-                        <button
-                          type="button"
-                          className="actions-menu-item"
-                          onClick={() => updateJobStatus(job.id, "active")}
-                        >
-                          Set Active
-                        </button>
-                        <button
-                          type="button"
-                          className="actions-menu-item"
-                          onClick={() => updateJobStatus(job.id, "closed")}
-                        >
-                          Set Closed
-                        </button>
-                        <button
-                          type="button"
-                          className="actions-menu-item danger"
-                          onClick={() => deleteJobPost(job.id)}
-                        >
-                          Delete Post
-                        </button>
+                        {isJobSeeker ? (
+                          <button
+                            type="button"
+                            className="actions-menu-item"
+                            onClick={() => {
+                              setActionsJobId(null)
+                              onViewJob?.(job)
+                            }}
+                          >
+                            View Details
+                          </button>
+                        ) : (
+                          <>
+                            <button
+                              type="button"
+                              className="actions-menu-item"
+                              onClick={() => updateJobStatus(job.id, "active")}
+                            >
+                              Set Active
+                            </button>
+                            <button
+                              type="button"
+                              className="actions-menu-item"
+                              onClick={() => updateJobStatus(job.id, "closed")}
+                            >
+                              Set Closed
+                            </button>
+                            <button
+                              type="button"
+                              className="actions-menu-item danger"
+                              onClick={() => deleteJobPost(job.id)}
+                            >
+                              Delete Post
+                            </button>
+                          </>
+                        )}
                       </div>
                     )}
                   </>
@@ -348,23 +467,28 @@ function JobPostingPage({ uploads = [], isEmployer = false, onViewApplicant, onD
 
               <p className="job-meta">
                 {job.department}  |  {job.location}  |  {job.type}
+                {job.source === "template" && "  |  template"}
               </p>
 
               <p className="job-description">{job.description}</p>
 
-              <button
-                className="job-applicants"
-                type="button"
-                onClick={() => setSelectedJobTitle(job.title)}
-              >
-                {Number(job.applicants || 0)} Applicants
-              </button>
+              {!isJobSeeker && (
+                <button
+                  className="job-applicants"
+                  type="button"
+                  onClick={() => {
+                    setSelectedJobTitle(job.title)
+                  }}
+                >
+                  {Number(job.applicants || 0)} Applicants
+                </button>
+              )}
             </article>
           ))
         )}
       </div>
 
-      {selectedJobTitle && (
+      {selectedJobTitle && !isJobSeeker && (
         <div className="modal-overlay" onClick={() => setSelectedJobTitle("")}>
           <div className="modal-card modal-modern job-applicants-modal" onClick={(e) => e.stopPropagation()}>
             <div className="modal-header">
@@ -467,7 +591,7 @@ function JobPostingPage({ uploads = [], isEmployer = false, onViewApplicant, onD
         </div>
       )}
 
-      {isCreateModalOpen && (
+      {isCreateModalOpen && !isJobSeeker && (
         <div className="modal-overlay" onClick={() => setIsCreateModalOpen(false)}>
           <div className="modal-card modal-modern create-job-modal" onClick={(e) => e.stopPropagation()}>
             <div className="modal-header create-job-header">
@@ -481,13 +605,40 @@ function JobPostingPage({ uploads = [], isEmployer = false, onViewApplicant, onD
             <div className="modal-grid">
               <div className="field-group">
                 <label>Job Title</label>
-                <input
-                  className="input"
-                  type="text"
-                  value={newJobTitle}
-                  onChange={(e) => setNewJobTitle(e.target.value)}
-                  placeholder="e.g., Senior Software Engineer"
-                />
+                <div
+                  className="autocomplete"
+                  onClick={(e) => e.stopPropagation()}
+                >
+                  <input
+                    className="input"
+                    type="text"
+                    value={newJobTitle}
+                    onChange={(e) => {
+                      setNewJobTitle(e.target.value)
+                      setIsJobTitleOpen(true)
+                    }}
+                    onFocus={() => setIsJobTitleOpen(true)}
+                    placeholder="e.g., Senior Software Engineer"
+                  />
+                  {isJobTitleOpen && filteredJobTitleSuggestions.length > 0 && (
+                    <div className="autocomplete-menu">
+                      {filteredJobTitleSuggestions.map((title) => (
+                        <button
+                          key={`job-title-${title}`}
+                          type="button"
+                          className="autocomplete-item"
+                          onMouseDown={(e) => {
+                            e.preventDefault()
+                            setNewJobTitle(title)
+                            setIsJobTitleOpen(false)
+                          }}
+                        >
+                          {title}
+                        </button>
+                      ))}
+                    </div>
+                  )}
+                </div>
               </div>
 
               <div className="field-group">
@@ -504,17 +655,6 @@ function JobPostingPage({ uploads = [], isEmployer = false, onViewApplicant, onD
 
             <div className="modal-grid">
               <div className="field-group">
-                <label>Location</label>
-                <input
-                  className="input"
-                  type="text"
-                  value={newJobLocation}
-                  onChange={(e) => setNewJobLocation(e.target.value)}
-                  placeholder="e.g., Manila, Philippines"
-                />
-              </div>
-
-              <div className="field-group">
                 <label>Employment Type</label>
                 <CustomDropdown
                   className="input-dropdown"
@@ -527,6 +667,16 @@ function JobPostingPage({ uploads = [], isEmployer = false, onViewApplicant, onD
                   value={newJobType}
                   onChange={setNewJobType}
                   placeholder="Full-time"
+                />
+              </div>
+
+              <div className="field-group">
+                <label>Location</label>
+                <input
+                  className="input"
+                  type="text"
+                  value={defaultJobLocation}
+                  disabled
                 />
               </div>
             </div>
@@ -640,6 +790,7 @@ function JobPostingPage({ uploads = [], isEmployer = false, onViewApplicant, onD
           </div>
         </div>
       )}
+
 
       {createJobStatus && (
         <div className={`toast ${createJobStatus === "success" ? "toast-success" : "toast-fail"}`}>

@@ -2415,3 +2415,263 @@ optgroup {
     font-size: var(--fs-14);
   }
 }
+/* Job seeker dashboard */
+.jobseeker-dashboard {
+  max-width: var(--layout-max-width);
+  width: 100%;
+  margin: 0 auto;
+  padding: 28px 28px 36px;
+  display: flex;
+  flex-direction: column;
+  gap: 22px;
+}
+
+.js-welcome {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 16px;
+  flex-wrap: wrap;
+}
+
+.js-welcome h2 {
+  margin: 0 0 6px;
+  font-size: 24px;
+  color: #121826;
+}
+
+.js-welcome p {
+  margin: 0;
+  color: #4b5564;
+  font-size: var(--fs-15);
+}
+
+.js-profile-chip {
+  display: flex;
+  gap: 18px;
+  background: #fff;
+  border: 1px solid #d8dee8;
+  border-radius: 10px;
+  padding: 12px 16px;
+  box-shadow: 0 2px 6px rgba(17, 24, 39, 0.06);
+  font-size: 14px;
+  color: #1f2a3c;
+}
+
+.js-profile-chip div {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.js-chip-label {
+  font-size: 12px;
+  text-transform: uppercase;
+  letter-spacing: 0.3px;
+  color: #6b7280;
+  font-weight: 700;
+}
+
+.js-chip-status {
+  text-transform: capitalize;
+  font-weight: 700;
+}
+
+.js-chip-status.active {
+  color: #15803d;
+}
+
+.js-chip-status.inactive {
+  color: #b45309;
+}
+
+.js-section-title {
+  font-size: 16px;
+  font-weight: 700;
+  color: #1f2a3c;
+}
+
+.js-stats-grid {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: 16px;
+}
+
+.js-stat-card {
+  background: #fff;
+  border: 1px solid #d8dee8;
+  border-radius: 8px;
+  padding: 16px 18px;
+  box-shadow: 0 2px 6px rgba(17, 24, 39, 0.08);
+}
+
+.js-stat-label {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  color: #1f2a3c;
+  font-size: 14px;
+  font-weight: 600;
+}
+
+.js-stat-value {
+  margin-top: 10px;
+  font-size: 26px;
+  font-weight: 700;
+  color: #111827;
+}
+
+.js-icon {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 36px;
+  height: 36px;
+  border-radius: 50%;
+  font-size: 12px;
+  font-weight: 700;
+  color: #fff;
+}
+
+.js-icon-total {
+  background: #3b82f6;
+}
+
+.js-icon-qualified {
+  background: #22c55e;
+}
+
+.js-icon-moderate {
+  background: #f59e0b;
+}
+
+.js-icon-not {
+  background: #ef4444;
+}
+
+.js-announcement-card {
+  background: #fff;
+  border: 1px solid #d8dee8;
+  border-radius: 10px;
+  padding: 20px 22px 24px;
+  box-shadow: 0 2px 10px rgba(17, 24, 39, 0.08);
+}
+
+.js-applied-card {
+  margin-top: 24px;
+}
+
+.js-applied-table {
+  margin-top: 12px;
+  background: #ffffff;
+  border-radius: 12px;
+  border: 1px solid #d8dee8;
+  overflow: hidden;
+  box-shadow: 0 2px 10px rgba(17, 24, 39, 0.08);
+}
+
+.js-applied-table table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: var(--fs-14);
+}
+
+.js-applied-table th,
+.js-applied-table td {
+  text-align: left;
+  padding: 12px 16px;
+  border-bottom: 1px solid #eef1f6;
+}
+
+.js-applied-table th {
+  background: #f4f6fb;
+  color: #6b7280;
+  font-weight: 600;
+}
+
+.js-applied-table tr:last-child td {
+  border-bottom: none;
+}
+
+.js-empty-row {
+  text-align: center;
+  color: #9aa4b2;
+  padding: 18px 12px;
+}
+
+.js-status-pill {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  padding: 4px 10px;
+  border-radius: 999px;
+  font-size: 11px;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.02em;
+}
+
+.js-status-pill.status-qualified {
+  background: #49b7a4;
+  color: #ffffff;
+}
+
+.js-status-pill.status-moderately-qualified {
+  background: #f2b856;
+  color: #ffffff;
+}
+
+.js-status-pill.status-not-qualified {
+  background: #ef4444;
+  color: #ffffff;
+}
+
+.js-status-pill.status-under-review {
+  background: #f2b856;
+  color: #ffffff;
+}
+
+.js-announcement-title {
+  font-size: 18px;
+  font-weight: 800;
+  color: #111827;
+  letter-spacing: 0.3px;
+  text-transform: uppercase;
+}
+
+.js-announcement-body {
+  margin-top: 16px;
+}
+
+.js-announcement-body h3 {
+  margin: 0 0 8px;
+  color: #111827;
+  font-size: 20px;
+}
+
+.js-announcement-body p {
+  margin: 0 0 20px;
+  color: #4b5564;
+  font-size: var(--fs-15);
+  line-height: 1.5;
+}
+
+.js-browse-btn {
+  padding: 10px 20px;
+}
+
+@media (max-width: 1024px) {
+  .js-stats-grid {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+}
+
+@media (max-width: 640px) {
+  .jobseeker-dashboard {
+    padding: 20px;
+  }
+
+  .js-stats-grid {
+    grid-template-columns: 1fr;
+  }
+}
