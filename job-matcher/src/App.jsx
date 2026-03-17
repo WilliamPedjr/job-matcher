@@ -12,7 +12,7 @@ import RegisterPage from './RegisterPage'
 import CustomDropdown from './CustomDropdown'
 import profileIcon from './assets/circle-user-solid-full.svg'
 import bellIcon from './assets/bell-solid-full.svg'
-import appLogo from './assets/647074929_927367613014494_5748890545922654578_n.png'
+import appLogo from './assets/Logo.png'
 
 function App() {
   const ADMIN_EMAIL = "admin"
@@ -1269,7 +1269,7 @@ function App() {
                   maxLength={10}
                   value={phone}
                   onChange={(e) => handlePhoneChange(e.target.value)}
-                  placeholder="9..."
+                  placeholder=""
                 />
               </div>
             </div>

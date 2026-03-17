@@ -1,5 +1,8 @@
 import "./RegisterPage.css"
-import lnuLogo from "./assets/647074929_927367613014494_5748890545922654578_n.png"
+import { useState } from "react"
+import lnuLogo from "./assets/Logo.png"
+import eyeSolidIcon from "./assets/eye-solid-full.svg"
+import eyeRegularIcon from "./assets/eye-regular-full.svg"
 
 function RegisterPage({
   fullName = "",
@@ -18,13 +21,16 @@ function RegisterPage({
   onSubmit = () => {},
   onBack = () => {}
 }) {
+  const [showPassword, setShowPassword] = useState(false)
+  const [showConfirmPassword, setShowConfirmPassword] = useState(false)
+
   return (
     <main className="register-shell">
-      <header className="topbar login-topbar-shared register-topbar">
+      <header className="topbar register-topbar-shared register-topbar">
         <div className="brand">
           <img src={lnuLogo} alt="LNU RecruitIQ" />
         </div>
-        <nav className="topnav login-topnav-shared register-nav">
+        <nav className="topnav register-topnav-shared register-nav">
           <button type="button" className="topnav-link register-nav-link">Services</button>
           <button type="button" className="topnav-link register-nav-link">About Us</button>
           <button type="button" className="topnav-link register-nav-link">Contact</button>
@@ -36,7 +42,7 @@ function RegisterPage({
           <img src={lnuLogo} alt="LNU RecruitIQ" className="register-logo" />
           <h2 className="register-brand">LNU RecruitIQ</h2>
           <p className="register-school">Leyte Normal University</p>
-          <p className="register-tagline">Connecting Talent · Empowering Futures</p>
+          <p className="register-tagline">Hire smarter. Decide faster.</p>
         </div>
 
         <div className="register-right">
@@ -82,32 +88,77 @@ function RegisterPage({
             <label className="register-label">Phone</label>
             <input
               className="register-input"
-              type="text"
-              value={phone}
-              onChange={(e) => setPhone(e.target.value)}
-              placeholder="e.g., 09123456789"
+              type="tel"
+              inputMode="numeric"
+              value={`+63${phone}`}
+              onChange={(e) => {
+                const digitsOnly = String(e.target.value || "").replace(/\D/g, "")
+                let local = digitsOnly
+                if (local.startsWith("63")) {
+                  local = local.slice(2)
+                }
+                if (local.startsWith("0")) {
+                  local = local.slice(1)
+                }
+                setPhone(local.slice(0, 10))
+              }}
+              placeholder="+63xxxxxxxxxx"
               required
             />
 
             <label className="register-label">Password</label>
-            <input
-              className="register-input"
-              type="password"
-              value={password}
-              onChange={(e) => setPassword(e.target.value)}
-              placeholder="Min. 8 characters"
-              required
-            />
+            <div className="register-input-wrap">
+              <input
+                className="register-input"
+                type={showPassword ? "text" : "password"}
+                value={password}
+                onChange={(e) => setPassword(e.target.value)}
+                placeholder="Min. 8 characters"
+                required
+              />
+              <span
+                className={`register-password-toggle ${showPassword ? "is-active" : ""}`}
+                role="button"
+                tabIndex={0}
+                aria-label={showPassword ? "Hide password" : "Show password"}
+                onClick={() => setShowPassword((prev) => !prev)}
+                onKeyDown={(e) => {
+                  if (e.key === "Enter" || e.key === " ") {
+                    e.preventDefault()
+                    setShowPassword((prev) => !prev)
+                  }
+                }}
+              >
+                <img src={showPassword ? eyeSolidIcon : eyeRegularIcon} alt="" />
+              </span>
+            </div>
 
             <label className="register-label">Confirm Password</label>
-            <input
-              className="register-input"
-              type="password"
-              value={confirmPassword}
-              onChange={(e) => setConfirmPassword(e.target.value)}
-              placeholder="Re-enter your password"
-              required
-            />
+            <div className="register-input-wrap">
+              <input
+                className="register-input"
+                type={showConfirmPassword ? "text" : "password"}
+                value={confirmPassword}
+                onChange={(e) => setConfirmPassword(e.target.value)}
+                placeholder="Re-enter your password"
+                required
+              />
+              <span
+                className={`register-password-toggle ${showConfirmPassword ? "is-active" : ""}`}
+                role="button"
+                tabIndex={0}
+                aria-label={showConfirmPassword ? "Hide password" : "Show password"}
+                onClick={() => setShowConfirmPassword((prev) => !prev)}
+                onKeyDown={(e) => {
+                  if (e.key === "Enter" || e.key === " ") {
+                    e.preventDefault()
+                    setShowConfirmPassword((prev) => !prev)
+                  }
+                }}
+              >
+                <img src={showConfirmPassword ? eyeSolidIcon : eyeRegularIcon} alt="" />
+              </span>
+            </div>
 
             {registerError && <p className="login-error-modern">{registerError}</p>}
             <button type="submit" className="register-btn">Create Account</button>

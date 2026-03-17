@@ -1,9 +1,13 @@
 import "./LoginPage.css"
+import { useState } from "react"
 import idCardIcon from "./assets/id-card-solid-full.svg"
 import keyIcon from "./assets/key-solid-full.svg"
+import eyeSolidIcon from "./assets/eye-solid-full.svg"
+import eyeRegularIcon from "./assets/eye-regular-full.svg"
 import facebookIcon from "./assets/facebook-f-brands-solid-full.svg"
 import instagramIcon from "./assets/instagram-brands-solid-full.svg"
-import appLogo from "./assets/647074929_927367613014494_5748890545922654578_n.png"
+import appLogo from "./assets/Logo.png"
+import loginImage from "./assets/Logo.png"
 
 function LoginPage({
   loginEmail,
@@ -14,6 +18,8 @@ function LoginPage({
   onSubmit,
   onRegister
 }) {
+  const [showPassword, setShowPassword] = useState(false)
+
   return (
     <main className="login-shell">
       <header className="topbar login-topbar-shared">
@@ -29,8 +35,8 @@ function LoginPage({
 
       <section className="login-hero-modern">
         <div className="login-left-modern">
-          <h1 className="login-heading-modern">JOB APPLICANT CLASSIFICATION AND DOCUMENT ANALYSIS SYSTEM</h1>
-          <p className="login-tagline-modern">Analyze . Classify . Hire</p>
+          <h1 className="login-heading-modern">Welcome to RecruitIQ</h1>
+          <p className="login-tagline-modern">Hire smarter. Decide faster.</p>
 
           <form className="login-form-modern" onSubmit={onSubmit}>
             <div className="login-input-wrap-modern">
@@ -48,19 +54,34 @@ function LoginPage({
               />
             </div>
 
-            <div className="login-input-wrap-modern">
+            <div className="login-input-wrap-modern login-password-wrap">
               <span className="login-input-icon-modern" aria-hidden="true">
                 <img src={keyIcon} alt="" />
               </span>
               <input
                 id="login-password"
                 className="login-input-modern"
-                type="password"
+                type={showPassword ? "text" : "password"}
                 value={loginPassword}
                 onChange={(e) => setLoginPassword(e.target.value)}
                 placeholder="Password"
                 required
               />
+              <span
+                className={`login-password-toggle ${showPassword ? "is-active" : ""}`}
+                role="button"
+                tabIndex={0}
+                aria-label={showPassword ? "Hide password" : "Show password"}
+                onClick={() => setShowPassword((prev) => !prev)}
+                onKeyDown={(e) => {
+                  if (e.key === "Enter" || e.key === " ") {
+                    e.preventDefault()
+                    setShowPassword((prev) => !prev)
+                  }
+                }}
+              >
+                <img src={showPassword ? eyeSolidIcon : eyeRegularIcon} alt="" />
+              </span>
             </div>
 
             <div className="login-options-modern">
@@ -73,7 +94,7 @@ function LoginPage({
 
             {loginError && <p className="login-error-modern">{loginError}</p>}
             <div className="login-button-row-modern">
-              <button type="submit" className="btn login-btn-modern">Sign in</button>
+              <button type="submit" className="btn login-btn-modern">Log in</button>
             </div>
           </form>
 
@@ -86,12 +107,11 @@ function LoginPage({
         </div>
 
         <div className="login-right-modern">
-          <div className="login-visual">
-            <img
-              className="login-visual-image"
-              src="https://images.unsplash.com/photo-1497215842964-222b430dc094?auto=format&fit=crop&w=1400&q=80"
-              alt="Office workspace"
-            />
+          <div className="login-brand-card">
+            <img src={loginImage} alt="LNU RecruitIQ" className="login-brand-logo" />
+            <h2 className="login-brand-title">LNU RecruitIQ</h2>
+            <p className="login-brand-school">Leyte Normal University</p>
+            {/* <p className="login-brand-tagline">Connecting Talent · Empowering Futures</p> */}
           </div>
         </div>
       </section>
