@@ -1,3 +1,4 @@
+import "./AppLayout.css"
 import "./LoginPage.css"
 import { useState } from "react"
 import idCardIcon from "./assets/id-card-solid-full.svg"
@@ -19,6 +20,12 @@ function LoginPage({
   onRegister
 }) {
   const [showPassword, setShowPassword] = useState(false)
+  const handleScrollTo = (id) => {
+    const target = document.getElementById(id)
+    if (target) {
+      target.scrollIntoView({ behavior: "smooth", block: "start" })
+    }
+  }
 
   return (
     <main className="login-shell">
@@ -27,13 +34,13 @@ function LoginPage({
           <img src={appLogo} alt="LNU RecruitIQ" />
         </div>
         <nav className="topnav login-topnav-shared">
-          <button type="button" className="topnav-link">Services</button>
-          <button type="button" className="topnav-link">About Us</button>
-          <button type="button" className="topnav-link">Contact</button>
+          <button type="button" className="topnav-link" onClick={() => handleScrollTo("login-services")}>Services</button>
+          <button type="button" className="topnav-link" onClick={() => handleScrollTo("login-about")}>About Us</button>
+          <button type="button" className="topnav-link" onClick={() => handleScrollTo("login-contact")}>Contact</button>
         </nav>
       </header>
 
-      <section className="login-hero-modern">
+      <section className="login-hero-modern" id="login-hero">
         <div className="login-left-modern">
           <h1 className="login-heading-modern">Welcome to RecruitIQ</h1>
           <p className="login-tagline-modern">Hire smarter. Decide faster.</p>
@@ -116,7 +123,7 @@ function LoginPage({
         </div>
       </section>
 
-      <section className="login-services-section">
+      <section className="login-services-section" id="login-services">
         <h3>Services</h3>
 
         <div className="login-service-item">
@@ -145,16 +152,16 @@ function LoginPage({
         </div>
       </section>
 
-      <section className="login-about-section">
+      <section className="login-about-section" id="login-about">
         <h3>ABOUT US</h3>
         <p>
-          JACDAS (Job Applicant Classification and Document Analysis System) is a web-based system
+          LNU RecruitIQ is a web-based system
           developed to assist organizations in efficiently managing and evaluating job applications.
           The system analyzes applicant documents such as resumes and CVs to extract important
           information including skills, educational background, and work experience.
         </p>
         <p>
-          By utilizing intelligent document analysis, JACDAS compares applicant qualifications with
+          By utilizing intelligent document analysis, LNU RecruitIQ compares applicant qualifications with
           predefined job requirements to determine the most suitable candidates for a position.
           The system also organizes and ranks applicants based on their level of compatibility with
           the job criteria.
@@ -166,10 +173,10 @@ function LoginPage({
         </p>
 
         <div className="login-about-footer">
-          <div className="login-about-col">
+          <div className="login-about-col" id="login-contact">
             <h4>CONTACT US</h4>
-            <p><strong>PHONE:</strong> +63 9123456789</p>
-            <p><strong>EMAIL:</strong> jacdas@gmail.com</p>
+            <p><strong>PHONE:</strong> +639123456789</p>
+            <p><strong>EMAIL:</strong> LNURecruitIQ@gmail.com</p>
           </div>
           <div className="login-about-col">
             <h4>FOLLOW US</h4>
