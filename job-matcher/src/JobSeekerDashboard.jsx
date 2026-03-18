@@ -1,6 +1,8 @@
+import { useEffect, useState } from "react"
 import "./JobSeekerDashboard.css"
 
 function JobSeekerDashboard({ jobSeekerProfile, uploads = [], onBrowseJobs, onViewApplication, onDeleteApplication }) {
+  const [actionsId, setActionsId] = useState(null)
   const name = jobSeekerProfile?.fullName || "Applicant"
   const email = jobSeekerProfile?.email || "-"
   const status = jobSeekerProfile?.status || "-"
@@ -25,6 +27,13 @@ function JobSeekerDashboard({ jobSeekerProfile, uploads = [], onBrowseJobs, onVi
     if (cls.includes("not")) return "Not Qualified"
     return "Under Review"
   }
+
+  useEffect(() => {
+    if (actionsId == null) return
+    const onDocClick = () => setActionsId(null)
+    document.addEventListener("click", onDocClick)
+    return () => document.removeEventListener("click", onDocClick)
+  }, [actionsId])
 
   return (
     <section className="jobseeker-dashboard">
@@ -132,21 +141,41 @@ function JobSeekerDashboard({ jobSeekerProfile, uploads = [], onBrowseJobs, onVi
                         </span>
                       </td>
                       <td>
-                        <div className="js-action-group">
+                        <div className="js-action-menu">
                           <button
                             type="button"
-                            className="js-action-btn"
-                            onClick={() => onViewApplication && onViewApplication(item)}
+                            className="action-btn action-trigger"
+                            onClick={(e) => {
+                              e.stopPropagation()
+                              setActionsId((prev) => (prev === item.id ? null : item.id))
+                            }}
                           >
-                            View
+                            ...
                           </button>
-                          <button
-                            type="button"
-                            className="js-action-btn js-action-btn-danger"
-                            onClick={() => onDeleteApplication && onDeleteApplication(item.id)}
-                          >
-                            Delete
-                          </button>
+                          {actionsId === item.id && (
+                            <div className="actions-menu" onClick={(e) => e.stopPropagation()}>
+                              <button
+                                type="button"
+                                className="actions-menu-item"
+                                onClick={() => {
+                                  setActionsId(null)
+                                  onViewApplication && onViewApplication(item)
+                                }}
+                              >
+                                View
+                              </button>
+                              <button
+                                type="button"
+                                className="actions-menu-item danger"
+                                onClick={() => {
+                                  setActionsId(null)
+                                  onDeleteApplication && onDeleteApplication(item.id)
+                                }}
+                              >
+                                Delete
+                              </button>
+                            </div>
+                          )}
                         </div>
                       </td>
                     </tr>

@@ -2068,7 +2068,7 @@ optgroup {
   background: #ffffff;
   border-radius: 12px;
   border: 1px solid #d8dee8;
-  overflow: hidden;
+  overflow: visible;
   box-shadow: 0 2px 10px rgba(17, 24, 39, 0.08);
 }
 
@@ -2133,33 +2133,15 @@ optgroup {
   color: #ffffff;
 }
 
-.js-action-btn {
-  border: none;
-  background: #1a287b;
-  color: #ffffff;
-  padding: 6px 14px;
-  border-radius: 6px;
-  font-size: var(--fs-13);
-  font-weight: 600;
-  cursor: pointer;
-}
-
-.js-action-btn:hover {
-  background: #14205f;
-}
-
-.js-action-group {
+.js-action-menu {
+  position: relative;
   display: inline-flex;
-  gap: 8px;
-  flex-wrap: wrap;
+  align-items: center;
 }
 
-.js-action-btn-danger {
-  background: #dc2626;
-}
-
-.js-action-btn-danger:hover {
-  background: #b91c1c;
+.js-action-menu .actions-menu {
+  right: 0;
+  top: calc(100% + 6px);
 }
 
 .js-announcement-title {
