@@ -52,6 +52,8 @@ function ProfilePage({ userRole, loginEmail, jobSeekerProfile, jobSeekerId, onJo
     phone: ""
   })
   const [isEditingContact, setIsEditingContact] = useState(false)
+  const [confirmDeleteEducationId, setConfirmDeleteEducationId] = useState(null)
+  const [confirmDeleteExperienceId, setConfirmDeleteExperienceId] = useState(null)
 
   const resolvedJobSeekerId = jobSeekerId || jobSeekerProfile?.id || null
 
@@ -300,8 +302,7 @@ function ProfilePage({ userRole, loginEmail, jobSeekerProfile, jobSeekerId, onJo
     }
   }
 
-  const deleteEducation = async (itemId) => {
-    if (!window.confirm("Delete this education entry?")) return
+  const performDeleteEducation = async (itemId) => {
     if (!resolvedJobSeekerId) {
       setProfileError("Missing job seeker id.")
       return
@@ -322,6 +323,10 @@ function ProfilePage({ userRole, loginEmail, jobSeekerProfile, jobSeekerId, onJo
     } catch (error) {
       setProfileError(error.message || "Failed to delete education.")
     }
+  }
+
+  const deleteEducation = (itemId) => {
+    setConfirmDeleteEducationId(itemId)
   }
 
   const saveExperience = async () => {
@@ -372,8 +377,7 @@ function ProfilePage({ userRole, loginEmail, jobSeekerProfile, jobSeekerId, onJo
     }
   }
 
-  const deleteExperience = async (itemId) => {
-    if (!window.confirm("Delete this experience entry?")) return
+  const performDeleteExperience = async (itemId) => {
     if (!resolvedJobSeekerId) {
       setProfileError("Missing job seeker id.")
       return
@@ -394,6 +398,10 @@ function ProfilePage({ userRole, loginEmail, jobSeekerProfile, jobSeekerId, onJo
     } catch (error) {
       setProfileError(error.message || "Failed to delete experience.")
     }
+  }
+
+  const deleteExperience = (itemId) => {
+    setConfirmDeleteExperienceId(itemId)
   }
 
   return (
@@ -743,6 +751,74 @@ function ProfilePage({ userRole, loginEmail, jobSeekerProfile, jobSeekerId, onJo
               </button>
               <button className="btn btn-secondary" onClick={closeEdit}>Cancel</button>
               {saveStatus && <span className="muted">{saveStatus}</span>}
+            </div>
+          </div>
+        </div>
+      )}
+
+      {confirmDeleteEducationId != null && (
+        <div
+          className="modal-overlay"
+          onClick={(e) => {
+            if (e.target === e.currentTarget) {
+              setConfirmDeleteEducationId(null)
+            }
+          }}
+        >
+          <div className="modal-card">
+            <h3>Delete Education</h3>
+            <p>Are you sure you want to delete this education entry? This action cannot be undone.</p>
+            <div className="modal-actions">
+              <button type="button" className="btn btn-secondary" onClick={() => setConfirmDeleteEducationId(null)}>
+                Cancel
+              </button>
+              <button
+                type="button"
+                className="btn btn-danger"
+                onClick={async () => {
+                  const idToDelete = confirmDeleteEducationId
+                  setConfirmDeleteEducationId(null)
+                  if (idToDelete != null) {
+                    await performDeleteEducation(idToDelete)
+                  }
+                }}
+              >
+                Delete
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {confirmDeleteExperienceId != null && (
+        <div
+          className="modal-overlay"
+          onClick={(e) => {
+            if (e.target === e.currentTarget) {
+              setConfirmDeleteExperienceId(null)
+            }
+          }}
+        >
+          <div className="modal-card">
+            <h3>Delete Experience</h3>
+            <p>Are you sure you want to delete this experience entry? This action cannot be undone.</p>
+            <div className="modal-actions">
+              <button type="button" className="btn btn-secondary" onClick={() => setConfirmDeleteExperienceId(null)}>
+                Cancel
+              </button>
+              <button
+                type="button"
+                className="btn btn-danger"
+                onClick={async () => {
+                  const idToDelete = confirmDeleteExperienceId
+                  setConfirmDeleteExperienceId(null)
+                  if (idToDelete != null) {
+                    await performDeleteExperience(idToDelete)
+                  }
+                }}
+              >
+                Delete
+              </button>
             </div>
           </div>
         </div>

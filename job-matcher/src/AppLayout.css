@@ -917,6 +917,7 @@ optgroup {
   justify-content: center;
   padding: 1rem;
   overflow-y: auto;
+  z-index: 2000;
 }
 
 .modal-card {
@@ -938,6 +939,7 @@ optgroup {
   display: flex;
   align-items: center;
   gap: 8px;
+  justify-content: flex-end;
 }
 
 .modal-modern {

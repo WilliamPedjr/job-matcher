@@ -28,6 +28,7 @@ function JobPostingPage({ uploads = [], isEmployer = false, isJobSeeker = false,
   const [createJobStatus, setCreateJobStatus] = useState("")
   const [createJobNotice, setCreateJobNotice] = useState("")
   const [isJobTitleOpen, setIsJobTitleOpen] = useState(false)
+  const [confirmDeleteJobId, setConfirmDeleteJobId] = useState(null)
 
   useEffect(() => {
     if (!createJobStatus) return
@@ -242,10 +243,7 @@ function JobPostingPage({ uploads = [], isEmployer = false, isJobSeeker = false,
     }
   }
 
-  const deleteJobPost = async (jobId) => {
-    const confirmed = window.confirm("Delete this job post?")
-    if (!confirmed) return
-
+  const performDeleteJobPost = async (jobId) => {
     try {
       const response = await fetch(`http://localhost:5000/jobs/${jobId}`, {
         method: "DELETE"
@@ -261,8 +259,13 @@ function JobPostingPage({ uploads = [], isEmployer = false, isJobSeeker = false,
     }
   }
 
+  const deleteJobPost = (jobId) => {
+    setActionsJobId(null)
+    setConfirmDeleteJobId(jobId)
+  }
+
   const handleDeleteApplicantInJobModal = async (applicantId) => {
-    const deleted = await onDeleteApplicant?.(applicantId)
+    const deleted = await onDeleteApplicant?.(applicantId, "applicant")
     if (!deleted) return
     await fetchJobs({ silent: true })
     await onJobsChanged?.()
@@ -378,7 +381,7 @@ function JobPostingPage({ uploads = [], isEmployer = false, isJobSeeker = false,
           onChange={setStatusFilter}
           placeholder="All Status"
         />
-        {!isEmployer && !isJobSeeker && (
+        {!isJobSeeker && (
           <button
             type="button"
             className="btn jobs-create-btn"
@@ -587,6 +590,40 @@ function JobPostingPage({ uploads = [], isEmployer = false, isJobSeeker = false,
                 </div>
               </div>
             )}
+          </div>
+        </div>
+      )}
+
+      {confirmDeleteJobId != null && (
+        <div
+          className="modal-overlay"
+          onClick={(e) => {
+            if (e.target === e.currentTarget) {
+              setConfirmDeleteJobId(null)
+            }
+          }}
+        >
+          <div className="modal-card">
+            <h3>Delete Job Post</h3>
+            <p>Are you sure you want to delete this job post? This action cannot be undone.</p>
+            <div className="modal-actions">
+              <button type="button" className="btn btn-secondary" onClick={() => setConfirmDeleteJobId(null)}>
+                Cancel
+              </button>
+              <button
+                type="button"
+                className="btn btn-danger"
+                onClick={async () => {
+                  const idToDelete = confirmDeleteJobId
+                  setConfirmDeleteJobId(null)
+                  if (idToDelete != null) {
+                    await performDeleteJobPost(idToDelete)
+                  }
+                }}
+              >
+                Delete
+              </button>
+            </div>
           </div>
         </div>
       )}

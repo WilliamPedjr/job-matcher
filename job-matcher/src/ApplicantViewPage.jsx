@@ -98,7 +98,7 @@ function extractExperienceLines(text) {
   return results
 }
 
-function ApplicantViewPage({ viewItem, onBack, onReanalyze }) {
+function ApplicantViewPage({ viewItem, onBack, onReanalyze, readOnly = false }) {
   const detectedEducation = extractEducationLines(viewItem?.extracted_text)
   const detectedExperience = extractExperienceLines(viewItem?.extracted_text)
   const matchedSkills = parseSkills(viewItem?.matched_skills)
@@ -119,8 +119,12 @@ function ApplicantViewPage({ viewItem, onBack, onReanalyze }) {
           </p>
         </div>
         <div className="candidate-actions">
-          <button className="btn btn-secondary" onClick={onBack}>Back to Applicants</button>
-          <button className="btn btn-secondary" onClick={onReanalyze}>Re-Analyze</button>
+          <button className="btn btn-secondary" onClick={onBack}>
+            {readOnly ? "Back" : "Back to Applicants"}
+          </button>
+          {!readOnly && (
+            <button className="btn btn-secondary" onClick={onReanalyze}>Re-Analyze</button>
+          )}
         </div>
       </div>
 

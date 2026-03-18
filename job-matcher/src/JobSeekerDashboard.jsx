@@ -1,6 +1,6 @@
 import "./JobSeekerDashboard.css"
 
-function JobSeekerDashboard({ jobSeekerProfile, uploads = [], onBrowseJobs }) {
+function JobSeekerDashboard({ jobSeekerProfile, uploads = [], onBrowseJobs, onViewApplication, onDeleteApplication }) {
   const name = jobSeekerProfile?.fullName || "Applicant"
   const email = jobSeekerProfile?.email || "-"
   const status = jobSeekerProfile?.status || "-"
@@ -101,12 +101,13 @@ function JobSeekerDashboard({ jobSeekerProfile, uploads = [], onBrowseJobs }) {
                 <th>Job Title</th>
                 <th>Date Applied</th>
                 <th>Status</th>
+                <th>Action</th>
               </tr>
             </thead>
             <tbody>
               {myUploads.length === 0 ? (
                 <tr>
-                  <td colSpan={3} className="js-empty-row">No applications yet.</td>
+                  <td colSpan={4} className="js-empty-row">No applications yet.</td>
                 </tr>
               ) : (
                 myUploads.map((item) => {
@@ -129,6 +130,24 @@ function JobSeekerDashboard({ jobSeekerProfile, uploads = [], onBrowseJobs }) {
                         <span className={`js-status-pill status-${statusLabel.toLowerCase().replace(/\s+/g, "-")}`}>
                           {statusLabel}
                         </span>
+                      </td>
+                      <td>
+                        <div className="js-action-group">
+                          <button
+                            type="button"
+                            className="js-action-btn"
+                            onClick={() => onViewApplication && onViewApplication(item)}
+                          >
+                            View
+                          </button>
+                          <button
+                            type="button"
+                            className="js-action-btn js-action-btn-danger"
+                            onClick={() => onDeleteApplication && onDeleteApplication(item.id)}
+                          >
+                            Delete
+                          </button>
+                        </div>
                       </td>
                     </tr>
                   )

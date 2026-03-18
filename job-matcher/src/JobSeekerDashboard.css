@@ -2133,6 +2133,35 @@ optgroup {
   color: #ffffff;
 }
 
+.js-action-btn {
+  border: none;
+  background: #1a287b;
+  color: #ffffff;
+  padding: 6px 14px;
+  border-radius: 6px;
+  font-size: var(--fs-13);
+  font-weight: 600;
+  cursor: pointer;
+}
+
+.js-action-btn:hover {
+  background: #14205f;
+}
+
+.js-action-group {
+  display: inline-flex;
+  gap: 8px;
+  flex-wrap: wrap;
+}
+
+.js-action-btn-danger {
+  background: #dc2626;
+}
+
+.js-action-btn-danger:hover {
+  background: #b91c1c;
+}
+
 .js-announcement-title {
   font-size: 18px;
   font-weight: 800;

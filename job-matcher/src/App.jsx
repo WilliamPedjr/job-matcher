@@ -81,6 +81,8 @@ function App() {
   const [notificationStatus, setNotificationStatus] = useState("all")
   const [readNotificationIds, setReadNotificationIds] = useState([])
   const [selectedJobView, setSelectedJobView] = useState(null)
+  const [confirmDeleteId, setConfirmDeleteId] = useState(null)
+  const [confirmDeleteContext, setConfirmDeleteContext] = useState("application")
   const isEmployer = userRole === "employer"
   const isJobSeeker = userRole === "jobseeker"
   const normalizedPhone = phone.length ? `+63${phone}` : ""
@@ -466,7 +468,7 @@ function App() {
   }
 
   // Delete record handler
-  const handleDelete = async (id) => {
+  const performDelete = async (id) => {
     try {
       const response = await fetch(`http://localhost:5000/uploads/${id}`, {
         method: "DELETE"
@@ -486,6 +488,13 @@ function App() {
       setMessage("Error deleting record.")
       return false
     }
+  }
+
+  const handleDelete = (id, context = "application") => {
+    setActionsMenu(null)
+    setConfirmDeleteId(id)
+    setConfirmDeleteContext(context)
+    return false
   }
 
   const handleReanalyze = async () => {
@@ -814,12 +823,31 @@ function App() {
         />
       )
     }
+    if (viewItem) {
+      return (
+        <ApplicantViewPage
+          viewItem={viewItem}
+          onBack={() => {
+            setViewItem(null)
+            if (isJobSeeker) {
+              setActivePage("dashboard")
+            }
+          }}
+          onReanalyze={handleReanalyze}
+          readOnly={isJobSeeker}
+        />
+      )
+    }
     if (activePage === "dashboard" && isJobSeeker) {
       return (
         <JobSeekerDashboard
           jobSeekerProfile={jobSeekerProfile}
           uploads={uploads}
           onBrowseJobs={() => handleTopNav("jobs")}
+          onViewApplication={(item) => {
+            setViewItem(item)
+          }}
+          onDeleteApplication={(id) => handleDelete(id, "application")}
         />
       )
     }
@@ -833,15 +861,6 @@ function App() {
             setViewItem(item)
             setActivePage("applicants")
           }}
-        />
-      )
-    }
-    if (viewItem && !isJobSeeker) {
-      return (
-        <ApplicantViewPage
-          viewItem={viewItem}
-          onBack={() => setViewItem(null)}
-          onReanalyze={handleReanalyze}
         />
       )
     }
@@ -1159,6 +1178,49 @@ function App() {
         </div>
       </header>
 
+      {confirmDeleteId != null && (
+        <div
+          className="modal-overlay"
+          onClick={(e) => {
+            if (e.target === e.currentTarget) {
+              setConfirmDeleteId(null)
+            }
+          }}
+        >
+          <div className="modal-card">
+            <h3>{confirmDeleteContext === "applicant" ? "Delete Applicant" : "Delete Application"}</h3>
+            <p>
+              {confirmDeleteContext === "applicant"
+                ? "Are you sure you want to delete this applicant? This action cannot be undone."
+                : "Are you sure you want to delete this application? This action cannot be undone."
+              }
+            </p>
+            <div className="modal-actions">
+              <button
+                type="button"
+                className="btn btn-secondary"
+                onClick={() => setConfirmDeleteId(null)}
+              >
+                Cancel
+              </button>
+              <button
+                type="button"
+                className="btn btn-danger"
+                onClick={async () => {
+                  const idToDelete = confirmDeleteId
+                  setConfirmDeleteId(null)
+                  if (idToDelete != null) {
+                    await performDelete(idToDelete)
+                  }
+                }}
+              >
+                Delete
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
       {activePage === "applicants" && !viewItem && !isJobSeeker && (
         <section className="panel">
           <div className="panel-header">
@@ -1384,12 +1446,8 @@ function App() {
             className="actions-menu-item danger"
             onClick={() => {
               const itemId = actionsMenu.item.id
-              const itemName = actionsMenu.item.name || "this applicant"
-              if (!window.confirm(`Delete ${itemName}? This cannot be undone.`)) {
-                return
-              }
               setActionsMenu(null)
-              handleDelete(itemId)
+              handleDelete(itemId, "applicant")
             }}
           >
             Delete
