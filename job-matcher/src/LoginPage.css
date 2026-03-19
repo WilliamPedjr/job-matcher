@@ -1408,7 +1408,6 @@ optgroup {
   height: calc(100vh - 56px);
   max-width: var(--layout-max-width);
   margin: 0 auto;
-  margin-top: -50px;
   padding: 16px var(--layout-gutter);
   align-items: center;
 }

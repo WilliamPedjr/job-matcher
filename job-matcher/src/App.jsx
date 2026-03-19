@@ -12,7 +12,6 @@ import RegisterPage from './RegisterPage'
 import CustomDropdown from './CustomDropdown'
 import profileIcon from './assets/circle-user-solid-full.svg'
 import bellIcon from './assets/bell-solid-full.svg'
-import appLogo from './assets/Logo.png'
 
 function App() {
   const ADMIN_EMAIL = "admin"
@@ -942,9 +941,6 @@ function App() {
   return (
     <main className="page">
       <header className="topbar">
-        <div className="brand">
-          <img src={appLogo} alt="LNU RecruitIQ" />
-        </div>
         <nav className="topnav">
           <button
             type="button"

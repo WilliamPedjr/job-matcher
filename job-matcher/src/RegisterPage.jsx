@@ -27,9 +27,6 @@ function RegisterPage({
   return (
     <main className="register-shell">
       <header className="topbar register-topbar-shared register-topbar">
-        <div className="brand">
-          <img src={lnuLogo} alt="LNU RecruitIQ" />
-        </div>
         <nav className="topnav register-topnav-shared register-nav">
           <button type="button" className="topnav-link register-nav-link">Services</button>
           <button type="button" className="topnav-link register-nav-link">About Us</button>

@@ -7,7 +7,6 @@ import eyeSolidIcon from "./assets/eye-solid-full.svg"
 import eyeRegularIcon from "./assets/eye-regular-full.svg"
 import facebookIcon from "./assets/facebook-f-brands-solid-full.svg"
 import instagramIcon from "./assets/instagram-brands-solid-full.svg"
-import appLogo from "./assets/Logo.png"
 import loginImage from "./assets/Logo.png"
 
 function LoginPage({
@@ -30,9 +29,6 @@ function LoginPage({
   return (
     <main className="login-shell">
       <header className="topbar login-topbar-shared">
-        <div className="brand">
-          <img src={appLogo} alt="LNU RecruitIQ" />
-        </div>
         <nav className="topnav login-topnav-shared">
           <button type="button" className="topnav-link" onClick={() => handleScrollTo("login-services")}>Services</button>
           <button type="button" className="topnav-link" onClick={() => handleScrollTo("login-about")}>About Us</button>
