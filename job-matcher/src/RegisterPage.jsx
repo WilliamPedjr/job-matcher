@@ -18,6 +18,7 @@ function RegisterPage({
   confirmPassword = "",
   setConfirmPassword = () => {},
   registerError = "",
+  registerNotice = "",
   onSubmit = () => {},
   onBack = () => {}
 }) {
@@ -157,6 +158,7 @@ function RegisterPage({
               </span>
             </div>
 
+            {registerNotice && <p className="register-notice">{registerNotice}</p>}
             {registerError && <p className="login-error-modern">{registerError}</p>}
             <button type="submit" className="register-btn">Create Account</button>
           </form>

@@ -185,7 +185,6 @@ function JobPostingPage({ uploads = [], isEmployer = false, isJobSeeker = false,
     applyTemplateFromRecord(matched)
   }, [newJobTitle, templateByTitle])
 
-
   const selectedJobApplicants = useMemo(() => {
     if (!selectedJobTitle) return []
     return uploads
@@ -655,6 +654,9 @@ function JobPostingPage({ uploads = [], isEmployer = false, isJobSeeker = false,
                       setIsJobTitleOpen(true)
                     }}
                     onFocus={() => setIsJobTitleOpen(true)}
+                    onBlur={() => {
+                      setTimeout(() => setIsJobTitleOpen(false), 0)
+                    }}
                     placeholder="e.g., Senior Software Engineer"
                   />
                   {isJobTitleOpen && filteredJobTitleSuggestions.length > 0 && (

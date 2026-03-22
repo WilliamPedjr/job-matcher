@@ -1,3 +1,4 @@
+import { useEffect, useState } from "react"
 import "./ApplicantViewPage.css"
 
 function parseSkills(skillsText) {
@@ -99,6 +100,8 @@ function extractExperienceLines(text) {
 }
 
 function ApplicantViewPage({ viewItem, onBack, onReanalyze, readOnly = false }) {
+  const [supportingFiles, setSupportingFiles] = useState([])
+  const [supportingError, setSupportingError] = useState("")
   const detectedEducation = extractEducationLines(viewItem?.extracted_text)
   const detectedExperience = extractExperienceLines(viewItem?.extracted_text)
   const matchedSkills = parseSkills(viewItem?.matched_skills)
@@ -108,6 +111,31 @@ function ApplicantViewPage({ viewItem, onBack, onReanalyze, readOnly = false }) 
   const educationMatch = detectedEducation.length ? 60 : 10
   const experienceMatch = detectedExperience.length ? 55 : 0
   const projectMatch = viewItem?.project_score != null ? Number(viewItem.project_score) : 0
+
+  useEffect(() => {
+    if (!viewItem?.id) return
+    let isMounted = true
+    const fetchSupporting = async () => {
+      try {
+        setSupportingError("")
+        const response = await fetch(`http://localhost:5000/uploads/${viewItem.id}/supporting`)
+        if (!response.ok) {
+          throw new Error("Failed to load supporting documents.")
+        }
+        const payload = await response.json()
+        if (!isMounted) return
+        setSupportingFiles(Array.isArray(payload?.files) ? payload.files : [])
+      } catch (error) {
+        if (!isMounted) return
+        setSupportingError(error.message || "Failed to load supporting documents.")
+        setSupportingFiles([])
+      }
+    }
+    fetchSupporting()
+    return () => {
+      isMounted = false
+    }
+  }, [viewItem?.id])
 
   return (
     <section className="candidate-page">
@@ -135,6 +163,30 @@ function ApplicantViewPage({ viewItem, onBack, onReanalyze, readOnly = false }) 
             <p>{viewItem?.email || "No email"}</p>
             <p>{viewItem?.phone || "No phone"}</p>
             <p>{viewItem?.original_name || "-"}</p>
+          </section>
+
+          <section className="candidate-card">
+            <h3>Supporting Documents</h3>
+            {supportingError && <p className="muted">{supportingError}</p>}
+            {!supportingError && supportingFiles.length === 0 && (
+              <p className="muted">No supporting documents uploaded.</p>
+            )}
+            {supportingFiles.length > 0 && (
+              <ul className="supporting-docs-list">
+                {supportingFiles.map((file) => (
+                  <li key={file.id}>
+                    <a
+                      className="supporting-doc-link"
+                      href={`http://localhost:5000/uploads/${viewItem.id}/supporting/${file.id}/download`}
+                      target="_blank"
+                      rel="noreferrer"
+                    >
+                      {file.original_name || "Supporting document"}
+                    </a>
+                  </li>
+                ))}
+              </ul>
+            )}
           </section>
 
           <section className="candidate-card">

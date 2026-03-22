@@ -7,7 +7,23 @@ const initDb = async (pool, seedJobs = []) => {
       file_path VARCHAR(500) NOT NULL,
       mime_type VARCHAR(100),
       size_bytes BIGINT,
+      job_seeker_hidden TINYINT(1) NOT NULL DEFAULT 0,
+      job_seeker_hidden_at TIMESTAMP NULL,
       uploaded_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+    )
+  `);
+
+  await pool.query(`
+    CREATE TABLE IF NOT EXISTS upload_supporting_files (
+      id INT AUTO_INCREMENT PRIMARY KEY,
+      upload_id INT NOT NULL,
+      original_name VARCHAR(255) NOT NULL,
+      saved_name VARCHAR(255) NOT NULL,
+      file_path VARCHAR(500) NOT NULL,
+      mime_type VARCHAR(100),
+      size_bytes BIGINT,
+      uploaded_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+      FOREIGN KEY (upload_id) REFERENCES uploads(id) ON DELETE CASCADE
     )
   `);
 
@@ -100,6 +116,22 @@ const initDb = async (pool, seedJobs = []) => {
     }
   }
 
+  try {
+    await pool.query("ALTER TABLE uploads ADD COLUMN job_seeker_hidden TINYINT(1) NOT NULL DEFAULT 0 AFTER missing_skills");
+  } catch (error) {
+    if (error.code !== "ER_DUP_FIELDNAME") {
+      throw error;
+    }
+  }
+
+  try {
+    await pool.query("ALTER TABLE uploads ADD COLUMN job_seeker_hidden_at TIMESTAMP NULL AFTER job_seeker_hidden");
+  } catch (error) {
+    if (error.code !== "ER_DUP_FIELDNAME") {
+      throw error;
+    }
+  }
+
   await pool.query(`
     CREATE TABLE IF NOT EXISTS jobs (
       id INT AUTO_INCREMENT PRIMARY KEY,
@@ -131,6 +163,14 @@ const initDb = async (pool, seedJobs = []) => {
       location VARCHAR(255) NULL,
       about_text TEXT NULL,
       linkedin_url VARCHAR(255) NULL,
+      resume_name VARCHAR(255) NULL,
+      resume_original_name VARCHAR(255) NULL,
+      resume_saved_name VARCHAR(255) NULL,
+      resume_file_path VARCHAR(500) NULL,
+      resume_type VARCHAR(100) NULL,
+      resume_size BIGINT NULL,
+      resume_data LONGBLOB NULL,
+      resume_updated_at TIMESTAMP NULL,
       created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
     )
   `);
@@ -153,6 +193,70 @@ const initDb = async (pool, seedJobs = []) => {
 
   try {
     await pool.query("ALTER TABLE job_seekers ADD COLUMN linkedin_url VARCHAR(255) NULL AFTER about_text");
+  } catch (error) {
+    if (error.code !== "ER_DUP_FIELDNAME") {
+      throw error;
+    }
+  }
+
+  try {
+    await pool.query("ALTER TABLE job_seekers ADD COLUMN resume_name VARCHAR(255) NULL AFTER linkedin_url");
+  } catch (error) {
+    if (error.code !== "ER_DUP_FIELDNAME") {
+      throw error;
+    }
+  }
+
+  try {
+    await pool.query("ALTER TABLE job_seekers ADD COLUMN resume_original_name VARCHAR(255) NULL AFTER resume_name");
+  } catch (error) {
+    if (error.code !== "ER_DUP_FIELDNAME") {
+      throw error;
+    }
+  }
+
+  try {
+    await pool.query("ALTER TABLE job_seekers ADD COLUMN resume_saved_name VARCHAR(255) NULL AFTER resume_original_name");
+  } catch (error) {
+    if (error.code !== "ER_DUP_FIELDNAME") {
+      throw error;
+    }
+  }
+
+  try {
+    await pool.query("ALTER TABLE job_seekers ADD COLUMN resume_file_path VARCHAR(500) NULL AFTER resume_saved_name");
+  } catch (error) {
+    if (error.code !== "ER_DUP_FIELDNAME") {
+      throw error;
+    }
+  }
+
+  try {
+    await pool.query("ALTER TABLE job_seekers ADD COLUMN resume_type VARCHAR(100) NULL AFTER resume_name");
+  } catch (error) {
+    if (error.code !== "ER_DUP_FIELDNAME") {
+      throw error;
+    }
+  }
+
+  try {
+    await pool.query("ALTER TABLE job_seekers ADD COLUMN resume_size BIGINT NULL AFTER resume_type");
+  } catch (error) {
+    if (error.code !== "ER_DUP_FIELDNAME") {
+      throw error;
+    }
+  }
+
+  try {
+    await pool.query("ALTER TABLE job_seekers ADD COLUMN resume_data LONGBLOB NULL AFTER resume_size");
+  } catch (error) {
+    if (error.code !== "ER_DUP_FIELDNAME") {
+      throw error;
+    }
+  }
+
+  try {
+    await pool.query("ALTER TABLE job_seekers ADD COLUMN resume_updated_at TIMESTAMP NULL AFTER resume_data");
   } catch (error) {
     if (error.code !== "ER_DUP_FIELDNAME") {
       throw error;

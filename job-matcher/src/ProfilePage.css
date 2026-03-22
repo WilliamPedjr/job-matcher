@@ -16,17 +16,17 @@ body {
   --fs-22: 19px;
   --fs-24: 20px;
   --fs-26: 20px;
-  --fs-28: 27px;
-  --fs-30: 25px;
-  --fs-31: 30px;
-  --fs-32: 31px;
-  --fs-34: 30px;
-  --fs-43: 40px;
-  --fs-44: 41px;
-  --fs-46: 35px;
-  --fs-52: 49px;
-  --fs-72: 69px;
-  --fs-76: 65px;
+  --fs-28: 20px;
+  --fs-30: 20px;
+  --fs-31: 20px;
+  --fs-32: 20px;
+  --fs-34: 20px;
+  --fs-43: 20px;
+  --fs-44: 20px;
+  --fs-46: 20px;
+  --fs-52: 20px;
+  --fs-72: 20px;
+  --fs-76: 20px;
 }
 
 * {
@@ -2053,6 +2053,18 @@ optgroup {
 .js-panel-subtitle {
   margin: 4px 0 0;
   font-size: 13px;
+  color: #6b7280;
+}
+
+.js-resume-body {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  margin-top: 12px;
+}
+
+.js-resume-status {
+  font-size: 12px;
   color: #6b7280;
 }
 

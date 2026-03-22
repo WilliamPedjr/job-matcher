@@ -1,6 +1,6 @@
 import "./AppLayout.css"
 import "./LoginPage.css"
-import { useState } from "react"
+import { useEffect, useState } from "react"
 import idCardIcon from "./assets/id-card-solid-full.svg"
 import keyIcon from "./assets/key-solid-full.svg"
 import eyeSolidIcon from "./assets/eye-solid-full.svg"
@@ -19,12 +19,39 @@ function LoginPage({
   onRegister
 }) {
   const [showPassword, setShowPassword] = useState(false)
+  const RECAPTCHA_SITE_KEY = "6LdOdpMsAAAAAPP2S_pBfwGmkeyGDO_3_h8BatH_"
+  const recaptchaContainerId = "login-recaptcha"
   const handleScrollTo = (id) => {
     const target = document.getElementById(id)
     if (target) {
       target.scrollIntoView({ behavior: "smooth", block: "start" })
     }
   }
+
+  useEffect(() => {
+    let attempts = 0
+    const timer = setInterval(() => {
+      const grecaptcha = window.grecaptcha
+      const container = document.getElementById(recaptchaContainerId)
+      if (!container || !grecaptcha) {
+        attempts += 1
+        if (attempts > 60) {
+          clearInterval(timer)
+        }
+        return
+      }
+      if (window.__loginRecaptchaWidgetId != null) {
+        clearInterval(timer)
+        return
+      }
+      const widgetId = grecaptcha.render(container, {
+        sitekey: RECAPTCHA_SITE_KEY
+      })
+      window.__loginRecaptchaWidgetId = widgetId
+      clearInterval(timer)
+    }, 200)
+    return () => clearInterval(timer)
+  }, [])
 
   return (
     <main className="login-shell">
@@ -93,6 +120,10 @@ function LoginPage({
                 <span>Remember Me</span>
               </label>
               <button type="button" className="link-btn-modern">Forgot Password?</button>
+            </div>
+
+            <div className="login-recaptcha-wrap">
+              <div id={recaptchaContainerId} />
             </div>
 
             {loginError && <p className="login-error-modern">{loginError}</p>}

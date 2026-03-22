@@ -16,17 +16,17 @@ body {
   --fs-22: 19px;
   --fs-24: 20px;
   --fs-26: 20px;
-  --fs-28: 27px;
-  --fs-30: 25px;
-  --fs-31: 30px;
-  --fs-32: 31px;
-  --fs-34: 30px;
-  --fs-43: 40px;
-  --fs-44: 41px;
-  --fs-46: 35px;
-  --fs-52: 49px;
-  --fs-72: 69px;
-  --fs-76: 65px;
+  --fs-28: 20px;
+  --fs-30: 20px;
+  --fs-31: 20px;
+  --fs-32: 20px;
+  --fs-34: 20px;
+  --fs-43: 20px;
+  --fs-44: 20px;
+  --fs-46: 20px;
+  --fs-52: 20px;
+  --fs-72: 20px;
+  --fs-76: 20px;
 }
 
 * {
@@ -1984,8 +1984,8 @@ optgroup {
 
 .register-logo {
   margin-bottom: 0px;
-  width: 50%;
-  height: 50%;
+  width: 35%;
+  height: 35%;
   object-fit: contain;
 }
 
@@ -2136,6 +2136,13 @@ optgroup {
   font-weight: 700;
   cursor: pointer;
   padding: 0;
+}
+
+.register-notice {
+  margin: 0 0 10px;
+  color: #0f6a3b;
+  font-size: var(--fs-16);
+  font-weight: 700;
 }
 
 @media (max-width: 980px) {

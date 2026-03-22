@@ -2,7 +2,15 @@ import { useEffect, useState } from "react"
 import "./ProfilePage.css"
 import profileIcon from "./assets/circle-user-solid-full.svg"
 
-function ProfilePage({ userRole, loginEmail, jobSeekerProfile, jobSeekerId, onJobSeekerProfileUpdate }) {
+function ProfilePage({
+  userRole,
+  loginEmail,
+  jobSeekerProfile,
+  jobSeekerId,
+  onJobSeekerProfileUpdate,
+  jobSeekerResume,
+  onJobSeekerResumeUpdate
+}) {
   const roleLabel = userRole === "admin"
     ? "Administrator"
     : userRole === "jobseeker"
@@ -28,6 +36,9 @@ function ProfilePage({ userRole, loginEmail, jobSeekerProfile, jobSeekerId, onJo
   const defaultAbout = `${email} · ${phone} · ${status} · Joined ${createdAt}`
   const education = isJobSeeker ? (jobSeekerProfile?.education || []) : []
   const experience = isJobSeeker ? (jobSeekerProfile?.experience || []) : []
+  const resumeUpdatedAt = jobSeekerResume?.updatedAt
+    ? new Date(jobSeekerResume.updatedAt).toLocaleDateString(undefined, { month: "short", day: "numeric", year: "numeric" })
+    : ""
   const [editMode, setEditMode] = useState(null)
   const [formState, setFormState] = useState({
     fullName: "",
@@ -52,6 +63,7 @@ function ProfilePage({ userRole, loginEmail, jobSeekerProfile, jobSeekerId, onJo
     phone: ""
   })
   const [isEditingContact, setIsEditingContact] = useState(false)
+  const [resumeStatus, setResumeStatus] = useState("")
   const [confirmDeleteEducationId, setConfirmDeleteEducationId] = useState(null)
   const [confirmDeleteExperienceId, setConfirmDeleteExperienceId] = useState(null)
 
@@ -404,6 +416,61 @@ function ProfilePage({ userRole, loginEmail, jobSeekerProfile, jobSeekerId, onJo
     setConfirmDeleteExperienceId(itemId)
   }
 
+  const handleResumeUpload = (file) => {
+    if (!file) return
+    if (!resolvedJobSeekerId) {
+      setResumeStatus("Missing job seeker id.")
+      return
+    }
+    setResumeStatus("Uploading...")
+    const formData = new FormData()
+    formData.append("file", file)
+    fetch(`http://localhost:5000/job-seekers/${resolvedJobSeekerId}/resume`, {
+      method: "POST",
+      body: formData
+    })
+      .then(async (response) => {
+        if (!response.ok) {
+          const payload = await response.json().catch(() => null)
+          throw new Error(payload?.message || "Failed to upload resume.")
+        }
+        return response.json()
+      })
+      .then((payload) => {
+        onJobSeekerResumeUpdate?.(payload?.resume || null)
+        setResumeStatus("Saved.")
+        setTimeout(() => setResumeStatus(""), 2000)
+      })
+      .catch((error) => {
+        setResumeStatus(error.message || "Failed to upload resume.")
+      })
+  }
+
+  const handleResumeRemove = () => {
+    if (!resolvedJobSeekerId) {
+      setResumeStatus("Missing job seeker id.")
+      return
+    }
+    setResumeStatus("Removing...")
+    fetch(`http://localhost:5000/job-seekers/${resolvedJobSeekerId}/resume`, {
+      method: "DELETE"
+    })
+      .then(async (response) => {
+        if (!response.ok) {
+          const payload = await response.json().catch(() => null)
+          throw new Error(payload?.message || "Failed to remove resume.")
+        }
+      })
+      .then(() => {
+        onJobSeekerResumeUpdate?.(null)
+        setResumeStatus("Removed.")
+        setTimeout(() => setResumeStatus(""), 2000)
+      })
+      .catch((error) => {
+        setResumeStatus(error.message || "Failed to remove resume.")
+      })
+  }
+
   return (
     <section className="profile-page">
       {isJobSeeker ? (
@@ -538,6 +605,59 @@ function ProfilePage({ userRole, loginEmail, jobSeekerProfile, jobSeekerId, onJo
                   {aboutText}
                 </p>
               )}
+            </section>
+
+            <section className="js-profile-panel">
+              <div className="js-panel-header">
+                <div>
+                  <h3>Resume/CV</h3>
+                  <p className="js-panel-subtitle">Upload once to reuse for job applications</p>
+                </div>
+              </div>
+              <div className="js-resume-body">
+                <input
+                  id="job-seeker-resume"
+                  className="hidden-file-input"
+                  type="file"
+                  accept=".pdf,.png,.jpg,.jpeg"
+                  onChange={(e) => handleResumeUpload(e.target.files?.[0] || null)}
+                />
+                {jobSeekerResume ? (
+                  <>
+                    <div className="js-panel-row">
+                      <div className="js-panel-icon">CV</div>
+                      <div>
+                        <strong>{jobSeekerResume.name}</strong>
+                        <div className="js-panel-subtext">
+                          {resumeUpdatedAt ? `Updated ${resumeUpdatedAt}` : "Resume on file"}
+                        </div>
+                        <div className="js-panel-actions">
+                          <label htmlFor="job-seeker-resume" className="js-text-btn">Replace</label>
+                          <button
+                            type="button"
+                            className="js-text-btn danger"
+                            onClick={handleResumeRemove}
+                          >
+                            Remove
+                          </button>
+                        </div>
+                      </div>
+                    </div>
+                  </>
+                ) : (
+                  <>
+                    <div className="js-panel-row">
+                      <div className="js-panel-icon">CV</div>
+                      <div>
+                        <strong>No resume uploaded</strong>
+                        <div className="js-panel-subtext">Upload your resume or CV to speed up applications.</div>
+                      </div>
+                    </div>
+                    <label htmlFor="job-seeker-resume" className="js-outline-btn">Upload Resume</label>
+                  </>
+                )}
+                {resumeStatus && <span className="js-resume-status">{resumeStatus}</span>}
+              </div>
             </section>
 
             <section className="js-profile-panel">

@@ -26,13 +26,26 @@ app.use('/api', matchRoute);
 
 // Local uploads directory setup
 const uploadsDir = path.join(__dirname, "uploads");
+const supportingDir = path.join(uploadsDir, "supporting");
+const resumesDir = path.join(uploadsDir, "resumes");
 if (!fs.existsSync(uploadsDir)) {
   fs.mkdirSync(uploadsDir, { recursive: true });
+}
+if (!fs.existsSync(supportingDir)) {
+  fs.mkdirSync(supportingDir, { recursive: true });
+}
+if (!fs.existsSync(resumesDir)) {
+  fs.mkdirSync(resumesDir, { recursive: true });
 }
 
 // Multer storage configuration
 const storage = multer.diskStorage({
-  destination: (req, file, cb) => cb(null, uploadsDir),
+  destination: (req, file, cb) => {
+    if (file.fieldname === "supportingFiles") {
+      return cb(null, supportingDir);
+    }
+    return cb(null, uploadsDir);
+  },
   filename: (req, file, cb) => {
     const unique = `${Date.now()}-${Math.round(Math.random() * 1e9)}`;
     cb(null, `${unique}-${file.originalname}`);
@@ -40,6 +53,29 @@ const storage = multer.diskStorage({
 });
 
 const upload = multer({ storage });
+const uploadFields = multer({ storage }).fields([
+  { name: "file", maxCount: 1 },
+  { name: "supportingFiles", maxCount: 10 }
+]);
+
+const resumeStorage = multer.diskStorage({
+  destination: (req, file, cb) => cb(null, resumesDir),
+  filename: (req, file, cb) => {
+    const unique = `${Date.now()}-${Math.round(Math.random() * 1e9)}`;
+    cb(null, `${unique}-${file.originalname}`);
+  }
+});
+
+const resumeUpload = multer({
+  storage: resumeStorage,
+  limits: { fileSize: 6 * 1024 * 1024 }
+});
+
+const resumeMimeTypes = new Set([
+  "application/pdf",
+  "image/png",
+  "image/jpeg"
+]);
 
 const normalizePhilippinePhone = (value) => {
   const digitsOnly = String(value || "").replace(/\D/g, "");
@@ -58,6 +94,29 @@ const normalizePhilippinePhone = (value) => {
   }
 
   return `+63${local}`;
+};
+
+const verifyRecaptchaToken = async (token, remoteIp) => {
+  const secret = process.env.RECAPTCHA_SECRET;
+  if (!secret) {
+    const error = new Error("reCAPTCHA secret is not configured.");
+    error.statusCode = 500;
+    throw error;
+  }
+  const params = new URLSearchParams({
+    secret,
+    response: token
+  });
+  if (remoteIp) {
+    params.append("remoteip", remoteIp);
+  }
+  const response = await fetch("https://www.google.com/recaptcha/api/siteverify", {
+    method: "POST",
+    headers: { "Content-Type": "application/x-www-form-urlencoded" },
+    body: params
+  });
+  const data = await response.json();
+  return data;
 };
 
 const readJobsSeed = () => {
@@ -179,7 +238,28 @@ const getJobsFromDb = async () => {
 };
 
 
-const analyzeResumeData = async (filePath, mimeType, appliedJobTitle = "") => {
+const extractSupportingTextFromFiles = async (files = []) => {
+  const chunks = [];
+  for (const file of files) {
+    const mimeType = file?.mimetype;
+    const filePath = file?.path;
+    if (!filePath || !mimeType) continue;
+    try {
+      if (mimeType === "application/pdf") {
+        const text = await extractTextFromPdf(filePath);
+        if (text) chunks.push(text);
+      } else if (mimeType.startsWith("image/")) {
+        const text = await extractTextFromImage(filePath);
+        if (text) chunks.push(text);
+      }
+    } catch (error) {
+      console.warn("Supporting doc extract failed:", filePath, error.message || error);
+    }
+  }
+  return chunks.join("\n");
+};
+
+const analyzeResumeData = async (filePath, mimeType, appliedJobTitle = "", supportingText = "") => {
   let extractedText = "";
 
   if (mimeType === "application/pdf") {
@@ -200,6 +280,8 @@ const analyzeResumeData = async (filePath, mimeType, appliedJobTitle = "") => {
 
   const cvText = extractedText.replace(/\s+/g, " ").trim().slice(0, 4000);
   const extractedTextForStorage = extractedText.trim().slice(0, 20000);
+  const supportingCombined = String(supportingText || "").replace(/\s+/g, " ").trim().slice(0, 4000);
+  const combinedText = supportingCombined ? `${cvText}\n${supportingCombined}` : cvText;
   const jobs = await getJobsFromDb();
   const normalizedAppliedJobTitle = String(appliedJobTitle || "").trim();
   const selectedJobs = normalizedAppliedJobTitle
@@ -212,16 +294,33 @@ const analyzeResumeData = async (filePath, mimeType, appliedJobTitle = "") => {
     throw error;
   }
 
-  const matchResults = await matchJobs(cvText, selectedJobs);
-  const topMatch = matchResults?.[0] || null;
+  const baseResults = await matchJobs(cvText, selectedJobs);
+  const combinedResults = supportingCombined ? await matchJobs(combinedText, selectedJobs) : baseResults;
+  const topMatch = combinedResults?.[0] || null;
+  const baseByTitle = new Map(
+    baseResults.map((item) => [String(item.title || "").toLowerCase(), Number(item.score || 0)])
+  );
+  const normalizedTopTitle = String(topMatch?.title || "").toLowerCase();
+  const baseScoreForTop = baseByTitle.get(normalizedTopTitle) ?? Number(topMatch?.score || 0);
+  const combinedScore = Number(topMatch?.score || 0);
+  const bonus = Math.max(0, combinedScore - baseScoreForTop);
+  const cappedBonus = Math.min(bonus, 5);
+  const finalScore = Math.min(100, baseScoreForTop + cappedBonus);
   const matchedJobTitle = topMatch?.title || null;
-  const matchScore = topMatch?.score ? Number(topMatch.score) : null;
+  const matchScore = topMatch ? finalScore : null;
   const projectScore = topMatch?.projectScore ? Number(topMatch.projectScore) : null;
-  const classification = topMatch?.classification || null;
+  let classification = "Not Qualified";
+  if (matchScore != null) {
+    if (matchScore >= 80) {
+      classification = "Highly Qualified";
+    } else if (matchScore >= 60) {
+      classification = "Moderately Qualified";
+    }
+  }
   const topMissingSkills = Array.isArray(topMatch?.missingSkills) ? topMatch.missingSkills : [];
   const allMatchedSkills = Array.from(
     new Set(
-      (matchResults || [])
+      (combinedResults || [])
         .flatMap((item) => (Array.isArray(item.matchedSkills) ? item.matchedSkills : []))
         .filter(Boolean)
     )
@@ -244,6 +343,24 @@ const analyzeResumeData = async (filePath, mimeType, appliedJobTitle = "") => {
 // Health route
 app.get("/api", (req, res) => {
   res.json({ status: "ok", message: "Server is running" });
+});
+
+// Verify reCAPTCHA token
+app.post("/auth/verify-recaptcha", async (req, res) => {
+  const { token = "" } = req.body || {};
+  if (!String(token).trim()) {
+    return res.status(400).json({ message: "Missing reCAPTCHA token." });
+  }
+  try {
+    const result = await verifyRecaptchaToken(String(token).trim(), req.ip);
+    if (!result?.success) {
+      return res.status(400).json({ message: "reCAPTCHA verification failed.", errors: result?.["error-codes"] || [] });
+    }
+    return res.json({ success: true });
+  } catch (error) {
+    console.error("reCAPTCHA verify error:", error);
+    return res.status(error.statusCode || 500).json({ message: error.message || "reCAPTCHA verification failed." });
+  }
 });
 
 // Job seeker registration
@@ -305,15 +422,23 @@ app.post("/job-seekers/register", async (req, res) => {
 
 // Job seeker login
 app.post("/job-seekers/login", async (req, res) => {
-  const { identifier = "", password = "" } = req.body || {};
+  const { identifier = "", password = "", recaptchaToken = "" } = req.body || {};
   const normalizedIdentifier = String(identifier).trim().toLowerCase();
   const normalizedPassword = String(password).trim();
+  const normalizedRecaptchaToken = String(recaptchaToken).trim();
 
   if (!normalizedIdentifier || !normalizedPassword) {
     return res.status(400).json({ message: "Identifier and password are required." });
   }
+  if (!normalizedRecaptchaToken) {
+    return res.status(400).json({ message: "Missing reCAPTCHA token." });
+  }
 
   try {
+    const recaptchaResult = await verifyRecaptchaToken(normalizedRecaptchaToken, req.ip);
+    if (!recaptchaResult?.success) {
+      return res.status(400).json({ message: "reCAPTCHA verification failed." });
+    }
     const [rows] = await pool.execute(
       `
         SELECT id, full_name, username, email, phone, status, password, created_at
@@ -450,6 +575,227 @@ app.put("/job-seekers/:id", async (req, res) => {
   } catch (error) {
     console.error("Update job seeker profile error:", error);
     return res.status(500).json({ message: "Failed to update job seeker profile." });
+  }
+});
+
+// Job seeker resume upload
+app.post("/job-seekers/:id/resume", (req, res) => {
+  resumeUpload.single("file")(req, res, async (err) => {
+    if (err) {
+      if (err.code === "LIMIT_FILE_SIZE") {
+        return res.status(413).json({ message: "Resume file is too large. Max 6MB." });
+      }
+      console.error("Resume upload error:", err);
+      return res.status(400).json({ message: "Failed to upload resume." });
+    }
+
+    const seekerId = Number(req.params.id);
+    if (!Number.isInteger(seekerId) || seekerId <= 0) {
+      return res.status(400).json({ message: "Invalid job seeker id." });
+    }
+
+    if (!req.file) {
+      return res.status(400).json({ message: "No file uploaded." });
+    }
+
+    const { originalname, filename, path: savedPath, mimetype, size } = req.file;
+    if (!resumeMimeTypes.has(mimetype)) {
+      return res.status(400).json({ message: "Unsupported file type. Upload PDF or image." });
+    }
+
+    try {
+      const [currentRows] = await pool.execute(
+        `
+          SELECT resume_file_path
+          FROM job_seekers
+          WHERE id = ?
+          LIMIT 1
+        `,
+        [seekerId]
+      );
+      const existingPath = currentRows[0]?.resume_file_path || null;
+
+      const [result] = await pool.execute(
+        `
+          UPDATE job_seekers
+          SET resume_name = ?, resume_original_name = ?, resume_saved_name = ?, resume_file_path = ?,
+              resume_type = ?, resume_size = ?, resume_data = NULL, resume_updated_at = NOW()
+          WHERE id = ?
+        `,
+        [originalname, originalname, filename, savedPath, mimetype, size, seekerId]
+      );
+
+      if (!result.affectedRows) {
+        return res.status(404).json({ message: "Job seeker not found." });
+      }
+
+      if (existingPath) {
+        const resolvedOld = path.resolve(existingPath);
+        const resolvedRoot = path.resolve(resumesDir);
+        if (resolvedOld.startsWith(resolvedRoot)) {
+          try {
+            await fs.promises.unlink(resolvedOld);
+          } catch (unlinkError) {
+            if (unlinkError.code !== "ENOENT") {
+              console.error("Old resume delete error:", unlinkError);
+            }
+          }
+        }
+      }
+
+      return res.json({
+        message: "Resume uploaded.",
+        resume: {
+          name: originalname,
+          mimeType: mimetype,
+          sizeBytes: size,
+          updatedAt: new Date().toISOString()
+        }
+      });
+    } catch (error) {
+      console.error("Upload resume error:", error);
+      if (error.code === "ECONNRESET") {
+        return res.status(500).json({ message: "Database connection was reset. Try a smaller file." });
+      }
+      return res.status(500).json({ message: "Failed to upload resume." });
+    }
+  });
+});
+
+// Job seeker resume metadata
+app.get("/job-seekers/:id/resume", async (req, res) => {
+  const seekerId = Number(req.params.id);
+  if (!Number.isInteger(seekerId) || seekerId <= 0) {
+    return res.status(400).json({ message: "Invalid job seeker id." });
+  }
+
+  try {
+    const [rows] = await pool.execute(
+      `
+        SELECT resume_original_name, resume_type, resume_size, resume_updated_at
+        FROM job_seekers
+        WHERE id = ?
+        LIMIT 1
+      `,
+      [seekerId]
+    );
+
+    if (!rows.length) {
+      return res.status(404).json({ message: "Job seeker not found." });
+    }
+
+    const resume = rows[0];
+    if (!resume.resume_original_name) {
+      return res.json({ resume: null });
+    }
+
+    return res.json({
+      resume: {
+        name: resume.resume_original_name,
+        mimeType: resume.resume_type,
+        sizeBytes: resume.resume_size,
+        updatedAt: resume.resume_updated_at
+      }
+    });
+  } catch (error) {
+    console.error("Fetch resume metadata error:", error);
+    return res.status(500).json({ message: "Failed to fetch resume." });
+  }
+});
+
+// Job seeker resume download
+app.get("/job-seekers/:id/resume/download", async (req, res) => {
+  const seekerId = Number(req.params.id);
+  if (!Number.isInteger(seekerId) || seekerId <= 0) {
+    return res.status(400).json({ message: "Invalid job seeker id." });
+  }
+
+  try {
+    const [rows] = await pool.execute(
+      `
+        SELECT resume_original_name, resume_type, resume_file_path
+        FROM job_seekers
+        WHERE id = ?
+        LIMIT 1
+      `,
+      [seekerId]
+    );
+
+    if (!rows.length || !rows[0].resume_file_path) {
+      return res.status(404).json({ message: "Resume not found." });
+    }
+
+    const resume = rows[0];
+    const resolvedFilePath = path.resolve(resume.resume_file_path);
+    const resolvedResumesDir = path.resolve(resumesDir);
+    if (!resolvedFilePath.startsWith(resolvedResumesDir)) {
+      return res.status(400).json({ message: "Invalid resume path." });
+    }
+
+    res.setHeader("Content-Type", resume.resume_type || "application/octet-stream");
+    res.setHeader("Content-Disposition", `attachment; filename="${resume.resume_original_name || "resume"}"`);
+    return res.sendFile(resolvedFilePath);
+  } catch (error) {
+    console.error("Download resume error:", error);
+    return res.status(500).json({ message: "Failed to download resume." });
+  }
+});
+
+// Job seeker resume delete
+app.delete("/job-seekers/:id/resume", async (req, res) => {
+  const seekerId = Number(req.params.id);
+  if (!Number.isInteger(seekerId) || seekerId <= 0) {
+    return res.status(400).json({ message: "Invalid job seeker id." });
+  }
+
+  try {
+    const [rows] = await pool.execute(
+      `
+        SELECT resume_file_path
+        FROM job_seekers
+        WHERE id = ?
+        LIMIT 1
+      `,
+      [seekerId]
+    );
+
+    if (!rows.length) {
+      return res.status(404).json({ message: "Job seeker not found." });
+    }
+
+    const existingPath = rows[0]?.resume_file_path || null;
+    const [updateResult] = await pool.execute(
+      `
+        UPDATE job_seekers
+        SET resume_name = NULL, resume_original_name = NULL, resume_saved_name = NULL, resume_file_path = NULL,
+            resume_type = NULL, resume_size = NULL, resume_data = NULL, resume_updated_at = NULL
+        WHERE id = ?
+      `,
+      [seekerId]
+    );
+
+    if (!updateResult.affectedRows) {
+      return res.status(404).json({ message: "Job seeker not found." });
+    }
+
+    if (existingPath) {
+      const resolvedOld = path.resolve(existingPath);
+      const resolvedRoot = path.resolve(resumesDir);
+      if (resolvedOld.startsWith(resolvedRoot)) {
+        try {
+          await fs.promises.unlink(resolvedOld);
+        } catch (unlinkError) {
+          if (unlinkError.code !== "ENOENT") {
+            console.error("Resume delete error:", unlinkError);
+          }
+        }
+      }
+    }
+
+    return res.json({ message: "Resume removed." });
+  } catch (error) {
+    console.error("Delete resume error:", error);
+    return res.status(500).json({ message: "Failed to remove resume." });
   }
 });
 
@@ -825,8 +1171,10 @@ app.delete("/jobs/:id", async (req, res) => {
 });
 
 // Upload route
-app.post("/upload", upload.single("file"), async (req, res) => {
-  if (!req.file) {
+app.post("/upload", uploadFields, async (req, res) => {
+  const mainFile = req.files?.file?.[0] || null;
+  const supportingFiles = Array.isArray(req.files?.supportingFiles) ? req.files.supportingFiles : [];
+  if (!mainFile) {
     return res.status(400).json({ message: "No file uploaded." });
   }
 
@@ -854,7 +1202,8 @@ app.post("/upload", upload.single("file"), async (req, res) => {
   }
 
   try {
-    const { originalname, filename, path: savedPath, mimetype, size } = req.file;
+    const { originalname, filename, path: savedPath, mimetype, size } = mainFile;
+    const supportingText = await extractSupportingTextFromFiles(supportingFiles);
     const {
       extractedTextForStorage,
       appliedJobTitle: normalizedAppliedJobTitle,
@@ -864,7 +1213,7 @@ app.post("/upload", upload.single("file"), async (req, res) => {
       classification,
       matchedSkills,
       missingSkills
-    } = await analyzeResumeData(savedPath, mimetype, appliedJobTitle);
+    } = await analyzeResumeData(savedPath, mimetype, appliedJobTitle, supportingText);
 
     const [result] = await pool.execute(
       `
@@ -893,6 +1242,27 @@ app.post("/upload", upload.single("file"), async (req, res) => {
         size
       ]
     );
+
+    if (supportingFiles.length) {
+      const supportingRows = supportingFiles.map((file) => ([
+        result.insertId,
+        file.originalname,
+        file.filename,
+        file.path,
+        file.mimetype,
+        file.size
+      ]));
+
+      await pool.query(
+        `
+          INSERT INTO upload_supporting_files (
+            upload_id, original_name, saved_name, file_path, mime_type, size_bytes
+          )
+          VALUES ?
+        `,
+        [supportingRows]
+      );
+    }
 
     res.status(201).json({
       message: "Applicant analyzed and added successfully!",
@@ -1037,7 +1407,7 @@ app.put("/uploads/:id/reanalyze", upload.single("file"), async (req, res) => {
 app.get("/uploads", async (req, res) => {
   try {
     const [rows] = await pool.query(
-      "SELECT id, name, email, phone, applied_job_title, matched_job_title, match_score, project_score, classification, matched_skills, extracted_text, missing_skills, original_name, saved_name, file_path, mime_type, size_bytes, uploaded_at FROM uploads ORDER BY uploaded_at DESC"
+      "SELECT id, name, email, phone, applied_job_title, matched_job_title, match_score, project_score, classification, matched_skills, extracted_text, missing_skills, job_seeker_hidden, job_seeker_hidden_at, original_name, saved_name, file_path, mime_type, size_bytes, uploaded_at FROM uploads ORDER BY uploaded_at DESC"
     );
 
     res.json(rows);
@@ -1072,11 +1442,68 @@ app.get("/uploads/:id/download", async (req, res) => {
   }
 });
 
+// List supporting files for an upload
+app.get("/uploads/:id/supporting", async (req, res) => {
+  const { id } = req.params;
+  try {
+    const [rows] = await pool.execute(
+      `
+        SELECT id, original_name, saved_name, file_path, mime_type, size_bytes, uploaded_at
+        FROM upload_supporting_files
+        WHERE upload_id = ?
+        ORDER BY uploaded_at DESC
+      `,
+      [id]
+    );
+    return res.json({ files: rows });
+  } catch (error) {
+    console.error("Fetch supporting files error:", error);
+    return res.status(500).json({ message: "Failed to fetch supporting files." });
+  }
+});
+
+// Download supporting file
+app.get("/uploads/:id/supporting/:supportId/download", async (req, res) => {
+  const { supportId } = req.params;
+  try {
+    const [rows] = await pool.execute(
+      `
+        SELECT original_name, file_path, mime_type
+        FROM upload_supporting_files
+        WHERE id = ?
+        LIMIT 1
+      `,
+      [supportId]
+    );
+    if (!rows.length) {
+      return res.status(404).json({ message: "Supporting file not found." });
+    }
+
+    const fileRecord = rows[0];
+    const resolvedFilePath = path.resolve(fileRecord.file_path);
+    const resolvedSupportingDir = path.resolve(supportingDir);
+    if (!resolvedFilePath.startsWith(resolvedSupportingDir)) {
+      return res.status(400).json({ message: "Invalid supporting file path." });
+    }
+
+    res.setHeader("Content-Type", fileRecord.mime_type || "application/octet-stream");
+    res.setHeader("Content-Disposition", `inline; filename="${fileRecord.original_name || "supporting-file"}"`);
+    return res.sendFile(resolvedFilePath);
+  } catch (error) {
+    console.error("Download supporting file error:", error);
+    return res.status(500).json({ message: "Failed to download supporting file." });
+  }
+});
+
 // Delete upload record route
 app.delete("/uploads/:id", async (req, res) => {
   try {
     const { id } = req.params;
     const [rows] = await pool.execute("SELECT file_path FROM uploads WHERE id = ?", [id]);
+    const [supportingRows] = await pool.execute(
+      "SELECT file_path FROM upload_supporting_files WHERE upload_id = ?",
+      [id]
+    );
 
     if (!rows.length) {
       return res.status(404).json({ message: "Upload not found." });
@@ -1107,10 +1534,44 @@ app.delete("/uploads/:id", async (req, res) => {
       }
     }
 
+    for (const item of supportingRows) {
+      const supportPath = item.file_path;
+      if (!supportPath) continue;
+      const resolvedSupportPath = path.resolve(supportPath);
+      const resolvedSupportingDir = path.resolve(supportingDir);
+      if (resolvedSupportPath.startsWith(resolvedSupportingDir)) {
+        try {
+          await fs.promises.unlink(resolvedSupportPath);
+        } catch (unlinkError) {
+          if (unlinkError.code !== "ENOENT") {
+            console.error("Supporting file delete error:", unlinkError);
+          }
+        }
+      }
+    }
+
     res.json({ message: "Upload record and file deleted." });
   } catch (error) {
     console.error("Delete upload error:", error);
     res.status(500).json({ message: "Failed to delete upload record/file." });
+  }
+});
+
+// Hide upload for job seeker (soft delete)
+app.put("/uploads/:id/hide", async (req, res) => {
+  try {
+    const { id } = req.params;
+    const [result] = await pool.execute(
+      "UPDATE uploads SET job_seeker_hidden = 1, job_seeker_hidden_at = NOW() WHERE id = ?",
+      [id]
+    );
+    if (result.affectedRows === 0) {
+      return res.status(404).json({ message: "Upload not found." });
+    }
+    return res.json({ message: "Application hidden for job seeker." });
+  } catch (error) {
+    console.error("Hide upload error:", error);
+    return res.status(500).json({ message: "Failed to hide application." });
   }
 });
 

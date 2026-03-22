@@ -16,17 +16,17 @@ body {
   --fs-22: 19px;
   --fs-24: 20px;
   --fs-26: 20px;
-  --fs-28: 27px;
-  --fs-30: 25px;
-  --fs-31: 30px;
-  --fs-32: 31px;
-  --fs-34: 30px;
-  --fs-43: 40px;
-  --fs-44: 41px;
-  --fs-46: 35px;
-  --fs-52: 49px;
-  --fs-72: 69px;
-  --fs-76: 65px;
+  --fs-28: 20px;
+  --fs-30: 20px;
+  --fs-31: 20px;
+  --fs-32: 20px;
+  --fs-34: 20px;
+  --fs-43: 20px;
+  --fs-44: 20px;
+  --fs-46: 20px;
+  --fs-52: 20px;
+  --fs-72: 20px;
+  --fs-76: 20px;
 }
 
 * {
@@ -311,6 +311,42 @@ body {
 .phone-local-input {
   margin-bottom: 0;
   border-radius: 0 5px 5px 0;
+}
+
+.autocomplete {
+  position: relative;
+  width: 100%;
+}
+
+.autocomplete-menu {
+  margin-top: 8px;
+  position: absolute;
+  left: 0;
+  right: 0;
+  top: calc(100% - 8px);
+  background: #fff;
+  border: 1px solid #d8dee8;
+  border-radius: 8px;
+  box-shadow: 0 8px 22px rgba(0, 0, 0, 0.12);
+  overflow: hidden;
+  z-index: 60;
+  transform-origin: top;
+  animation: dropdownIn 140ms ease-out;
+}
+
+.autocomplete-item {
+  width: 100%;
+  border: none;
+  background: #fff;
+  color: #121417;
+  text-align: left;
+  padding: 10px 12px;
+  cursor: pointer;
+  font-size: var(--fs-14);
+}
+
+.autocomplete-item:hover {
+  background: #f4f8ff;
 }
 
 .custom-dropdown {
@@ -1009,7 +1045,7 @@ optgroup {
 
 .jobs-title {
   margin: 8px 0 0;
-  font-size: var(--fs-46);
+  font-size: var(--fs-24);
   font-weight: 800;
 }
 
@@ -1492,7 +1528,7 @@ optgroup {
   .title,
   .jobs-title,
   .dashboard-header h2 {
-    font-size: var(--fs-34);
+    font-size: var(--fs-24);
   }
 
   .modal-header h3,
@@ -1669,7 +1705,7 @@ optgroup {
   }
 
   .jobs-title {
-    font-size: var(--fs-34);
+    font-size: var(--fs-24);
   }
 
   .jobs-subtitle {
@@ -1773,7 +1809,7 @@ optgroup {
   .title,
   .jobs-title,
   .dashboard-header h2 {
-    font-size: var(--fs-30);
+    font-size: var(--fs-24);
   }
 
   .subtitle,

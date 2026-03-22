@@ -1,12 +1,13 @@
 import { useEffect, useState } from "react"
 import "./JobViewPage.css"
 
-function JobViewPage({ job, onBack, onApply, jobSeekerProfile }) {
+function JobViewPage({ job, onBack, onApply, jobSeekerProfile, jobSeekerResume, jobSeekerId }) {
   const [isApplyModalOpen, setIsApplyModalOpen] = useState(false)
   const [applicantName, setApplicantName] = useState("")
   const [applicantEmail, setApplicantEmail] = useState("")
   const [applicantPhone, setApplicantPhone] = useState("")
   const [resumeFile, setResumeFile] = useState(null)
+  const [supportingFiles, setSupportingFiles] = useState([])
   const [applyError, setApplyError] = useState("")
   const [isSubmitting, setIsSubmitting] = useState(false)
 
@@ -22,6 +23,7 @@ function JobViewPage({ job, onBack, onApply, jobSeekerProfile }) {
   const resetApplyForm = () => {
     setApplyError("")
     setResumeFile(null)
+    setSupportingFiles([])
     setIsSubmitting(false)
   }
 
@@ -34,6 +36,31 @@ function JobViewPage({ job, onBack, onApply, jobSeekerProfile }) {
     setApplicantEmail(profileEmail)
     setApplicantPhone(profilePhone)
   }, [isApplyModalOpen, jobSeekerProfile])
+
+  useEffect(() => {
+    if (!isApplyModalOpen) return
+    if (!jobSeekerId || !jobSeekerResume) return
+    const controller = new AbortController()
+    const fetchResume = async () => {
+      try {
+        const response = await fetch(`http://localhost:5000/job-seekers/${jobSeekerId}/resume/download`, {
+          signal: controller.signal
+        })
+        if (!response.ok) {
+          return
+        }
+        const blob = await response.blob()
+        const file = new File([blob], jobSeekerResume.name || "resume", {
+          type: jobSeekerResume.mimeType || blob.type || "application/octet-stream"
+        })
+        setResumeFile(file)
+      } catch {
+        // Ignore fetch aborts or download errors.
+      }
+    }
+    fetchResume()
+    return () => controller.abort()
+  }, [isApplyModalOpen, jobSeekerId, jobSeekerResume])
   if (!job) {
     return (
       <section className="job-view-page">
@@ -160,12 +187,39 @@ function JobViewPage({ job, onBack, onApply, jobSeekerProfile }) {
                   id="job-apply-upload"
                   className="hidden-file-input"
                   type="file"
+                  accept=".pdf,.png,.jpg,.jpeg"
                   onChange={(e) => setResumeFile(e.target.files?.[0] || null)}
                 />
                 {!resumeFile && <div className="drop-icon">⇪</div>}
                 <p className="drop-hint">
-                  {resumeFile ? resumeFile.name : "Click to upload PDF, DOCX or TXT File"}
+                  {resumeFile ? resumeFile.name : "Click to upload PDF or Image File"}
                 </p>
+              </label>
+            </div>
+
+            <div className="field-group">
+              <label>Supporting Documents (Optional)</label>
+              <label
+                className={`upload-dropzone ${supportingFiles.length ? "has-file" : ""}`}
+                htmlFor="job-apply-supporting"
+              >
+                <input
+                  id="job-apply-supporting"
+                  className="hidden-file-input"
+                  type="file"
+                  multiple
+                  onChange={(e) => setSupportingFiles(Array.from(e.target.files || []))}
+                />
+                {!supportingFiles.length && <div className="drop-icon">⇪</div>}
+                {supportingFiles.length ? (
+                  <div className="drop-hint drop-hint-list">
+                    {supportingFiles.map((file) => (
+                      <span key={`${file.name}-${file.size}`}>{file.name}</span>
+                    ))}
+                  </div>
+                ) : (
+                  <p className="drop-hint">Upload certificates, portfolios, or other documents</p>
+                )}
               </label>
             </div>
 
@@ -198,6 +252,7 @@ function JobViewPage({ job, onBack, onApply, jobSeekerProfile }) {
                     email: applicantEmail,
                     phone: applicantPhone,
                     file: resumeFile,
+                    supportingFiles,
                     appliedJobTitle: job.title,
                   })
                   if (result?.ok) {

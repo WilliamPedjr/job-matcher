@@ -16,17 +16,17 @@ body {
   --fs-22: 19px;
   --fs-24: 20px;
   --fs-26: 20px;
-  --fs-28: 27px;
-  --fs-30: 25px;
-  --fs-31: 30px;
-  --fs-32: 31px;
-  --fs-34: 30px;
-  --fs-43: 40px;
-  --fs-44: 41px;
-  --fs-46: 35px;
-  --fs-52: 49px;
-  --fs-72: 69px;
-  --fs-76: 65px;
+  --fs-28: 20px;
+  --fs-30: 20px;
+  --fs-31: 20px;
+  --fs-32: 20px;
+  --fs-34: 20px;
+  --fs-43: 20px;
+  --fs-44: 20px;
+  --fs-46: 20px;
+  --fs-52: 20px;
+  --fs-72: 20px;
+  --fs-76: 20px;
 }
 
 * {
@@ -1543,6 +1543,12 @@ optgroup {
   display: flex;
   justify-content: center;
   margin-top: 4px;
+}
+
+.login-recaptcha-wrap {
+  display: flex;
+  justify-content: center;
+  margin: 14px 0 8px;
 }
 
 .login-btn-modern {

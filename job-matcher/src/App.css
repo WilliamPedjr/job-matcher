@@ -16,17 +16,17 @@ body {
   --fs-22: 19px;
   --fs-24: 20px;
   --fs-26: 20px;
-  --fs-28: 27px;
-  --fs-30: 25px;
-  --fs-31: 30px;
-  --fs-32: 31px;
-  --fs-34: 30px;
-  --fs-43: 40px;
-  --fs-44: 41px;
-  --fs-46: 35px;
-  --fs-52: 49px;
-  --fs-72: 69px;
-  --fs-76: 65px;
+  --fs-28: 20px;
+  --fs-30: 20px;
+  --fs-31: 20px;
+  --fs-32: 20px;
+  --fs-34: 20px;
+  --fs-43: 20px;
+  --fs-44: 20px;
+  --fs-46: 20px;
+  --fs-52: 20px;
+  --fs-72: 20px;
+  --fs-76: 20px;
 }
 
 * {
@@ -43,6 +43,10 @@ body {
   font-family: "Segoe UI", Arial, sans-serif;
   background: #f1f2f4;
   color: #121417;
+}
+
+h2 {
+  font-size: 20px !important;
 }
 
 #root {
@@ -2207,7 +2211,7 @@ optgroup {
   .title,
   .jobs-title,
   .dashboard-header h2 {
-    font-size: var(--fs-30);
+    font-size: var(--fs-34);
   }
 
   .subtitle,

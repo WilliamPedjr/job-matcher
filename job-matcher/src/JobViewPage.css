@@ -76,3 +76,9 @@
   color: #b91c1c;
   font-size: var(--fs-14);
 }
+
+.drop-hint-list {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}

@@ -54,6 +54,7 @@ function App() {
       return null
     }
   })
+  const [jobSeekerResume, setJobSeekerResume] = useState(null)
   const [jobSeekerId, setJobSeekerId] = useState(() => {
     const stored = localStorage.getItem("jobSeekerId")
     return stored ? Number(stored) : null
@@ -69,6 +70,7 @@ function App() {
   const [registerPassword, setRegisterPassword] = useState("")
   const [registerConfirmPassword, setRegisterConfirmPassword] = useState("")
   const [registerError, setRegisterError] = useState("")
+  const [registerNotice, setRegisterNotice] = useState("")
   const [uploadStatus, setUploadStatus] = useState("")
   const [uploadNotice, setUploadNotice] = useState("")
   const [appliedJobTitle, setAppliedJobTitle] = useState("")
@@ -85,6 +87,39 @@ function App() {
   const isEmployer = userRole === "employer"
   const isJobSeeker = userRole === "jobseeker"
   const normalizedPhone = phone.length ? `+63${phone}` : ""
+  const resolvedJobSeekerId = jobSeekerId || jobSeekerProfile?.id || null
+
+  const handleJobSeekerResumeUpdate = useCallback((resume) => {
+    setJobSeekerResume(resume || null)
+  }, [])
+
+  useEffect(() => {
+    if (!isAuthenticated || !isJobSeeker || !resolvedJobSeekerId) {
+      setJobSeekerResume(null)
+      return
+    }
+    let isMounted = true
+    const fetchResume = async () => {
+      try {
+        const response = await fetch(`http://localhost:5000/job-seekers/${resolvedJobSeekerId}/resume`)
+        if (!response.ok) {
+          setJobSeekerResume(null)
+          return
+        }
+        const payload = await response.json()
+        if (!isMounted) return
+        setJobSeekerResume(payload?.resume || null)
+      } catch {
+        if (isMounted) {
+          setJobSeekerResume(null)
+        }
+      }
+    }
+    fetchResume()
+    return () => {
+      isMounted = false
+    }
+  }, [isAuthenticated, isJobSeeker, resolvedJobSeekerId])
 
   const notificationStorageKey = useMemo(() => {
     if (!isAuthenticated) return null
@@ -223,9 +258,41 @@ function App() {
 
   const handleLogin = async (e) => {
     e.preventDefault()
+    const recaptcha = window.grecaptcha
+    if (!recaptcha) {
+      setLoginError("reCAPTCHA failed to load. Please refresh the page.")
+      return
+    }
+    const widgetId = window.__loginRecaptchaWidgetId
+    const recaptchaToken = typeof widgetId === "number"
+      ? recaptcha?.getResponse?.(widgetId)
+      : recaptcha?.getResponse?.()
+    if (!recaptchaToken) {
+      setLoginError("Please complete the reCAPTCHA.")
+      return
+    }
     const email = loginEmail.trim().toLowerCase()
 
     if (email === ADMIN_EMAIL && loginPassword === ADMIN_PASSWORD) {
+      try {
+        const verifyResponse = await fetch("http://localhost:5000/auth/verify-recaptcha", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ token: recaptchaToken })
+        })
+        if (!verifyResponse.ok) {
+          const payload = await verifyResponse.json().catch(() => null)
+          throw new Error(payload?.message || "reCAPTCHA verification failed.")
+        }
+      } catch (err) {
+        setLoginError(err.message || "reCAPTCHA verification failed.")
+        if (typeof widgetId === "number") {
+          recaptcha?.reset?.(widgetId)
+        } else {
+          recaptcha?.reset?.()
+        }
+        return
+      }
       setIsAuthenticated(true)
       localStorage.setItem("isAuthenticated", "true")
       setUserRole("admin")
@@ -233,10 +300,30 @@ function App() {
       setActivePage("dashboard")
       setLoginError("")
       setLoginPassword("")
+      if (typeof widgetId === "number") {
+        recaptcha?.reset?.(widgetId)
+      } else {
+        recaptcha?.reset?.()
+      }
       return
     }
 
     if (email === EMPLOYER_EMAIL && loginPassword === EMPLOYER_PASSWORD) {
+      try {
+        const verifyResponse = await fetch("http://localhost:5000/auth/verify-recaptcha", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ token: recaptchaToken })
+        })
+        if (!verifyResponse.ok) {
+          const payload = await verifyResponse.json().catch(() => null)
+          throw new Error(payload?.message || "reCAPTCHA verification failed.")
+        }
+      } catch (err) {
+        setLoginError(err.message || "reCAPTCHA verification failed.")
+        recaptcha?.reset?.()
+        return
+      }
       setIsAuthenticated(true)
       localStorage.setItem("isAuthenticated", "true")
       setUserRole("employer")
@@ -244,6 +331,7 @@ function App() {
       setActivePage("dashboard")
       setLoginError("")
       setLoginPassword("")
+      recaptcha?.reset?.()
       return
     }
 
@@ -253,7 +341,8 @@ function App() {
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
           identifier: loginEmail.trim(),
-          password: loginPassword
+          password: loginPassword,
+          recaptchaToken
         })
       })
       if (!response.ok) {
@@ -277,8 +366,18 @@ function App() {
       }
       setLoginError("")
       setLoginPassword("")
+      if (typeof widgetId === "number") {
+        recaptcha?.reset?.(widgetId)
+      } else {
+        recaptcha?.reset?.()
+      }
     } catch (err) {
       setLoginError(err.message || "Invalid email or password.")
+      if (typeof widgetId === "number") {
+        recaptcha?.reset?.(widgetId)
+      } else {
+        recaptcha?.reset?.()
+      }
     }
   }
 
@@ -315,8 +414,13 @@ function App() {
       setRegisterPhone("")
       setRegisterPassword("")
       setRegisterConfirmPassword("")
-      setIsRegistering(false)
+      setRegisterNotice("Account created. Redirecting to login...")
+      setTimeout(() => {
+        setIsRegistering(false)
+        setRegisterNotice("")
+      }, 1800)
     } catch (err) {
+      setRegisterNotice("")
       setRegisterError(err.message || "Registration failed.")
     }
   }
@@ -413,7 +517,7 @@ function App() {
     }
   }
 
-  const handleJobSeekerApply = async ({ name: applicantName, email: applicantEmail, phone: applicantPhone, file: resumeFile, appliedJobTitle }) => {
+  const handleJobSeekerApply = async ({ name: applicantName, email: applicantEmail, phone: applicantPhone, file: resumeFile, supportingFiles = [], appliedJobTitle }) => {
     const normalizedName = String(applicantName || "").trim()
     const normalizedEmail = String(applicantEmail || "").trim()
     const phoneDigits = String(applicantPhone || "").replace(/\D/g, "")
@@ -442,6 +546,9 @@ function App() {
     formData.append("phone", `+63${normalizedPhone}`)
     formData.append("appliedJobTitle", normalizedJobTitle)
     formData.append("file", resumeFile)
+    supportingFiles.forEach((file) => {
+      formData.append("supportingFiles", file)
+    })
 
     try {
       const response = await fetch("http://localhost:5000/upload", {
@@ -485,6 +592,26 @@ function App() {
       return true
     } catch (error) {
       setMessage("Error deleting record.")
+      return false
+    }
+  }
+
+  const performHideApplication = async (id) => {
+    try {
+      const response = await fetch(`http://localhost:5000/uploads/${id}/hide`, {
+        method: "PUT"
+      })
+      if (!response.ok) {
+        setMessage("Failed to hide application.")
+        return false
+      }
+      setUploads((prev) => prev.map((item) => (
+        item.id === id ? { ...item, job_seeker_hidden: 1 } : item
+      )))
+      setMessage("Application hidden.")
+      return true
+    } catch (error) {
+      setMessage("Error hiding application.")
       return false
     }
   }
@@ -711,6 +838,7 @@ function App() {
     const seekerEmail = String(jobSeekerProfile?.email || "").toLowerCase()
     const seekerName = String(jobSeekerProfile?.fullName || "").toLowerCase()
     return uploads.filter((item) => {
+      if (Number(item.job_seeker_hidden) === 1) return false
       const emailMatch = seekerEmail && String(item.email || "").toLowerCase() === seekerEmail
       const nameMatch = seekerName && String(item.name || "").toLowerCase() === seekerName
       return emailMatch || nameMatch
@@ -766,6 +894,7 @@ function App() {
           confirmPassword={registerConfirmPassword}
           setConfirmPassword={setRegisterConfirmPassword}
           registerError={registerError}
+          registerNotice={registerNotice}
           onSubmit={handleRegister}
           onBack={() => setIsRegistering(false)}
         />
@@ -793,6 +922,8 @@ function App() {
           jobSeekerProfile={jobSeekerProfile}
           jobSeekerId={jobSeekerId}
           onJobSeekerProfileUpdate={handleJobSeekerProfileUpdate}
+          jobSeekerResume={jobSeekerResume}
+          onJobSeekerResumeUpdate={handleJobSeekerResumeUpdate}
         />
       )
     }
@@ -819,6 +950,8 @@ function App() {
           onBack={() => setActivePage("jobs")}
           onApply={handleJobSeekerApply}
           jobSeekerProfile={jobSeekerProfile}
+          jobSeekerResume={jobSeekerResume}
+          jobSeekerId={resolvedJobSeekerId}
         />
       )
     }
@@ -841,7 +974,7 @@ function App() {
       return (
         <JobSeekerDashboard
           jobSeekerProfile={jobSeekerProfile}
-          uploads={uploads}
+          uploads={jobSeekerApplications}
           onBrowseJobs={() => handleTopNav("jobs")}
           onViewApplication={(item) => {
             setViewItem(item)
@@ -1206,7 +1339,11 @@ function App() {
                   const idToDelete = confirmDeleteId
                   setConfirmDeleteId(null)
                   if (idToDelete != null) {
-                    await performDelete(idToDelete)
+                    if (isJobSeeker && confirmDeleteContext !== "applicant") {
+                      await performHideApplication(idToDelete)
+                    } else {
+                      await performDelete(idToDelete)
+                    }
                   }
                 }}
               >
@@ -1224,7 +1361,6 @@ function App() {
               <h2 className="title">Applicants</h2>
               <p className="subtitle">View and manage all job applicants ranked by qualifications</p>
             </div>
-            <button className="btn" onClick={openAddApplicantModal}>+ Add Applicant</button>
           </div>
 
           <div className="filters">
