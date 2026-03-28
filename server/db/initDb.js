@@ -175,6 +175,19 @@ const initDb = async (pool, seedJobs = []) => {
     )
   `);
 
+  await pool.query(`
+    CREATE TABLE IF NOT EXISTS employers (
+      id INT AUTO_INCREMENT PRIMARY KEY,
+      company_name VARCHAR(255) NOT NULL,
+      contact_name VARCHAR(255) NULL,
+      email VARCHAR(255) NOT NULL UNIQUE,
+      phone VARCHAR(50) NULL,
+      password VARCHAR(255) NULL,
+      status VARCHAR(20) NOT NULL DEFAULT 'active',
+      created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+    )
+  `);
+
   try {
     await pool.query("ALTER TABLE job_seekers ADD COLUMN location VARCHAR(255) NULL AFTER status");
   } catch (error) {
@@ -286,6 +299,26 @@ const initDb = async (pool, seedJobs = []) => {
       FOREIGN KEY (job_seeker_id) REFERENCES job_seekers(id) ON DELETE CASCADE
     )
   `);
+
+  // Seed a default employer entry if it does not exist.
+  try {
+    await pool.execute(
+      `
+        INSERT IGNORE INTO employers (company_name, contact_name, email, phone, password, status)
+        VALUES (?, ?, ?, ?, ?, ?)
+      `,
+      [
+        "Employer 01",
+        "Employer",
+        "01",
+        "N/A",
+        "123",
+        "active"
+      ]
+    );
+  } catch (error) {
+    console.error("Seed employer error:", error);
+  }
 
   for (const seed of seedJobs) {
     if (!seed?.title || !seed?.description) continue;

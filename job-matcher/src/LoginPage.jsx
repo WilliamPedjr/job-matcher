@@ -15,12 +15,18 @@ function LoginPage({
   loginPassword,
   setLoginPassword,
   loginError,
+  captchaBypassEnabled,
+  setCaptchaBypassEnabled,
   onSubmit,
   onRegister
 }) {
   const [showPassword, setShowPassword] = useState(false)
+  const [recaptchaStatus, setRecaptchaStatus] = useState("loading")
+  const [showErrors, setShowErrors] = useState(false)
   const RECAPTCHA_SITE_KEY = "6LdOdpMsAAAAAPP2S_pBfwGmkeyGDO_3_h8BatH_"
   const recaptchaContainerId = "login-recaptcha"
+  const emailError = !loginEmail.trim()
+  const passwordError = !loginPassword.trim()
   const handleScrollTo = (id) => {
     const target = document.getElementById(id)
     if (target) {
@@ -30,6 +36,7 @@ function LoginPage({
 
   useEffect(() => {
     let attempts = 0
+    let isMounted = true
     const timer = setInterval(() => {
       const grecaptcha = window.grecaptcha
       const container = document.getElementById(recaptchaContainerId)
@@ -37,20 +44,38 @@ function LoginPage({
         attempts += 1
         if (attempts > 60) {
           clearInterval(timer)
+          if (isMounted) {
+            setRecaptchaStatus("failed")
+          }
         }
         return
       }
       if (window.__loginRecaptchaWidgetId != null) {
         clearInterval(timer)
+        if (isMounted) {
+          setRecaptchaStatus("ready")
+        }
         return
       }
-      const widgetId = grecaptcha.render(container, {
-        sitekey: RECAPTCHA_SITE_KEY
-      })
-      window.__loginRecaptchaWidgetId = widgetId
+      try {
+        const widgetId = grecaptcha.render(container, {
+          sitekey: RECAPTCHA_SITE_KEY
+        })
+        window.__loginRecaptchaWidgetId = widgetId
+        if (isMounted) {
+          setRecaptchaStatus("ready")
+        }
+      } catch (err) {
+        if (isMounted) {
+          setRecaptchaStatus("failed")
+        }
+      }
       clearInterval(timer)
     }, 200)
-    return () => clearInterval(timer)
+    return () => {
+      isMounted = false
+      clearInterval(timer)
+    }
   }, [])
 
   return (
@@ -61,6 +86,9 @@ function LoginPage({
           <button type="button" className="topnav-link" onClick={() => handleScrollTo("login-about")}>About Us</button>
           <button type="button" className="topnav-link" onClick={() => handleScrollTo("login-contact")}>Contact</button>
         </nav>
+        <div className="login-topbar-cta">
+          <button type="button" className="btn login-signin-btn" onClick={onRegister}>Sign In</button>
+        </div>
       </header>
 
       <section className="login-hero-modern" id="login-hero">
@@ -68,8 +96,14 @@ function LoginPage({
           <h1 className="login-heading-modern">Welcome to RecruitIQ</h1>
           <p className="login-tagline-modern">Hire smarter. Decide faster.</p>
 
-          <form className="login-form-modern" onSubmit={onSubmit}>
-            <div className="login-input-wrap-modern">
+          <form
+            className="login-form-modern"
+            onSubmit={(e) => {
+              setShowErrors(true)
+              onSubmit(e)
+            }}
+          >
+            <div className={`login-input-wrap-modern ${showErrors && emailError ? "input-error" : ""}`}>
               <span className="login-input-icon-modern" aria-hidden="true">
                 <img src={idCardIcon} alt="" />
               </span>
@@ -84,7 +118,7 @@ function LoginPage({
               />
             </div>
 
-            <div className="login-input-wrap-modern login-password-wrap">
+            <div className={`login-input-wrap-modern login-password-wrap ${showErrors && passwordError ? "input-error" : ""}`}>
               <span className="login-input-icon-modern" aria-hidden="true">
                 <img src={keyIcon} alt="" />
               </span>
@@ -125,6 +159,20 @@ function LoginPage({
             <div className="login-recaptcha-wrap">
               <div id={recaptchaContainerId} />
             </div>
+
+            {recaptchaStatus === "failed" && (
+              <div className="login-captcha-bypass">
+                <p>reCAPTCHA did not load. You can bypass it to continue.</p>
+                <label className="login-bypass-option">
+                  <input
+                    type="checkbox"
+                    checked={captchaBypassEnabled}
+                    onChange={(e) => setCaptchaBypassEnabled(e.target.checked)}
+                  />
+                  <span>Bypass reCAPTCHA for this login</span>
+                </label>
+              </div>
+            )}
 
             {loginError && <p className="login-error-modern">{loginError}</p>}
             <div className="login-button-row-modern">

@@ -1,0 +1,85 @@
+.users-page {
+  max-width: var(--layout-max-width);
+  width: 100%;
+  margin: 0 auto;
+  padding: 18px 0 30px;
+  display: flex;
+  flex-direction: column;
+  gap: 18px;
+}
+
+.users-header h2 {
+  margin: 0 0 6px;
+  font-size: 22px;
+}
+
+.users-header p {
+  margin: 0;
+  color: #6b7280;
+  font-size: 14px;
+}
+
+.users-card {
+  background: #fff;
+  border: 1px solid #e2e6ef;
+  border-radius: 12px;
+  padding: 18px 20px;
+  box-shadow: 0 2px 10px rgba(15, 23, 42, 0.08);
+}
+
+.users-card-employers {
+  margin-top: 16px;
+  margin-bottom: 16px;
+}
+
+.users-card-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  margin-bottom: 10px;
+}
+
+.table-wrap.users-table-wrap {
+  overflow: visible !important;
+  position: relative;
+  z-index: 1;
+}
+
+.users-table-scroll {
+  overflow-x: auto;
+  overflow-y: visible;
+  -webkit-overflow-scrolling: touch;
+  position: relative;
+  z-index: 1;
+}
+
+.users-table-inside {
+  margin-top: 10px;
+}
+
+.users-search {
+  width: min(260px, 100%);
+  padding: 8px 10px;
+  border: 1px solid #d8dee8;
+  border-radius: 8px;
+  font-size: 14px;
+  background: #ffffff;
+  color: #111827;
+}
+
+.users-actions {
+  display: inline-flex;
+  align-items: center;
+  gap: 10px;
+}
+
+.users-add-btn {
+  white-space: nowrap;
+}
+
+.users-empty {
+  text-align: center;
+  color: #9aa4b2;
+  padding: 16px 12px;
+}

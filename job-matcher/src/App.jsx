@@ -1,5 +1,5 @@
 // React imports
-import { useCallback, useEffect, useMemo, useState } from 'react'
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import './AppLayout.css'
 import LoginPage from './LoginPage'
 import ApplicantViewPage from './ApplicantViewPage'
@@ -8,6 +8,7 @@ import DashboardPage from './DashboardPage'
 import JobSeekerDashboard from './JobSeekerDashboard'
 import JobViewPage from './JobViewPage'
 import ProfilePage from './ProfilePage'
+import UsersPage from './UsersPage'
 import RegisterPage from './RegisterPage'
 import CustomDropdown from './CustomDropdown'
 import profileIcon from './assets/circle-user-solid-full.svg'
@@ -16,8 +17,6 @@ import bellIcon from './assets/bell-solid-full.svg'
 function App() {
   const ADMIN_EMAIL = "admin"
   const ADMIN_PASSWORD = "123"
-  const EMPLOYER_EMAIL = "01"
-  const EMPLOYER_PASSWORD = "123"
 
   // Component state
   // Holds the currently selected file from the file input.
@@ -44,6 +43,7 @@ function App() {
   const [loginEmail, setLoginEmail] = useState("")
   const [loginPassword, setLoginPassword] = useState("")
   const [loginError, setLoginError] = useState("")
+  const [captchaBypassEnabled, setCaptchaBypassEnabled] = useState(false)
   const [isRegistering, setIsRegistering] = useState(false)
   const [jobSeekerProfile, setJobSeekerProfile] = useState(() => {
     const stored = localStorage.getItem("jobSeekerProfile")
@@ -80,11 +80,15 @@ function App() {
   const [isNotificationsOpen, setIsNotificationsOpen] = useState(false)
   const [notificationSearch, setNotificationSearch] = useState("")
   const [notificationStatus, setNotificationStatus] = useState("all")
+  const [notificationPage, setNotificationPage] = useState(1)
+  const [adminNotificationPage, setAdminNotificationPage] = useState(1)
   const [readNotificationIds, setReadNotificationIds] = useState([])
   const [selectedJobView, setSelectedJobView] = useState(null)
   const [confirmDeleteId, setConfirmDeleteId] = useState(null)
   const [confirmDeleteContext, setConfirmDeleteContext] = useState("application")
+  const isHandlingPopState = useRef(false)
   const isEmployer = userRole === "employer"
+  const isAdmin = userRole === "admin"
   const isJobSeeker = userRole === "jobseeker"
   const normalizedPhone = phone.length ? `+63${phone}` : ""
   const resolvedJobSeekerId = jobSeekerId || jobSeekerProfile?.id || null
@@ -217,6 +221,39 @@ function App() {
   }, [activePage, isAuthenticated])
 
   useEffect(() => {
+    const onPopState = (event) => {
+      const state = event.state
+      if (!state || !state.page) return
+      isHandlingPopState.current = true
+      setActivePage(state.page)
+      if (state.page === "job-view") {
+        const jobId = state.jobId
+        if (jobId != null) {
+          const matched = jobPosts.find((job) => job.id === jobId)
+          setSelectedJobView(matched || null)
+        }
+      } else {
+        setSelectedJobView(null)
+      }
+      setTimeout(() => {
+        isHandlingPopState.current = false
+      }, 0)
+    }
+    window.addEventListener("popstate", onPopState)
+    return () => window.removeEventListener("popstate", onPopState)
+  }, [jobPosts])
+
+  useEffect(() => {
+    if (!isAuthenticated) return
+    if (isHandlingPopState.current) return
+    const state = { page: activePage }
+    if (activePage === "job-view" && selectedJobView?.id != null) {
+      state.jobId = selectedJobView.id
+    }
+    window.history.pushState(state, "")
+  }, [activePage, selectedJobView, isAuthenticated])
+
+  useEffect(() => {
     if (!isAuthenticated) return
     if (userRole === "jobseeker" && activePage !== "jobs" && activePage !== "profile" && activePage !== "dashboard" && activePage !== "job-view") {
       setActivePage("jobs")
@@ -259,39 +296,42 @@ function App() {
   const handleLogin = async (e) => {
     e.preventDefault()
     const recaptcha = window.grecaptcha
-    if (!recaptcha) {
-      setLoginError("reCAPTCHA failed to load. Please refresh the page.")
-      return
-    }
     const widgetId = window.__loginRecaptchaWidgetId
     const recaptchaToken = typeof widgetId === "number"
       ? recaptcha?.getResponse?.(widgetId)
       : recaptcha?.getResponse?.()
-    if (!recaptchaToken) {
+    const shouldBypassCaptcha = Boolean(captchaBypassEnabled && !recaptchaToken)
+    if (!recaptcha && !shouldBypassCaptcha) {
+      setLoginError("reCAPTCHA failed to load. You can enable the bypass below to continue.")
+      return
+    }
+    if (recaptcha && !recaptchaToken && !shouldBypassCaptcha) {
       setLoginError("Please complete the reCAPTCHA.")
       return
     }
     const email = loginEmail.trim().toLowerCase()
 
     if (email === ADMIN_EMAIL && loginPassword === ADMIN_PASSWORD) {
-      try {
-        const verifyResponse = await fetch("http://localhost:5000/auth/verify-recaptcha", {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ token: recaptchaToken })
-        })
-        if (!verifyResponse.ok) {
-          const payload = await verifyResponse.json().catch(() => null)
-          throw new Error(payload?.message || "reCAPTCHA verification failed.")
+      if (!shouldBypassCaptcha) {
+        try {
+          const verifyResponse = await fetch("http://localhost:5000/auth/verify-recaptcha", {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ token: recaptchaToken })
+          })
+          if (!verifyResponse.ok) {
+            const payload = await verifyResponse.json().catch(() => null)
+            throw new Error(payload?.message || "reCAPTCHA verification failed.")
+          }
+        } catch (err) {
+          setLoginError(err.message || "reCAPTCHA verification failed.")
+          if (typeof widgetId === "number") {
+            recaptcha?.reset?.(widgetId)
+          } else {
+            recaptcha?.reset?.()
+          }
+          return
         }
-      } catch (err) {
-        setLoginError(err.message || "reCAPTCHA verification failed.")
-        if (typeof widgetId === "number") {
-          recaptcha?.reset?.(widgetId)
-        } else {
-          recaptcha?.reset?.()
-        }
-        return
       }
       setIsAuthenticated(true)
       localStorage.setItem("isAuthenticated", "true")
@@ -300,6 +340,7 @@ function App() {
       setActivePage("dashboard")
       setLoginError("")
       setLoginPassword("")
+      setCaptchaBypassEnabled(false)
       if (typeof widgetId === "number") {
         recaptcha?.reset?.(widgetId)
       } else {
@@ -308,31 +349,37 @@ function App() {
       return
     }
 
-    if (email === EMPLOYER_EMAIL && loginPassword === EMPLOYER_PASSWORD) {
-      try {
-        const verifyResponse = await fetch("http://localhost:5000/auth/verify-recaptcha", {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ token: recaptchaToken })
+    try {
+      const response = await fetch("http://localhost:5000/employers/login", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          identifier: loginEmail.trim(),
+          password: loginPassword
         })
-        if (!verifyResponse.ok) {
-          const payload = await verifyResponse.json().catch(() => null)
-          throw new Error(payload?.message || "reCAPTCHA verification failed.")
+      })
+      if (response.ok) {
+        const payload = await response.json()
+        setIsAuthenticated(true)
+        localStorage.setItem("isAuthenticated", "true")
+        setUserRole("employer")
+        localStorage.setItem("userRole", "employer")
+        setActivePage("dashboard")
+        if (payload) {
+          setLoginEmail(payload.email || loginEmail)
         }
-      } catch (err) {
-        setLoginError(err.message || "reCAPTCHA verification failed.")
-        recaptcha?.reset?.()
+        setLoginError("")
+        setLoginPassword("")
+        setCaptchaBypassEnabled(false)
+        if (recaptcha && typeof widgetId === "number") {
+          recaptcha?.reset?.(widgetId)
+        } else {
+          recaptcha?.reset?.()
+        }
         return
       }
-      setIsAuthenticated(true)
-      localStorage.setItem("isAuthenticated", "true")
-      setUserRole("employer")
-      localStorage.setItem("userRole", "employer")
-      setActivePage("dashboard")
-      setLoginError("")
-      setLoginPassword("")
-      recaptcha?.reset?.()
-      return
+    } catch {
+      // Fall through to job seeker login.
     }
 
     try {
@@ -342,7 +389,8 @@ function App() {
         body: JSON.stringify({
           identifier: loginEmail.trim(),
           password: loginPassword,
-          recaptchaToken
+          recaptchaToken: recaptchaToken || "",
+          recaptchaBypass: shouldBypassCaptcha
         })
       })
       if (!response.ok) {
@@ -366,6 +414,7 @@ function App() {
       }
       setLoginError("")
       setLoginPassword("")
+      setCaptchaBypassEnabled(false)
       if (typeof widgetId === "number") {
         recaptcha?.reset?.(widgetId)
       } else {
@@ -439,6 +488,7 @@ function App() {
     setJobSeekerProfile(null)
     setJobSeekerId(null)
     setActivePage("applicants")
+    setSelectedJobView(null)
   }
 
   const handleTopNav = (page) => {
@@ -865,13 +915,43 @@ function App() {
     })
   }, [unreadJobSeekerApplications, notificationSearch, notificationStatus, jobTitleMeta])
 
+  const NOTIFICATIONS_PER_PAGE = 5
+
+  useEffect(() => {
+    setNotificationPage(1)
+  }, [notificationSearch, notificationStatus])
+
   const adminNotifications = useMemo(() => {
     if (isJobSeeker) return []
     return [...uploads]
       .sort((a, b) => new Date(b.uploaded_at).getTime() - new Date(a.uploaded_at).getTime())
       .filter((item) => !readNotificationIds.includes(item.id))
-      .slice(0, 6)
   }, [uploads, isJobSeeker, readNotificationIds])
+
+  const notificationPageCount = Math.max(1, Math.ceil(filteredNotifications.length / NOTIFICATIONS_PER_PAGE))
+  const adminNotificationPageCount = Math.max(1, Math.ceil(adminNotifications.length / NOTIFICATIONS_PER_PAGE))
+
+  useEffect(() => {
+    setNotificationPage((prev) => Math.min(Math.max(1, prev), notificationPageCount))
+  }, [notificationPageCount])
+
+  useEffect(() => {
+    setAdminNotificationPage(1)
+  }, [adminNotifications.length])
+
+  useEffect(() => {
+    setAdminNotificationPage((prev) => Math.min(Math.max(1, prev), adminNotificationPageCount))
+  }, [adminNotificationPageCount])
+
+  const pagedNotifications = useMemo(() => {
+    const startIndex = (notificationPage - 1) * NOTIFICATIONS_PER_PAGE
+    return filteredNotifications.slice(startIndex, startIndex + NOTIFICATIONS_PER_PAGE)
+  }, [filteredNotifications, notificationPage])
+
+  const pagedAdminNotifications = useMemo(() => {
+    const startIndex = (adminNotificationPage - 1) * NOTIFICATIONS_PER_PAGE
+    return adminNotifications.slice(startIndex, startIndex + NOTIFICATIONS_PER_PAGE)
+  }, [adminNotifications, adminNotificationPage])
 
   const hasUnreadNotifications = isJobSeeker
     ? unreadJobSeekerApplications.length > 0
@@ -907,6 +987,8 @@ function App() {
         loginPassword={loginPassword}
         setLoginPassword={setLoginPassword}
         loginError={loginError}
+        captchaBypassEnabled={captchaBypassEnabled}
+        setCaptchaBypassEnabled={setCaptchaBypassEnabled}
         onSubmit={handleLogin}
         onRegister={() => setIsRegistering(true)}
       />
@@ -926,6 +1008,9 @@ function App() {
           onJobSeekerResumeUpdate={handleJobSeekerResumeUpdate}
         />
       )
+    }
+    if (activePage === "users" && isAdmin) {
+      return <UsersPage />
     }
     if (activePage === "jobs") {
       return (
@@ -947,7 +1032,10 @@ function App() {
       return (
         <JobViewPage
           job={selectedJobView}
-          onBack={() => setActivePage("jobs")}
+          onBack={() => {
+            setSelectedJobView(null)
+            setActivePage("jobs")
+          }}
           onApply={handleJobSeekerApply}
           jobSeekerProfile={jobSeekerProfile}
           jobSeekerResume={jobSeekerResume}
@@ -1098,6 +1186,15 @@ function App() {
               Applicant
             </button>
           )}
+          {isAdmin && (
+            <button
+              type="button"
+              className={`topnav-link ${activePage === "users" ? "active" : ""}`}
+              onClick={() => handleTopNav("users")}
+            >
+              Users
+            </button>
+          )}
         </nav>
         <div className="topbar-right">
           <div className="notifications-menu" onClick={(e) => e.stopPropagation()}>
@@ -1125,17 +1222,6 @@ function App() {
                     )}
                   </div>
                   <div className="notifications-header-actions">
-                    {isJobSeeker && (
-                      <div className="notifications-header-search">
-                        <input
-                          type="text"
-                          className="notifications-search"
-                          placeholder="Search jobs..."
-                          value={notificationSearch}
-                          onChange={(e) => setNotificationSearch(e.target.value)}
-                        />
-                      </div>
-                    )}
                     <button
                       type="button"
                       className="notifications-mark-read"
@@ -1192,7 +1278,7 @@ function App() {
                               </td>
                             </tr>
                           ) : (
-                            filteredNotifications.map((item) => {
+                            pagedNotifications.map((item) => {
                               const jobTitle = item.applied_job_title || item.matched_job_title || "-"
                               const department = jobTitleMeta.get(jobTitle)?.department || "-"
                               const status = getApplicationStatus(item)
@@ -1224,12 +1310,41 @@ function App() {
                     </div>
                     <div className="notifications-footer">
                       <span>
-                        Showing 1 to {filteredNotifications.length} of {filteredNotifications.length} entries
+                        {filteredNotifications.length === 0
+                          ? "Showing 0 to 0 of 0 entries"
+                          : `Showing ${(notificationPage - 1) * NOTIFICATIONS_PER_PAGE + 1} to ${Math.min(
+                            notificationPage * NOTIFICATIONS_PER_PAGE,
+                            filteredNotifications.length
+                          )} of ${filteredNotifications.length} entries`}
                       </span>
                       <div className="notifications-pagination">
-                        <button type="button" disabled>Previous</button>
-                        <button type="button" className="is-active">1</button>
-                        <button type="button" disabled>Next</button>
+                        <button
+                          type="button"
+                          disabled={notificationPage === 1}
+                          onClick={() => setNotificationPage((prev) => Math.max(1, prev - 1))}
+                        >
+                          Previous
+                        </button>
+                        {Array.from({ length: notificationPageCount }, (_, index) => {
+                          const pageNumber = index + 1
+                          return (
+                            <button
+                              key={`notification-page-${pageNumber}`}
+                              type="button"
+                              className={notificationPage === pageNumber ? "is-active" : ""}
+                              onClick={() => setNotificationPage(pageNumber)}
+                            >
+                              {pageNumber}
+                            </button>
+                          )
+                        })}
+                        <button
+                          type="button"
+                          disabled={notificationPage === notificationPageCount}
+                          onClick={() => setNotificationPage((prev) => Math.min(notificationPageCount, prev + 1))}
+                        >
+                          Next
+                        </button>
                       </div>
                     </div>
                   </>
@@ -1238,7 +1353,7 @@ function App() {
                     {adminNotifications.length === 0 ? (
                       <div className="notifications-empty-block">No new applicants yet.</div>
                     ) : (
-                      adminNotifications.map((item) => {
+                      pagedAdminNotifications.map((item) => {
                         const jobTitle = item.applied_job_title || item.matched_job_title || "-"
                         const status = getApplicationStatus(item)
                         const dateLabel = (() => {
@@ -1264,6 +1379,45 @@ function App() {
                           </div>
                         )
                       })
+                    )}
+                    {adminNotifications.length > 0 && (
+                      <div className="notifications-footer">
+                        <span>
+                          {`Showing ${(adminNotificationPage - 1) * NOTIFICATIONS_PER_PAGE + 1} to ${Math.min(
+                            adminNotificationPage * NOTIFICATIONS_PER_PAGE,
+                            adminNotifications.length
+                          )} of ${adminNotifications.length} entries`}
+                        </span>
+                        <div className="notifications-pagination">
+                          <button
+                            type="button"
+                            disabled={adminNotificationPage === 1}
+                            onClick={() => setAdminNotificationPage((prev) => Math.max(1, prev - 1))}
+                          >
+                            Previous
+                          </button>
+                          {Array.from({ length: adminNotificationPageCount }, (_, index) => {
+                            const pageNumber = index + 1
+                            return (
+                              <button
+                                key={`admin-notification-page-${pageNumber}`}
+                                type="button"
+                                className={adminNotificationPage === pageNumber ? "is-active" : ""}
+                                onClick={() => setAdminNotificationPage(pageNumber)}
+                              >
+                                {pageNumber}
+                              </button>
+                            )
+                          })}
+                          <button
+                            type="button"
+                            disabled={adminNotificationPage === adminNotificationPageCount}
+                            onClick={() => setAdminNotificationPage((prev) => Math.min(adminNotificationPageCount, prev + 1))}
+                          >
+                            Next
+                          </button>
+                        </div>
+                      </div>
                     )}
                   </div>
                 )}

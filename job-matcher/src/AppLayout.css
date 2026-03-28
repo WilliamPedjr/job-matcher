@@ -59,6 +59,7 @@ body {
   margin: 0 auto;
   padding: 0 var(--layout-gutter);
   overflow-y: auto;
+  position: relative;
 }
 
 .page > .panel,

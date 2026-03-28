@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react"
+import { useEffect, useRef, useState } from "react"
 import "./JobViewPage.css"
 
 function JobViewPage({ job, onBack, onApply, jobSeekerProfile, jobSeekerResume, jobSeekerId }) {
@@ -7,9 +7,17 @@ function JobViewPage({ job, onBack, onApply, jobSeekerProfile, jobSeekerResume, 
   const [applicantEmail, setApplicantEmail] = useState("")
   const [applicantPhone, setApplicantPhone] = useState("")
   const [resumeFile, setResumeFile] = useState(null)
-  const [supportingFiles, setSupportingFiles] = useState([])
-  const [applyError, setApplyError] = useState("")
+  const [supportingDocs, setSupportingDocs] = useState({
+    certificate: null,
+    portfolio: null,
+    recommendation: null,
+    transcript: null,
+    others: []
+  })
+  const [applyNotice, setApplyNotice] = useState("")
   const [isSubmitting, setIsSubmitting] = useState(false)
+  const supportingInputRef = useRef(null)
+  const [showErrors, setShowErrors] = useState(false)
 
   const normalizePhoneInput = (value) => {
     const digitsOnly = String(value || "").replace(/\D/g, "")
@@ -21,11 +29,88 @@ function JobViewPage({ job, onBack, onApply, jobSeekerProfile, jobSeekerResume, 
   }
 
   const resetApplyForm = () => {
-    setApplyError("")
+    setApplyNotice("")
     setResumeFile(null)
-    setSupportingFiles([])
+    setSupportingDocs({
+      certificate: null,
+      portfolio: null,
+      recommendation: null,
+      transcript: null,
+      others: []
+    })
     setIsSubmitting(false)
+    setShowErrors(false)
   }
+
+  useEffect(() => {
+    if (!applyNotice) return
+    const timer = setTimeout(() => {
+      setApplyNotice("")
+    }, 2400)
+    return () => clearTimeout(timer)
+  }, [applyNotice])
+
+  const supportingSteps = [
+    { key: "certificate", label: "Certificate", accept: ".pdf,.png,.jpg,.jpeg", multiple: false },
+    { key: "portfolio", label: "Portfolio", accept: ".pdf,.png,.jpg,.jpeg", multiple: false },
+    { key: "recommendation", label: "Recommendation Letter", accept: ".pdf,.png,.jpg,.jpeg", multiple: false },
+    { key: "transcript", label: "Transcript", accept: ".pdf,.png,.jpg,.jpeg", multiple: false },
+    { key: "others", label: "Other Supporting Documents", accept: ".pdf,.png,.jpg,.jpeg", multiple: true }
+  ]
+
+  const formatFileSize = (bytes) => {
+    if (!bytes && bytes !== 0) return "-"
+    if (bytes < 1024) return `${bytes} B`
+    if (bytes < 1024 * 1024) return `${(bytes / 1024).toFixed(1)} KB`
+    if (bytes < 1024 * 1024 * 1024) return `${(bytes / (1024 * 1024)).toFixed(1)} MB`
+    return `${(bytes / (1024 * 1024 * 1024)).toFixed(1)} GB`
+  }
+
+  const handleSupportingFiles = (key, files) => {
+    if (!files?.length) return
+    setSupportingDocs((prev) => {
+      const next = { ...prev }
+      if (key === "others") {
+        const existing = Array.isArray(next.others) ? next.others : []
+        const merged = [...existing]
+        files.forEach((file) => {
+          const exists = merged.some(
+            (item) =>
+              item.name === file.name &&
+              item.size === file.size &&
+              item.lastModified === file.lastModified
+          )
+          if (!exists) {
+            merged.push(file)
+          }
+        })
+        next.others = merged
+      } else {
+        next[key] = files[0]
+      }
+      return next
+    })
+  }
+
+  const getCurrentSupportingStepIndex = () => {
+    for (let i = 0; i < supportingSteps.length; i += 1) {
+      const step = supportingSteps[i]
+      if (step.key === "others") {
+        if (!supportingDocs.others?.length) return i
+      } else if (!supportingDocs[step.key]) {
+        return i
+      }
+    }
+    return supportingSteps.length - 1
+  }
+
+  const currentSupportingStepIndex = getCurrentSupportingStepIndex()
+  const currentSupportingStep = supportingSteps[currentSupportingStepIndex]
+
+  const supportingDocumentsComplete = supportingSteps.every((step) => {
+    if (step.key === "others") return true
+    return Boolean(supportingDocs[step.key])
+  })
 
   useEffect(() => {
     if (!isApplyModalOpen) return
@@ -61,6 +146,15 @@ function JobViewPage({ job, onBack, onApply, jobSeekerProfile, jobSeekerResume, 
     fetchResume()
     return () => controller.abort()
   }, [isApplyModalOpen, jobSeekerId, jobSeekerResume])
+
+  const isApplyDisabled = isSubmitting
+
+  const nameError = !applicantName.trim()
+  const emailError = !applicantEmail.trim()
+  const phoneMissing = !applicantPhone.trim()
+  const phoneLengthInvalid = !phoneMissing && applicantPhone.length !== 10
+  const resumeError = !resumeFile
+  const supportingError = !supportingDocumentsComplete
   if (!job) {
     return (
       <section className="job-view-page">
@@ -142,7 +236,7 @@ function JobViewPage({ job, onBack, onApply, jobSeekerProfile, jobSeekerResume, 
               <div className="field-group">
                 <label>Applicant Name</label>
                 <input
-                  className="input"
+                  className={`input ${showErrors && nameError ? "input-error" : ""}`}
                   type="text"
                   value={applicantName}
                   onChange={(e) => setApplicantName(e.target.value)}
@@ -152,7 +246,7 @@ function JobViewPage({ job, onBack, onApply, jobSeekerProfile, jobSeekerResume, 
               <div className="field-group">
                 <label>Email</label>
                 <input
-                  className="input"
+                  className={`input ${showErrors && emailError ? "input-error" : ""}`}
                   type="email"
                   value={applicantEmail}
                   onChange={(e) => setApplicantEmail(e.target.value)}
@@ -166,7 +260,7 @@ function JobViewPage({ job, onBack, onApply, jobSeekerProfile, jobSeekerResume, 
               <div className="phone-input-wrap">
                 <span className="phone-prefix">+63</span>
                 <input
-                  className="input phone-local-input phone-number"
+                  className={`input phone-local-input phone-number ${showErrors && (phoneMissing || phoneLengthInvalid) ? "input-error" : ""}`}
                   type="text"
                   inputMode="numeric"
                   maxLength={10}
@@ -180,7 +274,7 @@ function JobViewPage({ job, onBack, onApply, jobSeekerProfile, jobSeekerResume, 
             <div className="field-group">
               <label>Upload Resume/CV</label>
               <label
-                className={`upload-dropzone ${resumeFile ? "has-file" : ""}`}
+                className={`upload-dropzone ${resumeFile ? "has-file" : ""} ${showErrors && resumeError ? "input-error" : ""}`}
                 htmlFor="job-apply-upload"
               >
                 <input
@@ -198,51 +292,103 @@ function JobViewPage({ job, onBack, onApply, jobSeekerProfile, jobSeekerResume, 
             </div>
 
             <div className="field-group">
-              <label>Supporting Documents (Optional)</label>
-              <label
-                className={`upload-dropzone ${supportingFiles.length ? "has-file" : ""}`}
-                htmlFor="job-apply-supporting"
-              >
-                <input
-                  id="job-apply-supporting"
-                  className="hidden-file-input"
-                  type="file"
-                  multiple
-                  onChange={(e) => setSupportingFiles(Array.from(e.target.files || []))}
-                />
-                {!supportingFiles.length && <div className="drop-icon">⇪</div>}
-                {supportingFiles.length ? (
-                  <div className="drop-hint drop-hint-list">
-                    {supportingFiles.map((file) => (
-                      <span key={`${file.name}-${file.size}`}>{file.name}</span>
-                    ))}
-                  </div>
-                ) : (
-                  <p className="drop-hint">Upload certificates, portfolios, or other documents</p>
-                )}
-              </label>
+              <div className="supporting-docs-header">
+                <div>
+                  <label>Supporting Documents</label>
+                  <p className="supporting-docs-progress">
+                    {supportingDocumentsComplete
+                      ? "All required supporting documents completed."
+                      : `Step ${currentSupportingStepIndex + 1} of ${supportingSteps.length}: ${currentSupportingStep.label}`}
+                  </p>
+                </div>
+              </div>
+              <input
+                id="job-apply-supporting"
+                ref={supportingInputRef}
+                className="hidden-file-input"
+                type="file"
+                multiple={supportingDocumentsComplete ? true : currentSupportingStep.multiple}
+                accept={currentSupportingStep.accept}
+                onChange={(e) => {
+                  const stepKey = supportingDocumentsComplete ? "others" : currentSupportingStep.key
+                  handleSupportingFiles(stepKey, Array.from(e.target.files || []))
+                  e.target.value = ""
+                }}
+              />
+              <div className={`supporting-docs-table-wrap ${showErrors && supportingError ? "input-error" : ""}`}>
+                <table className="supporting-docs-table">
+                  <thead>
+                    <tr>
+                      <th>Type</th>
+                      <th>Document</th>
+                      <th>File Type</th>
+                      <th>Size</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {supportingDocumentsComplete ||
+                    supportingSteps.some((step) => {
+                      if (step.key === "others") return supportingDocs.others?.length
+                      return supportingDocs[step.key]
+                    }) ? (
+                      supportingSteps.flatMap((step) => {
+                        if (step.key === "others") {
+                          return (supportingDocs.others || []).map((file) => (
+                            <tr key={`${step.key}-${file.name}-${file.size}-${file.lastModified}`}>
+                              <td>{step.label}</td>
+                              <td>{file.name}</td>
+                              <td>{file.type || "Unknown"}</td>
+                              <td>{formatFileSize(file.size)}</td>
+                            </tr>
+                          ))
+                        }
+                        const file = supportingDocs[step.key]
+                        if (!file) return []
+                        return (
+                          <tr key={`${step.key}-${file.name}-${file.size}-${file.lastModified}`}>
+                            <td>{step.label}</td>
+                            <td>{file.name}</td>
+                            <td>{file.type || "Unknown"}</td>
+                            <td>{formatFileSize(file.size)}</td>
+                          </tr>
+                        )
+                      })
+                    ) : (
+                      <tr className="supporting-docs-empty">
+                        <td colSpan={4}>No supporting documents added yet.</td>
+                      </tr>
+                    )}
+                  </tbody>
+                  <tfoot>
+                    <tr>
+                      <td colSpan={4}>
+                        <button
+                          className="js-outline-btn supporting-docs-add-btn"
+                          type="button"
+                          onClick={() => supportingInputRef.current?.click()}
+                        >
+                          {supportingDocumentsComplete ? "Add Other Supporting Documents" : `Add ${currentSupportingStep.label}`}
+                        </button>
+                      </td>
+                    </tr>
+                  </tfoot>
+                </table>
+              </div>
             </div>
 
 
-            {applyError && <p className="job-apply-error">{applyError}</p>}
+            {applyNotice && <div className="toast toast-fail">{applyNotice}</div>}
 
             <div className="modal-actions">
               <button
                 className="btn"
                 type="button"
-                disabled={isSubmitting}
+                disabled={isApplyDisabled}
                 onClick={async () => {
-                  setApplyError("")
-                  if (!applicantName.trim() || !applicantEmail.trim() || !applicantPhone.trim()) {
-                    setApplyError("Please fill in all fields.")
-                    return
-                  }
-                  if (applicantPhone.length !== 10) {
-                    setApplyError("Phone number must be exactly 10 digits after +63.")
-                    return
-                  }
-                  if (!resumeFile) {
-                    setApplyError("Please upload a resume/CV file.")
+                  setApplyNotice("")
+                  setShowErrors(true)
+                  if (nameError || emailError || phoneMissing || phoneLengthInvalid || resumeError || supportingError) {
+                    setApplyNotice("Please complete all required fields.")
                     return
                   }
 
@@ -252,14 +398,19 @@ function JobViewPage({ job, onBack, onApply, jobSeekerProfile, jobSeekerResume, 
                     email: applicantEmail,
                     phone: applicantPhone,
                     file: resumeFile,
-                    supportingFiles,
+                    supportingFiles: supportingSteps.flatMap((step) => {
+                      if (step.key === "others") {
+                        return supportingDocs.others || []
+                      }
+                      return supportingDocs[step.key] ? [supportingDocs[step.key]] : []
+                    }),
                     appliedJobTitle: job.title,
                   })
                   if (result?.ok) {
                     setIsApplyModalOpen(false)
                     resetApplyForm()
                   } else {
-                    setApplyError(result?.message || "Failed to submit application.")
+                    setApplyNotice(result?.message || "Failed to submit application.")
                   }
                   setIsSubmitting(false)
                 }}

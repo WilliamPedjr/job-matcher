@@ -24,6 +24,13 @@ function RegisterPage({
 }) {
   const [showPassword, setShowPassword] = useState(false)
   const [showConfirmPassword, setShowConfirmPassword] = useState(false)
+  const [showErrors, setShowErrors] = useState(false)
+  const fullNameError = !fullName.trim()
+  const usernameError = !username.trim()
+  const emailError = !email.trim()
+  const phoneError = !phone.trim()
+  const passwordError = !password.trim()
+  const confirmPasswordError = !confirmPassword.trim()
 
   return (
     <main className="register-shell">
@@ -50,12 +57,18 @@ function RegisterPage({
               Fill in the details below to get started with LNU RecruitIQ.
             </p>
 
-          <form className="register-form" onSubmit={onSubmit}>
+          <form
+            className="register-form"
+            onSubmit={(e) => {
+              setShowErrors(true)
+              onSubmit(e)
+            }}
+          >
             <label className="register-label">
               Full Name <span>(Name Middle Initial Family Name)</span>
             </label>
             <input
-              className="register-input"
+              className={`register-input ${showErrors && fullNameError ? "input-error" : ""}`}
               type="text"
               value={fullName}
               onChange={(e) => setFullName(e.target.value)}
@@ -65,7 +78,7 @@ function RegisterPage({
 
             <label className="register-label">Username</label>
             <input
-              className="register-input"
+              className={`register-input ${showErrors && usernameError ? "input-error" : ""}`}
               type="text"
               value={username}
               onChange={(e) => setUsername(e.target.value)}
@@ -75,7 +88,7 @@ function RegisterPage({
 
             <label className="register-label">Email Address</label>
             <input
-              className="register-input"
+              className={`register-input ${showErrors && emailError ? "input-error" : ""}`}
               type="email"
               value={email}
               onChange={(e) => setEmail(e.target.value)}
@@ -85,7 +98,7 @@ function RegisterPage({
 
             <label className="register-label">Phone</label>
             <input
-              className="register-input"
+              className={`register-input ${showErrors && phoneError ? "input-error" : ""}`}
               type="tel"
               inputMode="numeric"
               value={`+63${phone}`}
@@ -107,7 +120,7 @@ function RegisterPage({
             <label className="register-label">Password</label>
             <div className="register-input-wrap">
               <input
-                className="register-input"
+                className={`register-input ${showErrors && passwordError ? "input-error" : ""}`}
                 type={showPassword ? "text" : "password"}
                 value={password}
                 onChange={(e) => setPassword(e.target.value)}
@@ -134,7 +147,7 @@ function RegisterPage({
             <label className="register-label">Confirm Password</label>
             <div className="register-input-wrap">
               <input
-                className="register-input"
+                className={`register-input ${showErrors && confirmPasswordError ? "input-error" : ""}`}
                 type={showConfirmPassword ? "text" : "password"}
                 value={confirmPassword}
                 onChange={(e) => setConfirmPassword(e.target.value)}
