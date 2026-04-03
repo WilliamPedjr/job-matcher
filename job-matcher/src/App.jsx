@@ -13,6 +13,105 @@ import RegisterPage from './RegisterPage'
 import CustomDropdown from './CustomDropdown'
 import profileIcon from './assets/circle-user-solid-full.svg'
 import bellIcon from './assets/bell-solid-full.svg'
+import html2canvas from "html2canvas"
+
+function parseSkills(skillsText) {
+  return (skillsText || "")
+    .split(",")
+    .map((s) => s.trim())
+    .filter(Boolean)
+}
+
+function parseMissingSkills(skillsText) {
+  return (skillsText || "")
+    .split(",")
+    .map((s) => s.trim())
+    .filter(Boolean)
+}
+
+function extractEducationLines(text) {
+  const source = (text || "").replace(/\r/g, "\n")
+  const lines = source
+    .split(/\n+/)
+    .map((line) => line.trim())
+    .filter(Boolean)
+
+  const directMatches = lines
+    .filter((line) => /(university|college|school|institute|academy)/i.test(line))
+    .slice(0, 6)
+
+  if (directMatches.length) {
+    return directMatches
+  }
+
+  const compact = source.replace(/\s+/g, " ").trim()
+  const chunks = compact
+    .split(/(?=\b(?:elementary|high school|college|university|institute|academy|bachelor|master|phd|associate)\b)/i)
+    .map((chunk) => chunk.trim())
+    .filter((chunk) => /(school|college|university|institute|academy|bachelor|master|phd|associate)/i.test(chunk))
+    .map((chunk) => chunk.replace(/\s*(work history|experience|skills|summary)\b.*/i, "").trim())
+    .filter(Boolean)
+
+  return Array.from(new Set(chunks)).slice(0, 6)
+}
+
+function extractExperienceLines(text) {
+  const source = (text || "").replace(/\r/g, "\n")
+  const lines = source
+    .split(/\n+/)
+    .map((line) => line.trim())
+    .filter(Boolean)
+
+  const experienceHeaderPattern = /^(work\s+experience|professional\s+experience|employment|employment\s+history|work\s+history|experience)\s*:?\s*$/i
+  const stopHeaderPattern = /^(education|skills?|projects?|certifications?|summary|profile|references)\s*:?\s*$/i
+  const dateRangePattern = /\b(?:(?:jan|feb|mar|apr|may|jun|jul|aug|sep|sept|oct|nov|dec)[a-z]*\s+\d{4}|\d{4})\s*(?:-|–|to)\s*(?:present|current|now|(?:(?:jan|feb|mar|apr|may|jun|jul|aug|sep|sept|oct|nov|dec)[a-z]*\s+\d{4}|\d{4}))\b/i
+  const titlePattern = /\b(?:software|frontend|front-end|backend|full[-\s]?stack|web|mobile|qa|test|data|product|project|systems?)?\s*(?:engineer|developer|analyst|manager|lead|specialist|consultant|intern|assistant|architect|administrator|officer|designer)\b/i
+  const companyPattern = /\b(?:at|with)\s+[A-Z][A-Za-z0-9&.,\- ]{1,80}\b|\b[A-Z][A-Za-z0-9&.,\- ]+\s(?:inc\.?|corp\.?|llc|ltd)\b/i
+  const yearsPattern = /\d+\+?\s*years?/i
+  const bulletActionPattern = /^(created|developed|implemented|designed|optimized|built|improved|maintained|led|managed|automated|deployed|integrated)\b/i
+
+  const sectionLines = []
+  let inExperienceSection = false
+  for (const line of lines) {
+    if (experienceHeaderPattern.test(line)) {
+      inExperienceSection = true
+      continue
+    }
+    if (stopHeaderPattern.test(line)) {
+      inExperienceSection = false
+      continue
+    }
+    if (inExperienceSection) {
+      sectionLines.push(line)
+    }
+  }
+
+  const pool = sectionLines.length ? sectionLines : lines
+  const results = []
+  const seen = new Set()
+
+  for (let i = 0; i < pool.length; i += 1) {
+    const line = pool[i]
+    const isAnchor = dateRangePattern.test(line) || titlePattern.test(line) || companyPattern.test(line) || yearsPattern.test(line)
+    if (!isAnchor || line.length < 8) continue
+
+    let entry = line
+    const next = pool[i + 1]
+    if (next && bulletActionPattern.test(next) && next.length > 12) {
+      entry = `${entry} | ${next}`
+      i += 1
+    }
+
+    const normalized = entry.toLowerCase()
+    if (!seen.has(normalized)) {
+      seen.add(normalized)
+      results.push(entry)
+    }
+    if (results.length >= 8) break
+  }
+
+  return results
+}
 
 function App() {
   const ADMIN_EMAIL = "admin"
@@ -86,6 +185,8 @@ function App() {
   const [selectedJobView, setSelectedJobView] = useState(null)
   const [confirmDeleteId, setConfirmDeleteId] = useState(null)
   const [confirmDeleteContext, setConfirmDeleteContext] = useState("application")
+  const [summaryItem, setSummaryItem] = useState(null)
+  const summaryRef = useRef(null)
   const isHandlingPopState = useRef(false)
   const isEmployer = userRole === "employer"
   const isAdmin = userRole === "admin"
@@ -441,6 +542,12 @@ function App() {
       return
     }
     setRegisterError("")
+    const phoneDigits = String(registerPhone || "").replace(/\D/g, "")
+    const withoutCountryPrefix = phoneDigits.startsWith("63") ? phoneDigits.slice(2) : phoneDigits
+    const withoutLocalPrefix = withoutCountryPrefix.startsWith("0")
+      ? withoutCountryPrefix.slice(1)
+      : withoutCountryPrefix
+    const normalizedPhone = `+63${withoutLocalPrefix.slice(0, 10)}`
     try {
       const response = await fetch("http://localhost:5000/job-seekers/register", {
         method: "POST",
@@ -449,7 +556,7 @@ function App() {
           fullName: registerFullName.trim(),
           username: registerUsername.trim(),
           email: registerEmail.trim(),
-          phone: registerPhone.trim(),
+          phone: normalizedPhone,
           password: registerPassword
         })
       })
@@ -490,6 +597,82 @@ function App() {
     setActivePage("applicants")
     setSelectedJobView(null)
   }
+
+  const downloadApplicantSummary = (item) => {
+    if (!item) return
+    const name = item.name || "Applicant"
+    const appliedJob = item.applied_job_title || item.matched_job_title || "-"
+    const uploadedAt = item.uploaded_at ? new Date(item.uploaded_at).toLocaleString() : "-"
+    const lines = [
+      "Applicant Summary",
+      "=================",
+      `Name: ${name}`,
+      `Email: ${item.email || "-"}`,
+      `Phone: ${item.phone || "-"}`,
+      `Applied Job: ${appliedJob}`,
+      `Match Score: ${item.match_score != null ? `${Number(item.match_score).toFixed(2)}%` : "-"}`,
+      `Project Score: ${item.project_score != null ? `${Number(item.project_score).toFixed(2)}%` : "-"}`,
+      `Classification: ${item.classification || "-"}`,
+      `Matched Skills: ${item.matched_skills || "-"}`,
+      `Missing Skills: ${item.missing_skills || "-"}`,
+      `Uploaded File: ${item.original_name || "-"}`,
+      `Uploaded At: ${uploadedAt}`
+    ]
+    const blob = new Blob([lines.join("\n")], { type: "text/plain;charset=utf-8" })
+    const url = URL.createObjectURL(blob)
+    const anchor = document.createElement("a")
+    const safeName = String(name || "applicant")
+      .toLowerCase()
+      .replace(/[^a-z0-9]+/g, "-")
+      .replace(/(^-|-$)/g, "")
+    anchor.href = url
+    anchor.download = `${safeName || "applicant"}-summary.txt`
+    document.body.appendChild(anchor)
+    anchor.click()
+    document.body.removeChild(anchor)
+    URL.revokeObjectURL(url)
+  }
+
+  const downloadApplicantSummaryImage = (item) => {
+    if (!item) return
+    const safeName = String(item.name || "applicant")
+      .toLowerCase()
+      .replace(/[^a-z0-9]+/g, "-")
+      .replace(/(^-|-$)/g, "")
+
+    setSummaryItem(item)
+    requestAnimationFrame(() => {
+      const node = summaryRef.current
+      if (!node) return
+      html2canvas(node, {
+        backgroundColor: "#f1f2f4",
+        scale: 2,
+        useCORS: true
+      }).then((canvas) => {
+        canvas.toBlob((blob) => {
+          if (!blob) return
+          const url = URL.createObjectURL(blob)
+          const anchor = document.createElement("a")
+          anchor.href = url
+          anchor.download = `${safeName || "applicant"}-summary.png`
+          document.body.appendChild(anchor)
+          anchor.click()
+          document.body.removeChild(anchor)
+          URL.revokeObjectURL(url)
+        }, "image/png")
+      })
+    })
+  }
+
+  const summaryEducation = extractEducationLines(summaryItem?.extracted_text)
+  const summaryExperience = extractExperienceLines(summaryItem?.extracted_text)
+  const summaryMatchedSkills = parseSkills(summaryItem?.matched_skills)
+  const summaryMissingSkills = parseMissingSkills(summaryItem?.missing_skills)
+  const summaryOverall = summaryItem?.match_score != null ? Number(summaryItem.match_score) : 0
+  const summarySkillsMatch = Math.min(100, summaryMatchedSkills.length * 12)
+  const summaryEducationMatch = summaryEducation.length ? 60 : 10
+  const summaryExperienceMatch = summaryExperience.length ? 55 : 0
+  const summaryProjectMatch = summaryItem?.project_score != null ? Number(summaryItem.project_score) : 0
 
   const handleTopNav = (page) => {
     setActivePage(page)
@@ -1009,8 +1192,8 @@ function App() {
         />
       )
     }
-    if (activePage === "users" && isAdmin) {
-      return <UsersPage />
+    if (activePage === "users" && (isAdmin || isEmployer)) {
+      return <UsersPage isEmployer={isEmployer} />
     }
     if (activePage === "jobs") {
       return (
@@ -1186,7 +1369,7 @@ function App() {
               Applicant
             </button>
           )}
-          {isAdmin && (
+          {(isAdmin || isEmployer) && (
             <button
               type="button"
               className={`topnav-link ${activePage === "users" ? "active" : ""}`}
@@ -1509,19 +1692,19 @@ function App() {
       )}
 
       {activePage === "applicants" && !viewItem && !isJobSeeker && (
-        <section className="panel">
-          <div className="panel-header">
+        <section className="panel applicants-panel">
+          <div className="applicants-hero">
             <div>
               <h2 className="title">Applicants</h2>
               <p className="subtitle">View and manage all job applicants ranked by qualifications</p>
             </div>
           </div>
 
-          <div className="filters">
+          <div className="filters applicants-filters">
             <input
               className="input"
               type="text"
-              placeholder="Search jobs.."
+              placeholder="Search..."
               value={searchTerm}
               onChange={(e) => setSearchTerm(e.target.value)}
             />
@@ -1534,9 +1717,9 @@ function App() {
             />
           </div>
 
-          <div className="panel-meta">
+          <div className="panel-meta applicants-meta">
             <p>Showing {filteredUploads.length} of {uploads.length} applicants</p>
-            <div className="sort-wrap">
+            <div className="sort-wrap applicants-sort">
               <span>Sort by:</span>
               <button
                 className={`sort-btn ${sortConfig.key === "name" ? "active" : ""}`}
@@ -1704,6 +1887,137 @@ function App() {
 
       {mainContent}
 
+      {summaryItem && (
+        <div
+          style={{
+            position: "fixed",
+            left: "-10000px",
+            top: 0,
+            width: "1100px",
+            padding: "24px",
+            background: "#f1f2f4",
+            zIndex: -1
+          }}
+        >
+          <div ref={summaryRef}>
+            <section className="candidate-page">
+              <div className="candidate-head">
+                <div>
+                  <h2 className="candidate-name">{summaryItem?.name || "(No name)"}</h2>
+                  <p className="candidate-role">
+                    Applied for <strong>{summaryItem?.applied_job_title || summaryItem?.matched_job_title || "No matched role yet"}</strong>
+                  </p>
+                </div>
+              </div>
+
+              <div className="candidate-layout">
+                <div className="candidate-left">
+                  <section className="candidate-card">
+                    <h3>Contact Information</h3>
+                    <p>{summaryItem?.email || "No email"}</p>
+                    <p>{summaryItem?.phone || "No phone"}</p>
+                    <p>{summaryItem?.original_name || "-"}</p>
+                  </section>
+
+                  <section className="candidate-card">
+                    <h3>Supporting Documents</h3>
+                    <p className="muted">No supporting documents uploaded.</p>
+                  </section>
+
+                  <section className="candidate-card">
+                    <h3>Skills</h3>
+                    <p className="card-note">Extracted from resume using NLP analysis</p>
+                    <div className="skills-cloud">
+                      {summaryMatchedSkills.length ? (
+                        summaryMatchedSkills.map((skill) => (
+                          <span key={skill} className="skill-pill">{skill}</span>
+                        ))
+                      ) : (
+                        <span className="muted">No matched skills found.</span>
+                      )}
+                    </div>
+                  </section>
+
+                  <section className="candidate-card">
+                    <h3>Education</h3>
+                    {summaryEducation.length ? (
+                      summaryEducation.map((line, idx) => (
+                        <p key={`${line}-${idx}`}>{line}</p>
+                      ))
+                    ) : (
+                      <p className="muted">No education data extracted.</p>
+                    )}
+                  </section>
+
+                  <section className="candidate-card">
+                    <h3>Work Experience</h3>
+                    {summaryExperience.length ? (
+                      summaryExperience.map((line, idx) => (
+                        <p key={`${line}-${idx}`}>{line}</p>
+                      ))
+                    ) : (
+                      <p className="muted">No clear work experience extracted.</p>
+                    )}
+                  </section>
+                </div>
+
+                <div className="candidate-right">
+                  <section className="candidate-card">
+                    <h3>Qualification Status</h3>
+                    <p className={`status-chip ${(summaryItem?.classification || "").toLowerCase().replace(/\s+/g, "-")}`}>
+                      {summaryItem?.classification || "Not Qualified"}
+                    </p>
+                    <div className="overall-box">
+                      <p className="overall-score">{`${summaryOverall.toFixed(0)}%`}</p>
+                      <p>Overall Match Score</p>
+                    </div>
+                  </section>
+
+                  <section className="candidate-card">
+                    <h3>Match Score Breakdown</h3>
+                    <div className="breakdown-list">
+                      <div className="bar-row">
+                        <div className="bar-label"><span>Overall Match</span><strong>{summaryOverall.toFixed(0)}%</strong></div>
+                        <div className="bar"><div style={{ width: `${summaryOverall}%` }} /></div>
+                      </div>
+                      <div className="bar-row">
+                        <div className="bar-label"><span>Skills Match</span><strong>{summarySkillsMatch}%</strong></div>
+                        <div className="bar"><div style={{ width: `${summarySkillsMatch}%` }} /></div>
+                      </div>
+                      <div className="bar-row">
+                        <div className="bar-label"><span>Education Match</span><strong>{summaryEducationMatch}%</strong></div>
+                        <div className="bar"><div style={{ width: `${summaryEducationMatch}%` }} /></div>
+                      </div>
+                      <div className="bar-row">
+                        <div className="bar-label"><span>Experience Match</span><strong>{summaryExperienceMatch}%</strong></div>
+                        <div className="bar"><div style={{ width: `${summaryExperienceMatch}%` }} /></div>
+                      </div>
+                      <div className="bar-row">
+                        <div className="bar-label"><span>Project Match</span><strong>{summaryProjectMatch.toFixed(0)}%</strong></div>
+                        <div className="bar"><div style={{ width: `${summaryProjectMatch}%` }} /></div>
+                      </div>
+                    </div>
+                  </section>
+
+                  <section className="candidate-card">
+                    <h3>Missing Skills</h3>
+                    {summaryMissingSkills.length ? (
+                      <div className="skills-cloud">
+                        {summaryMissingSkills.map((skill) => (
+                          <span key={`missing-${skill}`} className="skill-pill">{skill}</span>
+                        ))}
+                      </div>
+                    ) : (
+                      <p className="muted">No missing skills detected.</p>
+                    )}
+                  </section>
+                </div>
+              </div>
+            </section>
+          </div>
+        </div>
+      )}
+
       {activePage === "applicants" && actionsMenu && !isJobSeeker && (
         <div
           className="actions-menu actions-menu-floating"
@@ -1720,13 +2034,16 @@ function App() {
           >
             View
           </button>
-          <a
+          <button
+            type="button"
             className="actions-menu-item"
-            href={`http://localhost:5000/uploads/${actionsMenu.item.id}/download`}
-            onClick={() => setActionsMenu(null)}
+            onClick={() => {
+              downloadApplicantSummaryImage(actionsMenu.item)
+              setActionsMenu(null)
+            }}
           >
-            Download
-          </a>
+            Download Summary (Image)
+          </button>
           <button
             type="button"
             className="actions-menu-item danger"

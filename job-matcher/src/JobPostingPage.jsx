@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from 'react'
+import { useEffect, useMemo, useRef, useState } from 'react'
 import './JobPostingPage.css'
 import CustomDropdown from './CustomDropdown'
 
@@ -11,6 +11,7 @@ function JobPostingPage({ uploads = [], isEmployer = false, isJobSeeker = false,
   const [modalSortConfig, setModalSortConfig] = useState({ key: "date", direction: "desc" })
   const [actionsJobId, setActionsJobId] = useState(null)
   const [isCreateModalOpen, setIsCreateModalOpen] = useState(false)
+  const [editingJobId, setEditingJobId] = useState(null)
   const [newJobTitle, setNewJobTitle] = useState("")
   const [newJobDescription, setNewJobDescription] = useState("")
   const [newJobDepartment, setNewJobDepartment] = useState("Information Technology")
@@ -29,6 +30,8 @@ function JobPostingPage({ uploads = [], isEmployer = false, isJobSeeker = false,
   const [createJobNotice, setCreateJobNotice] = useState("")
   const [isJobTitleOpen, setIsJobTitleOpen] = useState(false)
   const [confirmDeleteJobId, setConfirmDeleteJobId] = useState(null)
+  const isEditingJob = editingJobId != null
+  const descriptionRef = useRef(null)
 
   useEffect(() => {
     if (!createJobStatus) return
@@ -38,6 +41,12 @@ function JobPostingPage({ uploads = [], isEmployer = false, isJobSeeker = false,
     }, 2600)
     return () => clearTimeout(timer)
   }, [createJobStatus])
+
+  useEffect(() => {
+    if (!descriptionRef.current) return
+    descriptionRef.current.style.height = "auto"
+    descriptionRef.current.style.height = `${descriptionRef.current.scrollHeight}px`
+  }, [newJobDescription, isCreateModalOpen])
 
   const showCreateJobNotice = (status, notice) => {
     setCreateJobStatus(status)
@@ -176,6 +185,7 @@ function JobPostingPage({ uploads = [], isEmployer = false, isJobSeeker = false,
   useEffect(() => {
     const key = newJobTitle.trim().toLowerCase()
     if (!key) return
+    if (isEditingJob) return
     const matched = templateByTitle.get(key)
     if (!matched) return
     if (matched.source === "template") {
@@ -275,6 +285,40 @@ function JobPostingPage({ uploads = [], isEmployer = false, isJobSeeker = false,
     alert(`Application submitted for ${job.title}.`)
   }
 
+  const resetJobForm = () => {
+    setNewJobTitle("")
+    setNewJobDescription("")
+    setNewJobDepartment("Information Technology")
+    setNewJobType("Full-time")
+    setNewJobStatus("active")
+    setNewRequiredSkills("")
+    setNewMinimumEducation("")
+    setNewMinimumExperienceYears("0")
+    setNewSalaryMin("")
+    setNewSalaryMax("")
+  }
+
+  const openEditJobModal = (job) => {
+    if (!job?.id) return
+    setEditingJobId(job.id)
+    setNewJobTitle(job.title || "")
+    setNewJobDescription(job.description || "")
+    setNewJobDepartment(job.department || "Information Technology")
+    setNewJobType(job.type || "Full-time")
+    setNewJobStatus(job.status || "active")
+    setNewRequiredSkills(job.requiredSkills || "")
+    setNewMinimumEducation(job.minimumEducation || "")
+    setNewMinimumExperienceYears(String(job.minimumExperienceYears ?? 0))
+    setNewSalaryMin(job.salaryMin != null ? String(job.salaryMin) : "")
+    setNewSalaryMax(job.salaryMax != null ? String(job.salaryMax) : "")
+    setIsCreateModalOpen(true)
+  }
+
+  const closeCreateModal = () => {
+    setIsCreateModalOpen(false)
+    setEditingJobId(null)
+  }
+
   const createJobPost = async () => {
     const hasMissingField = (
       !newJobTitle.trim() ||
@@ -339,17 +383,8 @@ function JobPostingPage({ uploads = [], isEmployer = false, isJobSeeker = false,
         throw new Error(payload?.message || "Failed to create job post.")
       }
 
-      setIsCreateModalOpen(false)
-      setNewJobTitle("")
-      setNewJobDescription("")
-      setNewJobDepartment("Information Technology")
-      setNewJobType("Full-time")
-      setNewJobStatus("active")
-      setNewRequiredSkills("")
-      setNewMinimumEducation("")
-      setNewMinimumExperienceYears("0")
-      setNewSalaryMin("")
-      setNewSalaryMax("")
+      closeCreateModal()
+      resetJobForm()
       showCreateJobNotice("success", "Job post created successfully.")
       await fetchJobs()
       await onJobsChanged?.()
@@ -360,12 +395,107 @@ function JobPostingPage({ uploads = [], isEmployer = false, isJobSeeker = false,
     }
   }
 
-  return (
-    <section className="jobs-panel">
-      <h1 className="jobs-title">New Jobs</h1>
-      <p className="jobs-subtitle">Overview of Job List and Requirements</p>
+  const updateJobPost = async () => {
+    if (!editingJobId) return
+    const hasMissingField = (
+      !newJobTitle.trim() ||
+      !newJobDescription.trim() ||
+      !newJobDepartment.trim() ||
+      !newJobType.trim() ||
+      !newJobStatus.trim() ||
+      !newRequiredSkills.trim() ||
+      !newMinimumEducation.trim() ||
+      newMinimumExperienceYears === "" ||
+      newSalaryMin === "" ||
+      newSalaryMax === ""
+    )
 
-      <div className="jobs-controls">
+    if (hasMissingField) {
+      showCreateJobNotice("fail", "Please fill in all fields before saving changes.")
+      return
+    }
+
+    const minExp = Number(newMinimumExperienceYears)
+    const salaryMin = Number(newSalaryMin)
+    const salaryMax = Number(newSalaryMax)
+
+    if (Number.isNaN(minExp) || minExp < 0) {
+      showCreateJobNotice("fail", "Minimum experience must be a valid non-negative number.")
+      return
+    }
+
+    if (Number.isNaN(salaryMin) || Number.isNaN(salaryMax) || salaryMin < 0 || salaryMax < 0) {
+      showCreateJobNotice("fail", "Salary range must be valid non-negative numbers.")
+      return
+    }
+
+    if (salaryMax < salaryMin) {
+      showCreateJobNotice("fail", "Salary Range (Max) must be greater than or equal to Salary Range (Min).")
+      return
+    }
+
+    setIsCreatingJob(true)
+    setError("")
+    try {
+      const response = await fetch(`http://localhost:5000/jobs/${editingJobId}`, {
+        method: "PUT",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          title: newJobTitle.trim(),
+          description: newJobDescription.trim(),
+          department: newJobDepartment.trim(),
+          location: defaultJobLocation,
+          type: newJobType.trim(),
+          status: newJobStatus,
+          requiredSkills: newRequiredSkills.trim(),
+          minimumEducation: newMinimumEducation,
+          minimumExperienceYears: minExp,
+          salaryMin,
+          salaryMax
+        })
+      })
+
+      if (!response.ok) {
+        const payload = await response.json().catch(() => null)
+        throw new Error(payload?.message || "Failed to update job post.")
+      }
+
+      closeCreateModal()
+      resetJobForm()
+      showCreateJobNotice("success", "Job post updated successfully.")
+      await fetchJobs()
+      await onJobsChanged?.()
+    } catch (err) {
+      showCreateJobNotice("fail", err.message || "Failed to update job post.")
+    } finally {
+      setIsCreatingJob(false)
+    }
+  }
+
+  return (
+    <section className="jobs-panel jobs-panel-modern">
+      <div className="jobs-hero">
+        <div>
+          <p className="jobs-kicker">Job Posting</p>
+          <h1 className="jobs-title">New Jobs</h1>
+          <p className="jobs-subtitle">Overview of Job List and Requirements</p>
+        </div>
+        {!isJobSeeker && (
+          <button
+            type="button"
+            className="btn jobs-create-btn"
+            onClick={() => {
+              if (isJobSeeker) return
+              setEditingJobId(null)
+              setIsCreateModalOpen(true)
+            }}
+          >
+            + Create Job
+          </button>
+        )}
+      </div>
+
+      <div className="jobs-controls jobs-controls-modern">
         <input
           className="input jobs-search"
           type="text"
@@ -380,21 +510,9 @@ function JobPostingPage({ uploads = [], isEmployer = false, isJobSeeker = false,
           onChange={setStatusFilter}
           placeholder="All Status"
         />
-        {!isJobSeeker && (
-          <button
-            type="button"
-            className="btn jobs-create-btn"
-            onClick={() => {
-              if (isJobSeeker) return
-              setIsCreateModalOpen(true)
-            }}
-          >
-            + Create Job
-          </button>
-        )}
       </div>
 
-      <div className="jobs-list">
+      <div className="jobs-grid">
         {isLoading ? (
           <p className="muted">Loading jobs...</p>
         ) : error ? (
@@ -403,80 +521,110 @@ function JobPostingPage({ uploads = [], isEmployer = false, isJobSeeker = false,
           <p className="muted">No jobs found.</p>
         ) : (
           filteredJobs.map((job) => (
-            <article key={job.id ?? `template-${job.title}`} className="job-card">
-              <div className="job-card-top">
-                <div className="job-main">
-                  <h2>{job.title}</h2>
+            <article key={job.id ?? `template-${job.title}`} className="job-card job-card-modern">
+              <div className="job-card-head">
+                <div>
+                  {isJobSeeker ? (
+                    <button
+                      type="button"
+                      className="job-title-link"
+                      onClick={() => onViewJob?.(job)}
+                    >
+                      {job.title}
+                    </button>
+                  ) : (
+                    <button
+                      type="button"
+                      className="job-title-link"
+                      onClick={() => openEditJobModal(job)}
+                    >
+                      {job.title}
+                    </button>
+                  )}
+                  <p className="job-card-dept">{job.department || "-"}</p>
+                </div>
+                <div className="job-card-actions">
                   <span className={`job-status ${String(job.status || "active").toLowerCase()}`}>
                     {String(job.status || "active").toLowerCase()}
                   </span>
+                  {job.id != null && (
+                    <>
+                      <button
+                        className="job-more"
+                        type="button"
+                        onClick={(e) => {
+                          e.stopPropagation()
+                          setActionsJobId((prev) => (prev === job.id ? null : job.id))
+                        }}
+                      >
+                        ...
+                      </button>
+                      {actionsJobId === job.id && (
+                        <div className="job-actions-menu" onClick={(e) => e.stopPropagation()}>
+                          {isJobSeeker ? (
+                            <button
+                              type="button"
+                              className="actions-menu-item"
+                              onClick={() => {
+                                setActionsJobId(null)
+                                onViewJob?.(job)
+                              }}
+                            >
+                              View Details
+                            </button>
+                          ) : (
+                            <>
+                              <button
+                                type="button"
+                                className="actions-menu-item"
+                                onClick={() => {
+                                  setActionsJobId(null)
+                                  openEditJobModal(job)
+                                }}
+                              >
+                                Edit Details
+                              </button>
+                              <button
+                                type="button"
+                                className="actions-menu-item"
+                                onClick={() => updateJobStatus(job.id, "active")}
+                              >
+                                Set Active
+                              </button>
+                              <button
+                                type="button"
+                                className="actions-menu-item"
+                                onClick={() => updateJobStatus(job.id, "closed")}
+                              >
+                                Set Closed
+                              </button>
+                              <button
+                                type="button"
+                                className="actions-menu-item danger"
+                                onClick={() => deleteJobPost(job.id)}
+                              >
+                                Delete Post
+                              </button>
+                            </>
+                          )}
+                        </div>
+                      )}
+                    </>
+                  )}
                 </div>
-                {job.id != null && (
-                  <>
-                    <button
-                      className="job-more"
-                      type="button"
-                      onClick={(e) => {
-                        e.stopPropagation()
-                        setActionsJobId((prev) => (prev === job.id ? null : job.id))
-                      }}
-                    >
-                      ...
-                    </button>
-                    {actionsJobId === job.id && (
-                      <div className="job-actions-menu" onClick={(e) => e.stopPropagation()}>
-                        {isJobSeeker ? (
-                          <button
-                            type="button"
-                            className="actions-menu-item"
-                            onClick={() => {
-                              setActionsJobId(null)
-                              onViewJob?.(job)
-                            }}
-                          >
-                            View Details
-                          </button>
-                        ) : (
-                          <>
-                            <button
-                              type="button"
-                              className="actions-menu-item"
-                              onClick={() => updateJobStatus(job.id, "active")}
-                            >
-                              Set Active
-                            </button>
-                            <button
-                              type="button"
-                              className="actions-menu-item"
-                              onClick={() => updateJobStatus(job.id, "closed")}
-                            >
-                              Set Closed
-                            </button>
-                            <button
-                              type="button"
-                              className="actions-menu-item danger"
-                              onClick={() => deleteJobPost(job.id)}
-                            >
-                              Delete Post
-                            </button>
-                          </>
-                        )}
-                      </div>
-                    )}
-                  </>
-                )}
               </div>
 
-              <p className="job-meta">
-                {job.department}  |  {job.location}  |  {job.type}
-                {job.source === "template" && "  |  template"}
-              </p>
+              <div className="job-card-chips">
+                <span className="job-chip">{job.location || "-"}</span>
+                <span className="job-chip chip-outline">{job.type || "-"}</span>
+                {job.source === "template" && <span className="job-chip chip-muted">template</span>}
+              </div>
 
               <p className="job-description">{job.description}</p>
 
               {!isJobSeeker && (
                 <button
-                  className="job-applicants"
+                  className="job-applicants job-applicants-bottom"
                   type="button"
                   onClick={() => {
                     setSelectedJobTitle(job.title)
@@ -628,201 +776,227 @@ function JobPostingPage({ uploads = [], isEmployer = false, isJobSeeker = false,
       )}
 
       {isCreateModalOpen && !isJobSeeker && (
-        <div className="modal-overlay" onClick={() => setIsCreateModalOpen(false)}>
+        <div className="modal-overlay" onClick={closeCreateModal}>
           <div className="modal-card modal-modern create-job-modal" onClick={(e) => e.stopPropagation()}>
             <div className="modal-header create-job-header">
               <div>
-                <h3>Job Details</h3>
+                <h3>{isEditingJob ? "Edit Job Details" : "Job Details"}</h3>
                 <p className="create-job-subtitle">Basic information about the position</p>
               </div>
-              <button type="button" className="close-x" onClick={() => setIsCreateModalOpen(false)}>×</button>
+              <button type="button" className="close-x" onClick={closeCreateModal}>×</button>
             </div>
 
-            <div className="modal-grid">
-              <div className="field-group">
-                <label>Job Title</label>
-                <div
-                  className="autocomplete"
-                  onClick={(e) => e.stopPropagation()}
-                >
-                  <input
-                    className="input"
-                    type="text"
-                    value={newJobTitle}
-                    onChange={(e) => {
-                      setNewJobTitle(e.target.value)
-                      setIsJobTitleOpen(true)
-                    }}
-                    onFocus={() => setIsJobTitleOpen(true)}
-                    onBlur={() => {
-                      setTimeout(() => setIsJobTitleOpen(false), 0)
-                    }}
-                    placeholder="e.g., Senior Software Engineer"
-                  />
-                  {isJobTitleOpen && filteredJobTitleSuggestions.length > 0 && (
-                    <div className="autocomplete-menu">
-                      {filteredJobTitleSuggestions.map((title) => (
-                        <button
-                          key={`job-title-${title}`}
-                          type="button"
-                          className="autocomplete-item"
-                          onMouseDown={(e) => {
-                            e.preventDefault()
-                            setNewJobTitle(title)
-                            setIsJobTitleOpen(false)
-                          }}
-                        >
-                          {title}
-                        </button>
-                      ))}
+            <div className="create-job-layout">
+              <div className="create-job-left">
+                <section className="create-job-panel">
+                  <div className="create-job-panel-head">
+                    <div>
+                      <h4>Role Overview</h4>
+                      <p>Define the core details for this opening.</p>
                     </div>
-                  )}
-                </div>
-              </div>
+                    <span className="create-job-chip">Required</span>
+                  </div>
 
-              <div className="field-group">
-                <label>Department</label>
-                <input
-                  className="input"
-                  type="text"
-                  value={newJobDepartment}
-                  onChange={(e) => setNewJobDepartment(e.target.value)}
-                  placeholder="e.g., Engineering"
-                />
+                  <div className="modal-grid">
+                    <div className="field-group">
+                      <label>Job Title</label>
+                      <div
+                        className="autocomplete"
+                        onClick={(e) => e.stopPropagation()}
+                      >
+                        <input
+                          className="input"
+                          type="text"
+                          value={newJobTitle}
+                          onChange={(e) => {
+                            setNewJobTitle(e.target.value)
+                            setIsJobTitleOpen(true)
+                          }}
+                          onFocus={() => setIsJobTitleOpen(true)}
+                          onBlur={() => {
+                            setTimeout(() => setIsJobTitleOpen(false), 0)
+                          }}
+                          placeholder="e.g., Senior Software Engineer"
+                        />
+                        {isJobTitleOpen && filteredJobTitleSuggestions.length > 0 && (
+                          <div className="autocomplete-menu">
+                            {filteredJobTitleSuggestions.map((title) => (
+                              <button
+                                key={`job-title-${title}`}
+                                type="button"
+                                className="autocomplete-item"
+                                onMouseDown={(e) => {
+                                  e.preventDefault()
+                                  setNewJobTitle(title)
+                                  setIsJobTitleOpen(false)
+                                }}
+                              >
+                                {title}
+                              </button>
+                            ))}
+                          </div>
+                        )}
+                      </div>
+                    </div>
+
+                    <div className="field-group">
+                      <label>Department</label>
+                      <input
+                        className="input"
+                        type="text"
+                        value={newJobDepartment}
+                        onChange={(e) => setNewJobDepartment(e.target.value)}
+                        placeholder="e.g., Engineering"
+                      />
+                    </div>
+                  </div>
+
+                  <div className="modal-grid">
+                    <div className="field-group">
+                      <label>Employment Type</label>
+                      <CustomDropdown
+                        className="input-dropdown"
+                        options={[
+                          { value: "Full-time", label: "Full-time" },
+                          { value: "Part-time", label: "Part-time" },
+                          { value: "Contract", label: "Contract" },
+                          { value: "Internship", label: "Internship" }
+                        ]}
+                        value={newJobType}
+                        onChange={setNewJobType}
+                        placeholder="Full-time"
+                      />
+                    </div>
+
+                    <div className="field-group">
+                      <label>Location</label>
+                      <input
+                        className="input"
+                        type="text"
+                        value={defaultJobLocation}
+                        disabled
+                      />
+                    </div>
+                  </div>
+
+                  <div className="field-group create-job-status-wrap">
+                    <label>Status</label>
+                    <CustomDropdown
+                      className="input-dropdown create-job-status"
+                      options={[
+                        { value: "active", label: "Active" },
+                        { value: "closed", label: "Closed" }
+                      ]}
+                      value={newJobStatus}
+                      onChange={setNewJobStatus}
+                      placeholder="Active"
+                    />
+                  </div>
+                </section>
+
+                <section className="create-job-panel">
+                  <div className="create-job-panel-head">
+                    <div>
+                      <h4>Role Description</h4>
+                      <p>What should applicants know about the role?</p>
+                    </div>
+                  </div>
+                  <div className="field-group">
+                    <label>Description</label>
+                    <textarea
+                      className="input create-job-description"
+                      rows={4}
+                      ref={descriptionRef}
+                      value={newJobDescription}
+                        placeholder="Describe the role, responsibilities and what you're looking for...."
+                      />
+                  </div>
+                </section>
+
+                <section className="create-job-panel">
+                  <div className="create-job-panel-head">
+                    <div>
+                      <h4>Requirements</h4>
+                      <p>Define qualifications for applicant matching.</p>
+                    </div>
+                  </div>
+
+                  <div className="field-group">
+                    <label>Required Skills</label>
+                    <input
+                      className="input"
+                      type="text"
+                      value={newRequiredSkills}
+                      onChange={(e) => setNewRequiredSkills(e.target.value)}
+                      placeholder="Add a skill (e.g., Python, React, Project Management)"
+                    />
+                  </div>
+
+                  <div className="modal-grid">
+                    <div className="field-group">
+                      <label>Minimum Education</label>
+                      <CustomDropdown
+                        className="input-dropdown"
+                        options={[
+                          { value: "", label: "Select education level" },
+                          { value: "High School", label: "High School" },
+                          { value: "Associate Degree", label: "Associate Degree" },
+                          { value: "Bachelor's Degree", label: "Bachelor's Degree" },
+                          { value: "Master's Degree", label: "Master's Degree" },
+                          { value: "Doctorate", label: "Doctorate" }
+                        ]}
+                        value={newMinimumEducation}
+                        onChange={setNewMinimumEducation}
+                        placeholder="Select education level"
+                      />
+                    </div>
+
+                    <div className="field-group">
+                      <label>Minimum Experience (Years)</label>
+                      <input
+                        className="input"
+                        type="number"
+                        min="0"
+                        value={newMinimumExperienceYears}
+                        onChange={(e) => setNewMinimumExperienceYears(e.target.value)}
+                      />
+                    </div>
+                  </div>
+
+                  <div className="modal-grid">
+                    <div className="field-group">
+                      <label>Salary Range (Min)</label>
+                      <input
+                        className="input"
+                        type="number"
+                        min="0"
+                        value={newSalaryMin}
+                        onChange={(e) => setNewSalaryMin(e.target.value)}
+                        placeholder="e.g., 80000"
+                      />
+                    </div>
+
+                    <div className="field-group">
+                      <label>Salary Range (Max)</label>
+                      <input
+                        className="input"
+                        type="number"
+                        min="0"
+                        value={newSalaryMax}
+                        onChange={(e) => setNewSalaryMax(e.target.value)}
+                        placeholder="e.g., 120000"
+                      />
+                    </div>
+                  </div>
+                </section>
               </div>
             </div>
-
-            <div className="modal-grid">
-              <div className="field-group">
-                <label>Employment Type</label>
-                <CustomDropdown
-                  className="input-dropdown"
-                  options={[
-                    { value: "Full-time", label: "Full-time" },
-                    { value: "Part-time", label: "Part-time" },
-                    { value: "Contract", label: "Contract" },
-                    { value: "Internship", label: "Internship" }
-                  ]}
-                  value={newJobType}
-                  onChange={setNewJobType}
-                  placeholder="Full-time"
-                />
-              </div>
-
-              <div className="field-group">
-                <label>Location</label>
-                <input
-                  className="input"
-                  type="text"
-                  value={defaultJobLocation}
-                  disabled
-                />
-              </div>
-            </div>
-
-            <div className="field-group">
-              <label>Description</label>
-              <textarea
-                className="input create-job-description"
-                rows={6}
-                value={newJobDescription}
-                onChange={(e) => setNewJobDescription(e.target.value)}
-                placeholder="Describe the role, responsibilities and what you're looking for...."
-              />
-            </div>
-
-            <div className="field-group create-job-status-wrap">
-              <label>Status</label>
-              <CustomDropdown
-                className="input-dropdown create-job-status"
-                options={[
-                  { value: "active", label: "Active" },
-                  { value: "closed", label: "Closed" }
-                ]}
-                value={newJobStatus}
-                onChange={setNewJobStatus}
-                placeholder="Active"
-              />
-            </div>
-
-            <section className="create-job-requirements">
-              <h4>Requirements</h4>
-              <p className="create-job-subtitle">Define qualifications for applicant matching</p>
-
-              <div className="field-group">
-                <label>Required Skills</label>
-                <input
-                  className="input"
-                  type="text"
-                  value={newRequiredSkills}
-                  onChange={(e) => setNewRequiredSkills(e.target.value)}
-                  placeholder="Add a skill (e.g., Python, React, Project Management)"
-                />
-              </div>
-
-              <div className="modal-grid">
-                <div className="field-group">
-                  <label>Minimum Education</label>
-                  <CustomDropdown
-                    className="input-dropdown"
-                    options={[
-                      { value: "", label: "Select education level" },
-                      { value: "High School", label: "High School" },
-                      { value: "Associate Degree", label: "Associate Degree" },
-                      { value: "Bachelor's Degree", label: "Bachelor's Degree" },
-                      { value: "Master's Degree", label: "Master's Degree" },
-                      { value: "Doctorate", label: "Doctorate" }
-                    ]}
-                    value={newMinimumEducation}
-                    onChange={setNewMinimumEducation}
-                    placeholder="Select education level"
-                  />
-                </div>
-
-                <div className="field-group">
-                  <label>Minimum Experience (Years)</label>
-                  <input
-                    className="input"
-                    type="number"
-                    min="0"
-                    value={newMinimumExperienceYears}
-                    onChange={(e) => setNewMinimumExperienceYears(e.target.value)}
-                  />
-                </div>
-              </div>
-
-              <div className="modal-grid">
-                <div className="field-group">
-                  <label>Salary Range (Min)</label>
-                  <input
-                    className="input"
-                    type="number"
-                    min="0"
-                    value={newSalaryMin}
-                    onChange={(e) => setNewSalaryMin(e.target.value)}
-                    placeholder="e.g., 80000"
-                  />
-                </div>
-
-                <div className="field-group">
-                  <label>Salary Range (Max)</label>
-                  <input
-                    className="input"
-                    type="number"
-                    min="0"
-                    value={newSalaryMax}
-                    onChange={(e) => setNewSalaryMax(e.target.value)}
-                    placeholder="e.g., 120000"
-                  />
-                </div>
-              </div>
-            </section>
 
             <div className="modal-actions">
-              <button className="btn" onClick={createJobPost} disabled={isCreatingJob}>
-                {isCreatingJob ? "Creating..." : "Create Job"}
+              <button className="btn" onClick={isEditingJob ? updateJobPost : createJobPost} disabled={isCreatingJob}>
+                {isCreatingJob ? (isEditingJob ? "Saving..." : "Creating...") : (isEditingJob ? "Save Changes" : "Create Job")}
               </button>
-              <button className="btn btn-secondary" onClick={() => setIsCreateModalOpen(false)}>
+              <button className="btn btn-secondary" onClick={closeCreateModal}>
                 Cancel
               </button>
             </div>

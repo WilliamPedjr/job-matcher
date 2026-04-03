@@ -67,6 +67,17 @@ function ProfilePage({
   const [confirmDeleteEducationId, setConfirmDeleteEducationId] = useState(null)
   const [confirmDeleteExperienceId, setConfirmDeleteExperienceId] = useState(null)
 
+  const normalizePhoneInput = (value) => {
+    const digitsOnly = String(value || "").replace(/\D/g, "")
+    const withoutCountryPrefix = digitsOnly.startsWith("63") ? digitsOnly.slice(2) : digitsOnly
+    const withoutLocalPrefix = withoutCountryPrefix.startsWith("0")
+      ? withoutCountryPrefix.slice(1)
+      : withoutCountryPrefix
+    return withoutLocalPrefix.slice(0, 10)
+  }
+
+  const formatPhoneWithPrefix = (value) => `+63${normalizePhoneInput(value)}`
+
   const resolvedJobSeekerId = jobSeekerId || jobSeekerProfile?.id || null
 
   useEffect(() => {
@@ -113,7 +124,7 @@ function ProfilePage({
       fullName: displayName === "Job Seeker" ? "" : displayName,
       username,
       email,
-      phone,
+      phone: normalizePhoneInput(phone),
       status: status || "active",
       location,
       aboutText,
@@ -140,7 +151,7 @@ function ProfilePage({
     setContactForm({
       linkedInUrl: jobSeekerProfile?.linkedInUrl || "",
       email: jobSeekerProfile?.email || email || "",
-      phone: jobSeekerProfile?.phone || phone || ""
+      phone: normalizePhoneInput(jobSeekerProfile?.phone || phone || "")
     })
     setIsContactOpen(true)
     setIsEditingContact(false)
@@ -160,7 +171,7 @@ function ProfilePage({
           fullName: formState.fullName || displayName,
           username: formState.username || username,
           email: contactForm.email || email,
-          phone: contactForm.phone || phone,
+          phone: formatPhoneWithPrefix(contactForm.phone || phone),
           status: status || "active",
           location,
           aboutText,
@@ -248,7 +259,7 @@ function ProfilePage({
           fullName: formState.fullName,
           username: formState.username,
           email: formState.email,
-          phone: formState.phone,
+          phone: formatPhoneWithPrefix(formState.phone),
           status: formState.status || "active",
           location: formState.location,
           aboutText: aboutToSave
@@ -561,8 +572,9 @@ function ProfilePage({
                                 <input
                                   className="input"
                                   type="text"
-                                  value={contactForm.phone}
-                                  onChange={(e) => setContactForm((prev) => ({ ...prev, phone: e.target.value }))}
+                                  inputMode="numeric"
+                                  value={formatPhoneWithPrefix(contactForm.phone)}
+                                  onChange={(e) => setContactForm((prev) => ({ ...prev, phone: normalizePhoneInput(e.target.value) }))}
                                 />
                               </div>
                             </div>
@@ -798,7 +810,12 @@ function ProfilePage({
                   </div>
                   <div className="field-group">
                     <label>Phone</label>
-                    <input className="input" value={formState.phone} onChange={(e) => setFormState((prev) => ({ ...prev, phone: e.target.value }))} />
+                    <input
+                      className="input"
+                      inputMode="numeric"
+                      value={formatPhoneWithPrefix(formState.phone)}
+                      onChange={(e) => setFormState((prev) => ({ ...prev, phone: normalizePhoneInput(e.target.value) }))}
+                    />
                   </div>
                 </div>
                 <div className="modal-grid">

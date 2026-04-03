@@ -132,11 +132,16 @@ function UsersPage() {
         contactName: ""
       })
     } else {
+      const digitsOnly = String(user.phone || "").replace(/\D/g, "")
+      const withoutCountryPrefix = digitsOnly.startsWith("63") ? digitsOnly.slice(2) : digitsOnly
+      const withoutLocalPrefix = withoutCountryPrefix.startsWith("0")
+        ? withoutCountryPrefix.slice(1)
+        : withoutCountryPrefix
       setUserForm({
         fullName: "",
         username: "",
         email: user.email || "",
-        phone: user.phone || "",
+        phone: withoutLocalPrefix.slice(0, 10),
         companyName: user.companyName || "",
         contactName: user.contactName || ""
       })
@@ -211,11 +216,17 @@ function UsersPage() {
   }
 
   const saveEmployer = async () => {
+    const phoneDigits = String(employerForm.phone || "").replace(/\D/g, "")
+    const withoutCountryPrefix = phoneDigits.startsWith("63") ? phoneDigits.slice(2) : phoneDigits
+    const withoutLocalPrefix = withoutCountryPrefix.startsWith("0")
+      ? withoutCountryPrefix.slice(1)
+      : withoutCountryPrefix
+    const normalizedPhone = withoutLocalPrefix ? `+63${withoutLocalPrefix.slice(0, 10)}` : ""
     const payload = {
       companyName: employerForm.companyName.trim(),
       contactName: employerForm.contactName.trim(),
       email: employerForm.username.trim(),
-      phone: employerForm.phone.trim(),
+      phone: normalizedPhone,
       password: employerForm.password.trim()
     }
     if (!payload.companyName || !payload.email || !payload.password) {
@@ -244,10 +255,11 @@ function UsersPage() {
 
   return (
     <section className="users-page">
-      <div className="users-header">
+      <div className="users-hero">
         <div>
-          <h2>Users</h2>
-          <p>Manage and review job seeker and employer accounts.</p>
+          <p className="users-kicker">User Management</p>
+          <h2 className="users-title">Users</h2>
+          <p className="users-subtitle">Manage and review job seeker and employer accounts.</p>
         </div>
       </div>
 
@@ -332,6 +344,7 @@ function UsersPage() {
               <tr>
                 <th>#</th>
                 <th>Company</th>
+                <th>Contact</th>
                 <th>Phone</th>
                 <th>Username</th>
                 <th>Created</th>
@@ -361,6 +374,7 @@ function UsersPage() {
                         <span>{user.email || "-"}</span>
                       </div>
                     </td>
+                    <td>{user.contactName || "-"}</td>
                     <td>{user.phone || "-"}</td>
                     <td>{user.email || "-"}</td>
                     <td>{formatDate(user.createdAt)}</td>
@@ -444,34 +458,42 @@ function UsersPage() {
                         onChange={(e) => setUserForm((prev) => ({ ...prev, companyName: e.target.value }))}
                       />
                     </div>
-                    <div className="field-group">
-                      <label>Contact Name</label>
-                      <input
-                        className="input"
-                        value={userForm.contactName}
-                        onChange={(e) => setUserForm((prev) => ({ ...prev, contactName: e.target.value }))}
-                      />
-                    </div>
-                  </div>
-                  <div className="modal-grid">
-                    <div className="field-group">
-                      <label>Username</label>
-                      <input
-                        className="input"
-                        type="text"
-                        value={userForm.email}
-                        onChange={(e) => setUserForm((prev) => ({ ...prev, email: e.target.value }))}
-                      />
-                    </div>
-                    <div className="field-group">
-                      <label>Phone</label>
-                      <input
-                        className="input"
-                        value={userForm.phone}
-                        onChange={(e) => setUserForm((prev) => ({ ...prev, phone: e.target.value }))}
-                      />
-                    </div>
-                  </div>
+                <div className="field-group">
+                  <label>Phone</label>
+                  <input
+                    className="input"
+                    value={userForm.contactName}
+                    onChange={(e) => setUserForm((prev) => ({ ...prev, contactName: e.target.value }))}
+                  />
+                </div>
+              </div>
+              <div className="modal-grid">
+                <div className="field-group">
+                  <label>Username</label>
+                  <input
+                    className="input"
+                    type="text"
+                    value={userForm.email}
+                    onChange={(e) => setUserForm((prev) => ({ ...prev, email: e.target.value }))}
+                  />
+                </div>
+                <div className="field-group">
+                  <label>Phone</label>
+                  <input
+                    className="input"
+                    inputMode="numeric"
+                    value={`+63${userForm.phone}`}
+                    onChange={(e) => {
+                      const digitsOnly = String(e.target.value || "").replace(/\D/g, "")
+                      const withoutCountryPrefix = digitsOnly.startsWith("63") ? digitsOnly.slice(2) : digitsOnly
+                      const withoutLocalPrefix = withoutCountryPrefix.startsWith("0")
+                        ? withoutCountryPrefix.slice(1)
+                        : withoutCountryPrefix
+                      setUserForm((prev) => ({ ...prev, phone: withoutLocalPrefix.slice(0, 10) }))
+                    }}
+                  />
+                </div>
+              </div>
                 </>
               )}
             </div>
@@ -577,8 +599,16 @@ function UsersPage() {
                   <label>Phone</label>
                   <input
                     className="input"
-                    value={employerForm.phone}
-                    onChange={(e) => setEmployerForm((prev) => ({ ...prev, phone: e.target.value }))}
+                    inputMode="numeric"
+                    value={`+63${employerForm.phone}`}
+                    onChange={(e) => {
+                      const digitsOnly = String(e.target.value || "").replace(/\D/g, "")
+                      const withoutCountryPrefix = digitsOnly.startsWith("63") ? digitsOnly.slice(2) : digitsOnly
+                      const withoutLocalPrefix = withoutCountryPrefix.startsWith("0")
+                        ? withoutCountryPrefix.slice(1)
+                        : withoutCountryPrefix
+                      setEmployerForm((prev) => ({ ...prev, phone: withoutLocalPrefix.slice(0, 10) }))
+                    }}
                   />
                 </div>
               </div>

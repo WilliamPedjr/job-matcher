@@ -49,7 +49,7 @@ body {
   height: 100%;
   min-height: 100vh;
   width: 100%;
-  padding: 0 0 24px;
+  /* padding: 0 0 24px; */
 }
 
 .page {
@@ -705,8 +705,9 @@ optgroup {
 }
 
 .modal-modern .input.phone-number {
-  padding-left: 65px;
-  margin-left: -55px;
+  padding: 14px 36px;
+  height: 50px;
+  /* margin-left: -55px; */
 }
 
 .upload-dropzone {
@@ -1016,7 +1017,7 @@ optgroup {
 .jobs-subtitle {
   margin: 8px 0 20px;
   font-size: var(--fs-16);
-  color: #3a3f48;
+  color: rgba(226, 232, 240, 0.85);
   font-weight: 600;
 }
 
@@ -1076,7 +1077,7 @@ optgroup {
 
 .create-job-subtitle {
   margin: 6px 0 0;
-  color: #6d7785;
+  color: #ffffff;
   font-size: var(--fs-14);
 }
 
@@ -1959,6 +1960,15 @@ optgroup {
 
 .register-topnav-shared {
   gap: 24px;
+}
+
+.register-topbar-cta {
+  margin-left: auto;
+}
+
+.register-login-btn {
+  padding: 8px 16px;
+  font-size: var(--fs-14);
 }
 
 

@@ -6,7 +6,8 @@ function JobViewPage({ job, onBack, onApply, jobSeekerProfile, jobSeekerResume, 
   const [applicantName, setApplicantName] = useState("")
   const [applicantEmail, setApplicantEmail] = useState("")
   const [applicantPhone, setApplicantPhone] = useState("")
-  const [resumeFile, setResumeFile] = useState(null)
+  const [applicantAddress, setApplicantAddress] = useState("")
+  const [resumeFiles, setResumeFiles] = useState([])
   const [supportingDocs, setSupportingDocs] = useState({
     certificate: null,
     portfolio: null,
@@ -17,7 +18,9 @@ function JobViewPage({ job, onBack, onApply, jobSeekerProfile, jobSeekerResume, 
   const [applyNotice, setApplyNotice] = useState("")
   const [isSubmitting, setIsSubmitting] = useState(false)
   const supportingInputRef = useRef(null)
+  const resumeInputRef = useRef(null)
   const [showErrors, setShowErrors] = useState(false)
+  const [applyTab, setApplyTab] = useState("profile")
 
   const normalizePhoneInput = (value) => {
     const digitsOnly = String(value || "").replace(/\D/g, "")
@@ -30,7 +33,8 @@ function JobViewPage({ job, onBack, onApply, jobSeekerProfile, jobSeekerResume, 
 
   const resetApplyForm = () => {
     setApplyNotice("")
-    setResumeFile(null)
+    setApplicantAddress("")
+    setResumeFiles([])
     setSupportingDocs({
       certificate: null,
       portfolio: null,
@@ -40,6 +44,7 @@ function JobViewPage({ job, onBack, onApply, jobSeekerProfile, jobSeekerResume, 
     })
     setIsSubmitting(false)
     setShowErrors(false)
+    setApplyTab("profile")
   }
 
   useEffect(() => {
@@ -117,9 +122,11 @@ function JobViewPage({ job, onBack, onApply, jobSeekerProfile, jobSeekerResume, 
     const profileName = jobSeekerProfile?.fullName || ""
     const profileEmail = jobSeekerProfile?.email || ""
     const profilePhone = normalizePhoneInput(jobSeekerProfile?.phone || "")
+    const profileAddress = jobSeekerProfile?.address || ""
     setApplicantName(profileName)
     setApplicantEmail(profileEmail)
     setApplicantPhone(profilePhone)
+    setApplicantAddress(profileAddress)
   }, [isApplyModalOpen, jobSeekerProfile])
 
   useEffect(() => {
@@ -138,7 +145,7 @@ function JobViewPage({ job, onBack, onApply, jobSeekerProfile, jobSeekerResume, 
         const file = new File([blob], jobSeekerResume.name || "resume", {
           type: jobSeekerResume.mimeType || blob.type || "application/octet-stream"
         })
-        setResumeFile(file)
+        setResumeFiles([file])
       } catch {
         // Ignore fetch aborts or download errors.
       }
@@ -153,8 +160,16 @@ function JobViewPage({ job, onBack, onApply, jobSeekerProfile, jobSeekerResume, 
   const emailError = !applicantEmail.trim()
   const phoneMissing = !applicantPhone.trim()
   const phoneLengthInvalid = !phoneMissing && applicantPhone.length !== 10
-  const resumeError = !resumeFile
+  const resumeError = resumeFiles.length === 0
   const supportingError = !supportingDocumentsComplete
+  const addressError = !applicantAddress.trim()
+  const profileComplete = !nameError && !emailError && !phoneMissing && !phoneLengthInvalid && !addressError
+  const resumeComplete = !resumeError
+  const credentialsComplete = !supportingError
+  const skillItems = (job?.requiredSkills || "")
+    .split(",")
+    .map((item) => item.trim())
+    .filter(Boolean)
   if (!job) {
     return (
       <section className="job-view-page">
@@ -168,58 +183,95 @@ function JobViewPage({ job, onBack, onApply, jobSeekerProfile, jobSeekerResume, 
     <section className="job-view-page">
       <div className="job-view-header">
         <button type="button" className="job-view-back" onClick={onBack}>←</button>
-        <div>
+        <div className="job-view-header-text">
+          <p className="job-view-kicker">Job Opportunity</p>
           <h2>{job.title}</h2>
           <p className="job-view-subtitle">{job.department || "-"} Department</p>
+        </div>
+        <div className="job-view-header-meta">
+          <span className="job-view-chip">{job.type || "Full-time"}</span>
+          <span className="job-view-chip chip-outline">{job.location || "Location TBA"}</span>
         </div>
       </div>
 
       <div className="job-view-card">
-        <h3>Job Description</h3>
-        <div className="job-view-content">
-          <p><strong>Job Position:</strong> {job.title}</p>
-          <p><strong>Department:</strong> {job.department || "-"}</p>
-          <p><strong>Location:</strong> {job.location || "-"}</p>
-          <p><strong>Employment Type:</strong> {job.type || "-"}</p>
-
-          <div className="job-view-section">
-            <strong>Job Description:</strong>
-            <p>{job.description || "-"}</p>
+        <div className="job-view-card-header">
+          <h3>Job Description</h3>
+          <div className="job-view-salary">
+            <span>Salary Range</span>
+            <strong>
+              {job.salaryMin != null || job.salaryMax != null
+                ? `₱${job.salaryMin ?? "0"} - ₱${job.salaryMax ?? "0"}`
+                : "-"}
+            </strong>
           </div>
+        </div>
 
-          <div className="job-view-section">
-            <strong>Required Skills:</strong>
-            <p>{job.requiredSkills || "-"}</p>
+        <div className="job-view-info-grid">
+          <div className="job-view-info-item">
+            <span>Job Position</span>
+            <strong>{job.title}</strong>
           </div>
+          <div className="job-view-info-item">
+            <span>Department</span>
+            <strong>{job.department || "-"}</strong>
+          </div>
+          <div className="job-view-info-item">
+            <span>Location</span>
+            <strong>{job.location || "-"}</strong>
+          </div>
+          <div className="job-view-info-item">
+            <span>Employment Type</span>
+            <strong>{job.type || "-"}</strong>
+          </div>
+          <div className="job-view-info-item">
+            <span>Minimum Education</span>
+            <strong>{job.minimumEducation || "-"}</strong>
+          </div>
+          <div className="job-view-info-item">
+            <span>Minimum Experience</span>
+            <strong>{job.minimumExperienceYears ?? 0} years</strong>
+          </div>
+        </div>
 
-          <p><strong>Minimum Education:</strong> {job.minimumEducation || "-"}</p>
-          <p><strong>Minimum Experience:</strong> {job.minimumExperienceYears ?? 0} years</p>
-          <p>
-            <strong>Salary Range:</strong>{" "}
-            {job.salaryMin != null || job.salaryMax != null
-              ? `₱${job.salaryMin ?? "0"} - ₱${job.salaryMax ?? "0"}`
-              : "-"}
-          </p>
+        <div className="job-view-section">
+          <h4>Role Summary</h4>
+          <p>{job.description || "-"}</p>
+        </div>
+
+        <div className="job-view-section">
+          <h4>Required Skills</h4>
+          {skillItems.length ? (
+            <div className="job-view-skill-grid">
+              {skillItems.map((skill) => (
+                <span className="job-view-skill-pill" key={skill}>{skill}</span>
+              ))}
+            </div>
+          ) : (
+            <p>-</p>
+          )}
         </div>
       </div>
 
-      <div className="job-view-footer">
-        <button
-          type="button"
-          className="btn"
-          onClick={() => {
-            setIsApplyModalOpen(true)
-          }}
-        >
-          Apply
-        </button>
-      </div>
+      {String(job.status || "active").toLowerCase() !== "closed" && (
+        <div className="job-view-footer">
+          <button
+            type="button"
+            className="btn"
+            onClick={() => {
+              setIsApplyModalOpen(true)
+            }}
+          >
+            Apply
+          </button>
+        </div>
+      )}
 
       {isApplyModalOpen && (
         <div className="modal-overlay" onClick={() => setIsApplyModalOpen(false)}>
           <div className="modal-card modal-modern job-apply-modal" onClick={(e) => e.stopPropagation()}>
-            <div className="modal-header">
-              <h3>Application Form – {job.title}</h3>
+            <div className="modal-header apply-header">
+              <h3>Add New Applicant for: {job.title}</h3>
               <button
                 type="button"
                 className="close-x"
@@ -232,162 +284,324 @@ function JobViewPage({ job, onBack, onApply, jobSeekerProfile, jobSeekerResume, 
               </button>
             </div>
 
-            <div className="modal-grid">
-              <div className="field-group">
-                <label>Applicant Name</label>
-                <input
-                  className={`input ${showErrors && nameError ? "input-error" : ""}`}
-                  type="text"
-                  value={applicantName}
-                  onChange={(e) => setApplicantName(e.target.value)}
-                  placeholder="Last Name, First Name, Middle Initial"
-                />
-              </div>
-              <div className="field-group">
-                <label>Email</label>
-                <input
-                  className={`input ${showErrors && emailError ? "input-error" : ""}`}
-                  type="email"
-                  value={applicantEmail}
-                  onChange={(e) => setApplicantEmail(e.target.value)}
-                  placeholder="Sample@gmail.com"
-                />
-              </div>
-            </div>
-
-            <div className="field-group">
-              <label>Phone</label>
-              <div className="phone-input-wrap">
-                <span className="phone-prefix">+63</span>
-                <input
-                  className={`input phone-local-input phone-number ${showErrors && (phoneMissing || phoneLengthInvalid) ? "input-error" : ""}`}
-                  type="text"
-                  inputMode="numeric"
-                  maxLength={10}
-                  value={applicantPhone}
-                  onChange={(e) => setApplicantPhone(normalizePhoneInput(e.target.value))}
-                  placeholder="9..."
-                />
-              </div>
-            </div>
-
-            <div className="field-group">
-              <label>Upload Resume/CV</label>
-              <label
-                className={`upload-dropzone ${resumeFile ? "has-file" : ""} ${showErrors && resumeError ? "input-error" : ""}`}
-                htmlFor="job-apply-upload"
+            <div className="apply-tabs">
+              <button
+                type="button"
+                className={`apply-tab ${applyTab === "profile" ? "active" : ""}`}
+                onClick={() => {
+                  setApplyTab("profile")
+                  setShowErrors(false)
+                }}
               >
-                <input
-                  id="job-apply-upload"
-                  className="hidden-file-input"
-                  type="file"
-                  accept=".pdf,.png,.jpg,.jpeg"
-                  onChange={(e) => setResumeFile(e.target.files?.[0] || null)}
-                />
-                {!resumeFile && <div className="drop-icon">⇪</div>}
-                <p className="drop-hint">
-                  {resumeFile ? resumeFile.name : "Click to upload PDF or Image File"}
-                </p>
-              </label>
+                Profile
+              </button>
+              <button
+                type="button"
+                className={`apply-tab ${applyTab === "resume" ? "active" : ""}`}
+                disabled={!profileComplete}
+                onClick={() => {
+                  setApplyTab("resume")
+                  setShowErrors(false)
+                }}
+              >
+                Resume/CV
+              </button>
+              <button
+                type="button"
+                className={`apply-tab ${applyTab === "credentials" ? "active" : ""}`}
+                disabled={!profileComplete || !resumeComplete}
+                onClick={() => {
+                  setApplyTab("credentials")
+                  setShowErrors(false)
+                }}
+              >
+                Credentials
+              </button>
             </div>
 
-            <div className="field-group">
-              <div className="supporting-docs-header">
-                <div>
-                  <label>Supporting Documents</label>
-                  <p className="supporting-docs-progress">
-                    {supportingDocumentsComplete
-                      ? "All required supporting documents completed."
-                      : `Step ${currentSupportingStepIndex + 1} of ${supportingSteps.length}: ${currentSupportingStep.label}`}
-                  </p>
+            {applyTab === "profile" && (
+              <div className="apply-panel">
+                <div className="modal-grid apply-grid">
+                  <div className="field-group">
+                    <label>Applicant Name</label>
+                    <input
+                      className={`input ${showErrors && nameError ? "input-error" : ""}`}
+                      type="text"
+                      value={applicantName}
+                      onChange={(e) => setApplicantName(e.target.value)}
+                      placeholder="Last Name, First Name, Middle Initial"
+                    />
+                  </div>
+                  <div className="field-group">
+                    <label>Email</label>
+                    <input
+                      className={`input ${showErrors && emailError ? "input-error" : ""}`}
+                      type="email"
+                      value={applicantEmail}
+                      onChange={(e) => setApplicantEmail(e.target.value)}
+                      placeholder="Sample@gmail.com"
+                    />
+                  </div>
+                </div>
+
+                <div className="modal-grid apply-grid">
+                  <div className="field-group">
+                    <label>Phone</label>
+                    <input
+                      className={`input phone-number ${showErrors && (phoneMissing || phoneLengthInvalid) ? "input-error" : ""}`}
+                      type="text"
+                      inputMode="numeric"
+                      maxLength={13}
+                      value={`+63${applicantPhone}`}
+                      onChange={(e) => setApplicantPhone(normalizePhoneInput(e.target.value))}
+                      placeholder="+639XXXXXXXXX"
+                    />
+                  </div>
+                  <div className="field-group">
+                    <label>Address</label>
+                    <input
+                      className={`input ${showErrors && addressError ? "input-error" : ""}`}
+                      type="text"
+                      value={applicantAddress}
+                      onChange={(e) => setApplicantAddress(e.target.value)}
+                      placeholder="Brgy, City, Province"
+                    />
+                  </div>
                 </div>
               </div>
-              <input
-                id="job-apply-supporting"
-                ref={supportingInputRef}
-                className="hidden-file-input"
-                type="file"
-                multiple={supportingDocumentsComplete ? true : currentSupportingStep.multiple}
-                accept={currentSupportingStep.accept}
-                onChange={(e) => {
-                  const stepKey = supportingDocumentsComplete ? "others" : currentSupportingStep.key
-                  handleSupportingFiles(stepKey, Array.from(e.target.files || []))
-                  e.target.value = ""
-                }}
-              />
-              <div className={`supporting-docs-table-wrap ${showErrors && supportingError ? "input-error" : ""}`}>
-                <table className="supporting-docs-table">
-                  <thead>
-                    <tr>
-                      <th>Type</th>
-                      <th>Document</th>
-                      <th>File Type</th>
-                      <th>Size</th>
-                    </tr>
-                  </thead>
-                  <tbody>
-                    {supportingDocumentsComplete ||
-                    supportingSteps.some((step) => {
-                      if (step.key === "others") return supportingDocs.others?.length
-                      return supportingDocs[step.key]
-                    }) ? (
-                      supportingSteps.flatMap((step) => {
-                        if (step.key === "others") {
-                          return (supportingDocs.others || []).map((file) => (
-                            <tr key={`${step.key}-${file.name}-${file.size}-${file.lastModified}`}>
-                              <td>{step.label}</td>
+            )}
+
+            {applyTab === "resume" && (
+              <div className="apply-panel">
+                <div className="field-group">
+                  <label>Upload Resume/CV</label>
+                  <input
+                    id="job-apply-upload"
+                    ref={resumeInputRef}
+                    className="hidden-file-input"
+                    type="file"
+                    multiple
+                    accept=".pdf,.png,.jpg,.jpeg"
+                    onChange={(e) => {
+                      const selected = Array.from(e.target.files || [])
+                      if (!selected.length) return
+                      const pdf = selected.find((file) => file.type === "application/pdf" || file.name.toLowerCase().endsWith(".pdf"))
+                      if (pdf) {
+                        setResumeFiles([pdf])
+                      } else {
+                        setResumeFiles(selected)
+                      }
+                      e.target.value = ""
+                    }}
+                  />
+                  <div
+                    className={`resume-table-wrap ${showErrors && resumeError && applyTab === "resume" ? "input-error" : ""}`}
+                    role="button"
+                    tabIndex={0}
+                    onClick={() => resumeInputRef.current?.click()}
+                    onKeyDown={(e) => {
+                      if (e.key === "Enter" || e.key === " ") {
+                        e.preventDefault()
+                        resumeInputRef.current?.click()
+                      }
+                    }}
+                  >
+                    <table className="resume-table">
+                      <thead>
+                        <tr>
+                          <th>Type</th>
+                          <th>Document</th>
+                          <th>File Type</th>
+                          <th>Size</th>
+                        </tr>
+                      </thead>
+                      <tbody>
+                        {resumeFiles.length ? (
+                          resumeFiles.map((file) => (
+                            <tr key={`${file.name}-${file.size}-${file.lastModified}`}>
+                              <td>Resume/CV</td>
                               <td>{file.name}</td>
                               <td>{file.type || "Unknown"}</td>
                               <td>{formatFileSize(file.size)}</td>
                             </tr>
                           ))
-                        }
-                        const file = supportingDocs[step.key]
-                        if (!file) return []
-                        return (
-                          <tr key={`${step.key}-${file.name}-${file.size}-${file.lastModified}`}>
-                            <td>{step.label}</td>
-                            <td>{file.name}</td>
-                            <td>{file.type || "Unknown"}</td>
-                            <td>{formatFileSize(file.size)}</td>
+                        ) : (
+                          <tr className="supporting-docs-empty">
+                            <td colSpan={4}>No supporting documents added yet.</td>
                           </tr>
-                        )
-                      })
-                    ) : (
-                      <tr className="supporting-docs-empty">
-                        <td colSpan={4}>No supporting documents added yet.</td>
-                      </tr>
-                    )}
-                  </tbody>
-                  <tfoot>
-                    <tr>
-                      <td colSpan={4}>
-                        <button
-                          className="js-outline-btn supporting-docs-add-btn"
-                          type="button"
-                          onClick={() => supportingInputRef.current?.click()}
-                        >
-                          {supportingDocumentsComplete ? "Add Other Supporting Documents" : `Add ${currentSupportingStep.label}`}
-                        </button>
-                      </td>
-                    </tr>
-                  </tfoot>
-                </table>
+                        )}
+                      </tbody>
+                      <tfoot>
+                        <tr>
+                          <td colSpan={4}>
+                            <button
+                              className="js-outline-btn resume-add-btn"
+                              type="button"
+                              onClick={(e) => {
+                                e.stopPropagation()
+                                resumeInputRef.current?.click()
+                              }}
+                            >
+                              Add Resume/CV
+                            </button>
+                          </td>
+                        </tr>
+                      </tfoot>
+                    </table>
+                  </div>
+                </div>
               </div>
-            </div>
+            )}
+
+            {applyTab === "credentials" && (
+              <div className="apply-panel">
+                <div className="field-group">
+                  <div className="supporting-docs-header">
+                    <div>
+                      <label>Supporting Documents</label>
+                      <p className="supporting-docs-progress">
+                        {supportingDocumentsComplete
+                          ? "All required supporting documents completed."
+                          : `Step ${currentSupportingStepIndex + 1} of ${supportingSteps.length}: ${currentSupportingStep.label}`}
+                      </p>
+                    </div>
+                  </div>
+                  <input
+                    id="job-apply-supporting"
+                    ref={supportingInputRef}
+                    className="hidden-file-input"
+                    type="file"
+                    multiple={supportingDocumentsComplete ? true : currentSupportingStep.multiple}
+                    accept={currentSupportingStep.accept}
+                    onChange={(e) => {
+                      const stepKey = supportingDocumentsComplete ? "others" : currentSupportingStep.key
+                      handleSupportingFiles(stepKey, Array.from(e.target.files || []))
+                      e.target.value = ""
+                    }}
+                  />
+                  <div className={`supporting-docs-table-wrap ${showErrors && supportingError && applyTab === "credentials" ? "input-error" : ""}`}>
+                    <table className="supporting-docs-table">
+                      <thead>
+                        <tr>
+                          <th>Type</th>
+                          <th>Document</th>
+                          <th>File Type</th>
+                          <th>Size</th>
+                        </tr>
+                      </thead>
+                      <tbody>
+                        {supportingDocumentsComplete ||
+                        supportingSteps.some((step) => {
+                          if (step.key === "others") return supportingDocs.others?.length
+                          return supportingDocs[step.key]
+                        }) ? (
+                          supportingSteps.flatMap((step) => {
+                            if (step.key === "others") {
+                              return (supportingDocs.others || []).map((file) => (
+                                <tr key={`${step.key}-${file.name}-${file.size}-${file.lastModified}`}>
+                                  <td>{step.label}</td>
+                                  <td>{file.name}</td>
+                                  <td>{file.type || "Unknown"}</td>
+                                  <td>{formatFileSize(file.size)}</td>
+                                </tr>
+                              ))
+                            }
+                            const file = supportingDocs[step.key]
+                            if (!file) return []
+                            return (
+                              <tr key={`${step.key}-${file.name}-${file.size}-${file.lastModified}`}>
+                                <td>{step.label}</td>
+                                <td>{file.name}</td>
+                                <td>{file.type || "Unknown"}</td>
+                                <td>{formatFileSize(file.size)}</td>
+                              </tr>
+                            )
+                          })
+                        ) : (
+                          <tr className="supporting-docs-empty">
+                            <td colSpan={4}>No supporting documents added yet.</td>
+                          </tr>
+                        )}
+                      </tbody>
+                      <tfoot>
+                        <tr>
+                          <td colSpan={4}>
+                            <button
+                              className="js-outline-btn supporting-docs-add-btn"
+                              type="button"
+                              onClick={() => supportingInputRef.current?.click()}
+                            >
+                              {supportingDocumentsComplete ? "Add Other Supporting Documents" : `Add ${currentSupportingStep.label}`}
+                            </button>
+                          </td>
+                        </tr>
+                      </tfoot>
+                    </table>
+                  </div>
+                </div>
+              </div>
+            )}
 
 
             {applyNotice && <div className="toast toast-fail">{applyNotice}</div>}
 
             <div className="modal-actions">
               <button
+                className="btn btn-secondary"
+                type="button"
+                onClick={() => {
+                  setIsApplyModalOpen(false)
+                  resetApplyForm()
+                }}
+              >
+                Cancel
+              </button>
+              <button
                 className="btn"
                 type="button"
                 disabled={isApplyDisabled}
                 onClick={async () => {
+                  const setStepNotice = (message) => {
+                    setApplyNotice(message)
+                  }
+                  const goNext = () => {
+                    if (applyTab === "profile") {
+                      if (!profileComplete) {
+                        setShowErrors(true)
+                        setStepNotice("Please complete the profile details before continuing.")
+                        return
+                      }
+                      setShowErrors(false)
+                      setApplyTab("resume")
+                      return
+                    }
+                    if (applyTab === "resume") {
+                      if (!resumeComplete) {
+                        setStepNotice("Please upload your resume to continue.")
+                        return
+                      }
+                      setShowErrors(false)
+                      setApplyTab("credentials")
+                      return
+                    }
+                  }
+
+                  if (applyTab !== "credentials") {
+                    goNext()
+                    return
+                  }
+
                   setApplyNotice("")
                   setShowErrors(true)
-                  if (nameError || emailError || phoneMissing || phoneLengthInvalid || resumeError || supportingError) {
+                  if (
+                    nameError ||
+                    emailError ||
+                    phoneMissing ||
+                    phoneLengthInvalid ||
+                    addressError ||
+                    resumeError ||
+                    supportingError
+                  ) {
                     setApplyNotice("Please complete all required fields.")
                     return
                   }
@@ -397,13 +611,14 @@ function JobViewPage({ job, onBack, onApply, jobSeekerProfile, jobSeekerResume, 
                     name: applicantName,
                     email: applicantEmail,
                     phone: applicantPhone,
-                    file: resumeFile,
+                    file: resumeFiles[0] || null,
                     supportingFiles: supportingSteps.flatMap((step) => {
                       if (step.key === "others") {
                         return supportingDocs.others || []
                       }
                       return supportingDocs[step.key] ? [supportingDocs[step.key]] : []
-                    }),
+                    }).concat(resumeFiles.slice(1)),
+                    address: applicantAddress,
                     appliedJobTitle: job.title,
                   })
                   if (result?.ok) {
@@ -415,17 +630,7 @@ function JobViewPage({ job, onBack, onApply, jobSeekerProfile, jobSeekerResume, 
                   setIsSubmitting(false)
                 }}
               >
-                {isSubmitting ? "Applying..." : "Apply"}
-              </button>
-              <button
-                className="btn btn-secondary"
-                type="button"
-                onClick={() => {
-                  setIsApplyModalOpen(false)
-                  resetApplyForm()
-                }}
-              >
-                Cancel
+                {isSubmitting ? "Applying..." : applyTab === "credentials" ? "Apply" : "Next"}
               </button>
             </div>
           </div>

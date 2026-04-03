@@ -1,5 +1,5 @@
 import "./RegisterPage.css"
-import { useState } from "react"
+import { useEffect, useState } from "react"
 import lnuLogo from "./assets/Logo.png"
 import eyeSolidIcon from "./assets/eye-solid-full.svg"
 import eyeRegularIcon from "./assets/eye-regular-full.svg"
@@ -32,6 +32,12 @@ function RegisterPage({
   const passwordError = !password.trim()
   const confirmPasswordError = !confirmPassword.trim()
 
+  useEffect(() => {
+    if (registerNotice) {
+      setShowErrors(false)
+    }
+  }, [registerNotice])
+
   return (
     <main className="register-shell">
       <header className="topbar register-topbar-shared register-topbar">
@@ -40,6 +46,9 @@ function RegisterPage({
           <button type="button" className="topnav-link register-nav-link">About Us</button>
           <button type="button" className="topnav-link register-nav-link">Contact</button>
         </nav>
+        <div className="register-topbar-cta">
+          <button type="button" className="btn register-login-btn" onClick={onBack}>Login</button>
+        </div>
       </header>
 
       <div className="register-layout">

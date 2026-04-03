@@ -1261,6 +1261,125 @@ app.put("/jobs/:id/status", async (req, res) => {
   }
 });
 
+app.put("/jobs/:id", async (req, res) => {
+  const { id } = req.params;
+  const {
+    title = "",
+    description = "",
+    status = "",
+    department = "",
+    location = "",
+    type = "",
+    requiredSkills = "",
+    minimumEducation = "",
+    minimumExperienceYears = "",
+    salaryMin = "",
+    salaryMax = ""
+  } = req.body || {};
+
+  const normalizedTitle = String(title).trim();
+  const normalizedDescription = String(description).trim();
+  const normalizedStatus = String(status || "").trim().toLowerCase();
+  const normalizedDepartment = String(department || "").trim();
+  const normalizedLocation = String(location || "").trim();
+  const normalizedType = String(type || "").trim();
+  const normalizedRequiredSkills = String(requiredSkills || "").trim();
+  const normalizedMinimumEducation = String(minimumEducation || "").trim();
+  const normalizedMinimumExperienceYears = Number(minimumExperienceYears);
+  const normalizedSalaryMin = salaryMin === null || salaryMin === "" ? NaN : Number(salaryMin);
+  const normalizedSalaryMax = salaryMax === null || salaryMax === "" ? NaN : Number(salaryMax);
+
+  const hasMissingField = (
+    !normalizedTitle ||
+    !normalizedDescription ||
+    !normalizedDepartment ||
+    !normalizedLocation ||
+    !normalizedType ||
+    !normalizedRequiredSkills ||
+    !normalizedMinimumEducation ||
+    Number.isNaN(normalizedMinimumExperienceYears) ||
+    Number.isNaN(normalizedSalaryMin) ||
+    Number.isNaN(normalizedSalaryMax)
+  );
+
+  if (hasMissingField) {
+    return res.status(400).json({ message: "All job post fields are required." });
+  }
+
+  if (!["active", "closed"].includes(normalizedStatus)) {
+    return res.status(400).json({ message: "Status must be active or closed." });
+  }
+
+  if (normalizedMinimumExperienceYears < 0) {
+    return res.status(400).json({ message: "Minimum experience must be non-negative." });
+  }
+
+  if (normalizedSalaryMin < 0 || normalizedSalaryMax < 0) {
+    return res.status(400).json({ message: "Salary range must be non-negative." });
+  }
+
+  if (normalizedSalaryMax < normalizedSalaryMin) {
+    return res.status(400).json({ message: "Salary max must be greater than or equal to salary min." });
+  }
+
+  try {
+    const [duplicateRows] = await pool.execute(
+      "SELECT id FROM jobs WHERE LOWER(title) = LOWER(?) AND id <> ? LIMIT 1",
+      [normalizedTitle, id]
+    );
+    if (duplicateRows.length) {
+      return res.status(409).json({ message: "A job post with this title already exists." });
+    }
+
+    const [result] = await pool.execute(
+      `
+        UPDATE jobs
+        SET title = ?, description = ?, status = ?, department = ?, location = ?, type = ?,
+            required_skills = ?, minimum_education = ?, minimum_experience_years = ?,
+            salary_min = ?, salary_max = ?
+        WHERE id = ?
+      `,
+      [
+        normalizedTitle,
+        normalizedDescription,
+        normalizedStatus,
+        normalizedDepartment,
+        normalizedLocation,
+        normalizedType,
+        normalizedRequiredSkills,
+        normalizedMinimumEducation,
+        normalizedMinimumExperienceYears,
+        normalizedSalaryMin,
+        normalizedSalaryMax,
+        id
+      ]
+    );
+
+    if (result.affectedRows === 0) {
+      return res.status(404).json({ message: "Job post not found." });
+    }
+
+    const [rows] = await pool.execute(
+      `
+        SELECT
+          id, title, description, status, department, location, type,
+          required_skills AS requiredSkills,
+          minimum_education AS minimumEducation,
+          minimum_experience_years AS minimumExperienceYears,
+          salary_min AS salaryMin,
+          salary_max AS salaryMax
+        FROM jobs
+        WHERE id = ?
+      `,
+      [id]
+    );
+    res.json({ message: "Job post updated.", job: rows[0] });
+  } catch (error) {
+    console.error("Update job post error:", error);
+    res.status(500).json({ message: "Failed to update job post." });
+  }
+});
+
 app.post("/jobs", async (req, res) => {
   const {
     title = "",
