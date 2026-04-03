@@ -34,7 +34,7 @@ function DashboardPage({
           <div className="analytics-card-head">
             <h3>Applicant Classification Distribution</h3>
           </div>
-          <div className="graph">
+          <div className="graph graph-centered">
             {(() => {
               const qualified = Number(dashboardData.highlyQualified || 0)
               const moderate = Number(dashboardData.moderatelyQualified || 0)
@@ -55,17 +55,17 @@ function DashboardPage({
                     <li>
                       <span className="dot dot-green" />
                       Qualified
-                      <strong>{qualifiedPct}%</strong>
+                      <strong>{qualified} ({qualifiedPct}%)</strong>
                     </li>
                     <li>
                       <span className="dot dot-amber" />
                       Moderately Qualified
-                      <strong>{moderatePct}%</strong>
+                      <strong>{moderate} ({moderatePct}%)</strong>
                     </li>
                     <li>
                       <span className="dot dot-red" />
                       Not Qualified
-                      <strong>{notPct}%</strong>
+                      <strong>{notQualified} ({notPct}%)</strong>
                     </li>
                   </ul>
                 </div>
@@ -77,6 +77,19 @@ function DashboardPage({
         <section className="analytics-card">
           <div className="analytics-card-head">
             <h3>Application Trends</h3>
+            {(() => {
+              const points = dashboardData.applicantsByMonth || []
+              if (points.length === 0) {
+                return null
+              }
+              const firstLabel = points[0]?.label || "Start"
+              const lastLabel = points[points.length - 1]?.label || "Now"
+              return (
+                <p className="analytics-sub">
+                  {firstLabel} - {lastLabel}
+                </p>
+              )
+            })()}
           </div>
           <div className="graph">
             {(() => {
@@ -124,6 +137,16 @@ function DashboardPage({
                     ))}
                     <path d={path} className="trend-line" />
                   </svg>
+                  <div className="trend-dates" aria-hidden="true">
+                    {coords.map((point, index) => (
+                      <span
+                        key={`trend-date-${point.key || index}`}
+                        className={`trend-date ${index % 2 === 0 ? "trend-date-strong" : ""}`}
+                      >
+                        {point.label}
+                      </span>
+                    ))}
+                  </div>
                 </div>
               )
             })()}

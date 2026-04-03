@@ -2018,8 +2018,25 @@ optgroup {
   font-size: 18px;
 }
 
+.analytics-sub {
+  margin: -6px 0 12px;
+  color: #6b7280;
+  font-size: 13px;
+  font-weight: 500;
+}
+
 .graph {
   min-height: 200px;
+}
+
+.graph-centered {
+  display: flex;
+  justify-content: center;
+  align-items: center;
+}
+
+.analytics-card .graph.graph-centered {
+  min-height: auto;
 }
 
 .bar-chart {
@@ -2097,9 +2114,14 @@ optgroup {
 
 .donut-wrap {
   display: grid;
-  grid-template-columns: 180px 1fr;
+  grid-template-columns: minmax(140px, 180px) minmax(0, 1fr);
   gap: 18px;
   align-items: center;
+  justify-content: center;
+  width: 100%;
+  max-width: 520px;
+  margin: 0 auto;
+  justify-items: center;
 }
 
 .donut-chart {
@@ -2126,6 +2148,8 @@ optgroup {
   gap: 12px;
   font-size: 13px;
   color: #374151;
+  width: 100%;
+  max-width: 240px;
 }
 
 .donut-legend li {
@@ -2133,6 +2157,11 @@ optgroup {
   align-items: center;
   justify-content: space-between;
   gap: 12px;
+  flex-wrap: wrap;
+}
+
+.donut-legend strong {
+  margin-left: auto;
 }
 
 .dot {
@@ -2156,7 +2185,28 @@ optgroup {
 }
 
 .trend-chart svg {
-  height: 220px;
+  height: 190px;
+}
+
+.trend-dates {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(64px, 1fr));
+  gap: 6px;
+  margin-top: 4px;
+  color: #6b7280;
+  font-size: 11px;
+  letter-spacing: 0.02em;
+  text-transform: uppercase;
+}
+
+.trend-date {
+  text-align: center;
+  white-space: nowrap;
+}
+
+.trend-date-strong {
+  color: #1f2937;
+  font-weight: 600;
 }
 
 .trend-grid {
