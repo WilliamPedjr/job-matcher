@@ -96,6 +96,16 @@ const normalizePhilippinePhone = (value) => {
   return `+63${local}`;
 };
 
+const isStrongPassword = (value) => {
+  const password = String(value || "");
+  if (password.length < 8 || password.length > 12) return false;
+  const hasUpper = /[A-Z]/.test(password);
+  const hasLower = /[a-z]/.test(password);
+  const hasNumber = /\d/.test(password);
+  const hasSymbol = /[^A-Za-z0-9]/.test(password);
+  return hasUpper && hasLower && hasNumber && hasSymbol;
+};
+
 const verifyRecaptchaToken = async (token, remoteIp) => {
   const secret = process.env.RECAPTCHA_SECRET;
   if (!secret) {
@@ -385,6 +395,12 @@ app.post("/job-seekers/register", async (req, res) => {
     return res.status(400).json({ message: "All fields are required." });
   }
 
+  if (!isStrongPassword(normalizedPassword)) {
+    return res.status(400).json({
+      message: "Password must be 8-12 characters and include uppercase, lowercase, number, and symbol."
+    });
+  }
+
   if (!["active", "inactive"].includes(normalizedStatus)) {
     return res.status(400).json({ message: "Status must be active or inactive." });
   }
@@ -580,6 +596,11 @@ app.post("/employers", async (req, res) => {
   const normalizedPassword = String(password).trim();
   if (!normalizedCompany || !normalizedEmail || !normalizedPassword) {
     return res.status(400).json({ message: "Company name, username, and password are required." });
+  }
+  if (!isStrongPassword(normalizedPassword)) {
+    return res.status(400).json({
+      message: "Password must be 8-12 characters and include uppercase, lowercase, number, and symbol."
+    });
   }
   try {
     const [existing] = await pool.execute(
