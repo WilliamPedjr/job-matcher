@@ -507,6 +507,17 @@
   border-bottom: none;
 }
 
+.supporting-docs-table tbody tr[role="button"] {
+  cursor: pointer;
+  transition: background 120ms ease;
+}
+
+.supporting-docs-table tbody tr[role="button"]:hover,
+.supporting-docs-table tbody tr[role="button"]:focus,
+.supporting-docs-table tbody tr[role="button"]:focus-within {
+  background: #eef4ff;
+}
+
 .supporting-docs-empty td {
   text-align: center;
   color: #9aa4b2;

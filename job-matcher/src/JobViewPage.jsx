@@ -15,6 +15,7 @@ function JobViewPage({ job, onBack, onApply, jobSeekerProfile, jobSeekerResume, 
     transcript: null,
     others: []
   })
+  const [forcedSupportingKey, setForcedSupportingKey] = useState(null)
   const [applyNotice, setApplyNotice] = useState("")
   const [isSubmitting, setIsSubmitting] = useState(false)
   const supportingInputRef = useRef(null)
@@ -62,6 +63,8 @@ function JobViewPage({ job, onBack, onApply, jobSeekerProfile, jobSeekerResume, 
     { key: "transcript", label: "Transcript", accept: ".pdf,.png,.jpg,.jpeg", multiple: false },
     { key: "others", label: "Other Supporting Documents", accept: ".pdf,.png,.jpg,.jpeg", multiple: true }
   ]
+
+  const getSupportingStepByKey = (key) => supportingSteps.find((step) => step.key === key) || supportingSteps[0]
 
   const formatFileSize = (bytes) => {
     if (!bytes && bytes !== 0) return "-"
@@ -111,6 +114,9 @@ function JobViewPage({ job, onBack, onApply, jobSeekerProfile, jobSeekerResume, 
 
   const currentSupportingStepIndex = getCurrentSupportingStepIndex()
   const currentSupportingStep = supportingSteps[currentSupportingStepIndex]
+  const activeSupportingStep = forcedSupportingKey
+    ? getSupportingStepByKey(forcedSupportingKey)
+    : currentSupportingStep
 
   const supportingDocumentsComplete = supportingSteps.every((step) => {
     if (step.key === "others") return true
@@ -471,11 +477,12 @@ function JobViewPage({ job, onBack, onApply, jobSeekerProfile, jobSeekerResume, 
                     ref={supportingInputRef}
                     className="hidden-file-input"
                     type="file"
-                    multiple={supportingDocumentsComplete ? true : currentSupportingStep.multiple}
-                    accept={currentSupportingStep.accept}
+                    multiple={activeSupportingStep?.key === "others" ? true : activeSupportingStep.multiple}
+                    accept={activeSupportingStep.accept}
                     onChange={(e) => {
-                      const stepKey = supportingDocumentsComplete ? "others" : currentSupportingStep.key
+                      const stepKey = forcedSupportingKey || (supportingDocumentsComplete ? "others" : currentSupportingStep.key)
                       handleSupportingFiles(stepKey, Array.from(e.target.files || []))
+                      setForcedSupportingKey(null)
                       e.target.value = ""
                     }}
                   />
@@ -498,7 +505,22 @@ function JobViewPage({ job, onBack, onApply, jobSeekerProfile, jobSeekerResume, 
                           supportingSteps.flatMap((step) => {
                             if (step.key === "others") {
                               return (supportingDocs.others || []).map((file) => (
-                                <tr key={`${step.key}-${file.name}-${file.size}-${file.lastModified}`}>
+                                <tr
+                                  key={`${step.key}-${file.name}-${file.size}-${file.lastModified}`}
+                                  role="button"
+                                  tabIndex={0}
+                                  onClick={() => {
+                                    setForcedSupportingKey(step.key)
+                                    supportingInputRef.current?.click()
+                                  }}
+                                  onKeyDown={(e) => {
+                                    if (e.key === "Enter" || e.key === " ") {
+                                      e.preventDefault()
+                                      setForcedSupportingKey(step.key)
+                                      supportingInputRef.current?.click()
+                                    }
+                                  }}
+                                >
                                   <td>{step.label}</td>
                                   <td>{file.name}</td>
                                   <td>{file.type || "Unknown"}</td>
@@ -509,7 +531,22 @@ function JobViewPage({ job, onBack, onApply, jobSeekerProfile, jobSeekerResume, 
                             const file = supportingDocs[step.key]
                             if (!file) return []
                             return (
-                              <tr key={`${step.key}-${file.name}-${file.size}-${file.lastModified}`}>
+                              <tr
+                                key={`${step.key}-${file.name}-${file.size}-${file.lastModified}`}
+                                role="button"
+                                tabIndex={0}
+                                onClick={() => {
+                                  setForcedSupportingKey(step.key)
+                                  supportingInputRef.current?.click()
+                                }}
+                                onKeyDown={(e) => {
+                                  if (e.key === "Enter" || e.key === " ") {
+                                    e.preventDefault()
+                                    setForcedSupportingKey(step.key)
+                                    supportingInputRef.current?.click()
+                                  }
+                                }}
+                              >
                                 <td>{step.label}</td>
                                 <td>{file.name}</td>
                                 <td>{file.type || "Unknown"}</td>
