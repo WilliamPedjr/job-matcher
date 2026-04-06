@@ -58,7 +58,7 @@ function JobViewPage({ job, onBack, onApply, jobSeekerProfile, jobSeekerResume, 
   const supportingSteps = [
     { key: "certificate", label: "Certificate", accept: ".pdf,.png,.jpg,.jpeg", multiple: false },
     { key: "portfolio", label: "Portfolio", accept: ".pdf,.png,.jpg,.jpeg", multiple: false },
-    { key: "recommendation", label: "Recommendation Letter", accept: ".pdf,.png,.jpg,.jpeg", multiple: false },
+    { key: "recommendation", label: "Application Letter", accept: ".pdf,.png,.jpg,.jpeg", multiple: false },
     { key: "transcript", label: "Transcript", accept: ".pdf,.png,.jpg,.jpeg", multiple: false },
     { key: "others", label: "Other Supporting Documents", accept: ".pdf,.png,.jpg,.jpeg", multiple: true }
   ]

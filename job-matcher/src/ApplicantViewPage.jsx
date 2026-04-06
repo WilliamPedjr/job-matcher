@@ -110,7 +110,6 @@ function ApplicantViewPage({ viewItem, onBack, onReanalyze, readOnly = false }) 
   const skillsMatch = Math.min(100, matchedSkills.length * 12)
   const educationMatch = detectedEducation.length ? 60 : 10
   const experienceMatch = detectedExperience.length ? 55 : 0
-  const projectMatch = viewItem?.project_score != null ? Number(viewItem.project_score) : 0
 
   useEffect(() => {
     if (!viewItem?.id) return
@@ -267,10 +266,6 @@ function ApplicantViewPage({ viewItem, onBack, onReanalyze, readOnly = false }) 
               <div className="bar-row">
                 <div className="bar-label"><span>Experience Match</span><strong>{experienceMatch}%</strong></div>
                 <div className="bar"><div style={{ width: `${experienceMatch}%` }} /></div>
-              </div>
-              <div className="bar-row">
-                <div className="bar-label"><span>Project Match</span><strong>{projectMatch.toFixed(0)}%</strong></div>
-                <div className="bar"><div style={{ width: `${projectMatch}%` }} /></div>
               </div>
             </div>
           </section>

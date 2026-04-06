@@ -3,8 +3,8 @@ const { cosineSimilarity } = require("./similarityService");
 const { analyzeResume } = require("./atsAnalyzer");
 
 // Weights for calculating overall job match score:
-// skill = 50%, experience = 20%, project = 15%, education = 10%, embedding = 5%
-const WEIGHTS = { skill: 0.50, experience: 0.20, project: 0.15, education: 0.10, embedding: 0.05 };
+// skill = 55%, experience = 25%, education = 15%, embedding = 5%
+const WEIGHTS = { skill: 0.55, experience: 0.25, education: 0.15, embedding: 0.05 };
 
 const normalizeSkill = (value) => String(value || "").trim().toLowerCase();
 const escapeRegExp = (value) => String(value || "").replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
@@ -195,13 +195,11 @@ async function matchJobs(cvText, jobs) {
     const educationScore = requiredEducationRank > 0
       ? (cvEducationRank > 0 ? Math.min(cvEducationRank / requiredEducationRank, 1) : 0)
       : 1;
-    const projectScore = cvAnalysis.projectScore;
     const embeddingScore = (cvEmbedding && jobEmbedding) ? cosineSimilarity(cvEmbedding, jobEmbedding) : 0;
 
     const finalScore = (skillScore * WEIGHTS.skill) +
                        (experienceScore * WEIGHTS.experience) +
                        (educationScore * WEIGHTS.education) +
-                       (projectScore * WEIGHTS.project) +
                        (embeddingScore * WEIGHTS.embedding);
     const percentageScore = finalScore * 100;
     let classification = "Not Qualified";
@@ -221,7 +219,6 @@ async function matchJobs(cvText, jobs) {
       skillScore: (skillScore * 100).toFixed(2),
       experienceScore: (experienceScore * 100).toFixed(2),
       educationScore: (educationScore * 100).toFixed(2),
-      projectScore: (projectScore * 100).toFixed(2),
       embeddingScore: (embeddingScore * 100).toFixed(2)
     });
   }

@@ -52,7 +52,7 @@ async function ocrImage(imagePath) {
   }
 
   const ocrResult = await Tesseract.recognize(inputForOcr, 'eng', {
-    tessedit_pageseg_mode: Tesseract.PSM.SINGLE_BLOCK
+    tessedit_pageseg_mode: Tesseract.PSM.AUTO
   });
 
   if (usedPreprocessed && fs.existsSync(preprocessedPath)) {

@@ -186,6 +186,8 @@ function App() {
   const [confirmDeleteId, setConfirmDeleteId] = useState(null)
   const [confirmDeleteContext, setConfirmDeleteContext] = useState("application")
   const [summaryItem, setSummaryItem] = useState(null)
+  const [summarySupportingFiles, setSummarySupportingFiles] = useState([])
+  const [summarySupportingError, setSummarySupportingError] = useState("")
   const summaryRef = useRef(null)
   const isHandlingPopState = useRef(false)
   const isEmployer = userRole === "employer"
@@ -598,11 +600,38 @@ function App() {
     setSelectedJobView(null)
   }
 
-  const downloadApplicantSummary = (item) => {
+  const fetchSupportingFilesForSummary = useCallback(async (uploadId) => {
+    if (!uploadId) {
+      setSummarySupportingFiles([])
+      setSummarySupportingError("")
+      return []
+    }
+    try {
+      setSummarySupportingError("")
+      const response = await fetch(`http://localhost:5000/uploads/${uploadId}/supporting`)
+      if (!response.ok) {
+        throw new Error("Failed to load supporting documents.")
+      }
+      const payload = await response.json()
+      const files = Array.isArray(payload?.files) ? payload.files : []
+      setSummarySupportingFiles(files)
+      return files
+    } catch (error) {
+      setSummarySupportingFiles([])
+      setSummarySupportingError(error.message || "Failed to load supporting documents.")
+      return []
+    }
+  }, [])
+
+  const downloadApplicantSummary = async (item) => {
     if (!item) return
     const name = item.name || "Applicant"
     const appliedJob = item.applied_job_title || item.matched_job_title || "-"
     const uploadedAt = item.uploaded_at ? new Date(item.uploaded_at).toLocaleString() : "-"
+    const supportingFiles = await fetchSupportingFilesForSummary(item.id)
+    const supportingNames = supportingFiles.length
+      ? supportingFiles.map((file) => file.original_name || "Supporting document").join(", ")
+      : "None"
     const lines = [
       "Applicant Summary",
       "=================",
@@ -611,10 +640,10 @@ function App() {
       `Phone: ${item.phone || "-"}`,
       `Applied Job: ${appliedJob}`,
       `Match Score: ${item.match_score != null ? `${Number(item.match_score).toFixed(2)}%` : "-"}`,
-      `Project Score: ${item.project_score != null ? `${Number(item.project_score).toFixed(2)}%` : "-"}`,
       `Classification: ${item.classification || "-"}`,
       `Matched Skills: ${item.matched_skills || "-"}`,
       `Missing Skills: ${item.missing_skills || "-"}`,
+      `Supporting Documents: ${supportingNames}`,
       `Uploaded File: ${item.original_name || "-"}`,
       `Uploaded At: ${uploadedAt}`
     ]
@@ -633,7 +662,7 @@ function App() {
     URL.revokeObjectURL(url)
   }
 
-  const downloadApplicantSummaryImage = (item) => {
+  const downloadApplicantSummaryImage = async (item) => {
     if (!item) return
     const safeName = String(item.name || "applicant")
       .toLowerCase()
@@ -641,6 +670,7 @@ function App() {
       .replace(/(^-|-$)/g, "")
 
     setSummaryItem(item)
+    await fetchSupportingFilesForSummary(item.id)
     requestAnimationFrame(() => {
       const node = summaryRef.current
       if (!node) return
@@ -672,7 +702,6 @@ function App() {
   const summarySkillsMatch = Math.min(100, summaryMatchedSkills.length * 12)
   const summaryEducationMatch = summaryEducation.length ? 60 : 10
   const summaryExperienceMatch = summaryExperience.length ? 55 : 0
-  const summaryProjectMatch = summaryItem?.project_score != null ? Number(summaryItem.project_score) : 0
 
   const handleTopNav = (page) => {
     setActivePage(page)
@@ -1921,7 +1950,19 @@ function App() {
 
                   <section className="candidate-card">
                     <h3>Supporting Documents</h3>
-                    <p className="muted">No supporting documents uploaded.</p>
+                    {summarySupportingError && <p className="muted">{summarySupportingError}</p>}
+                    {!summarySupportingError && summarySupportingFiles.length === 0 && (
+                      <p className="muted">No supporting documents uploaded.</p>
+                    )}
+                    {summarySupportingFiles.length > 0 && (
+                      <div className="supporting-docs-list">
+                        {summarySupportingFiles.map((file) => (
+                          <p key={`summary-support-${file.id || file.saved_name || file.original_name}`}>
+                            {file.original_name || "Supporting document"}
+                          </p>
+                        ))}
+                      </div>
+                    )}
                   </section>
 
                   <section className="candidate-card">
@@ -1991,10 +2032,6 @@ function App() {
                       <div className="bar-row">
                         <div className="bar-label"><span>Experience Match</span><strong>{summaryExperienceMatch}%</strong></div>
                         <div className="bar"><div style={{ width: `${summaryExperienceMatch}%` }} /></div>
-                      </div>
-                      <div className="bar-row">
-                        <div className="bar-label"><span>Project Match</span><strong>{summaryProjectMatch.toFixed(0)}%</strong></div>
-                        <div className="bar"><div style={{ width: `${summaryProjectMatch}%` }} /></div>
                       </div>
                     </div>
                   </section>

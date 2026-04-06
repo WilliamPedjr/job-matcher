@@ -29,6 +29,7 @@ function JobPostingPage({ uploads = [], isEmployer = false, isJobSeeker = false,
   const [createJobStatus, setCreateJobStatus] = useState("")
   const [createJobNotice, setCreateJobNotice] = useState("")
   const [isJobTitleOpen, setIsJobTitleOpen] = useState(false)
+  const [isSearchOpen, setIsSearchOpen] = useState(false)
   const [confirmDeleteJobId, setConfirmDeleteJobId] = useState(null)
   const isEditingJob = editingJobId != null
   const descriptionRef = useRef(null)
@@ -132,6 +133,23 @@ function JobPostingPage({ uploads = [], isEmployer = false, isJobSeeker = false,
     ]
     return Array.from(new Set(titles.filter(Boolean)))
   }, [jobs, templates])
+
+  const searchSuggestions = useMemo(() => {
+    const tokens = [
+      ...jobs.map((job) => String(job.title || "").trim()),
+      ...jobs.map((job) => String(job.department || "").trim()),
+      ...jobs.map((job) => String(job.location || "").trim())
+    ].filter(Boolean)
+    return Array.from(new Set(tokens))
+  }, [jobs])
+
+  const filteredSearchSuggestions = useMemo(() => {
+    const query = searchTerm.trim().toLowerCase()
+    if (!query) return searchSuggestions.slice(0, 8)
+    return searchSuggestions
+      .filter((token) => token.toLowerCase().includes(query))
+      .slice(0, 8)
+  }, [searchSuggestions, searchTerm])
 
   const filteredJobTitleSuggestions = useMemo(() => {
     const query = newJobTitle.trim().toLowerCase()
@@ -496,13 +514,38 @@ function JobPostingPage({ uploads = [], isEmployer = false, isJobSeeker = false,
       </div>
 
       <div className="jobs-controls jobs-controls-modern">
-        <input
-          className="input jobs-search"
-          type="text"
-          placeholder="Search jobs.."
-          value={searchTerm}
-          onChange={(e) => setSearchTerm(e.target.value)}
-        />
+        <div className="autocomplete jobs-search">
+          <input
+            className="input"
+            type="text"
+            placeholder="Search jobs.."
+            value={searchTerm}
+            onChange={(e) => {
+              setSearchTerm(e.target.value)
+              setIsSearchOpen(true)
+            }}
+            onFocus={() => setIsSearchOpen(true)}
+            onBlur={() => setTimeout(() => setIsSearchOpen(false), 0)}
+          />
+          {isSearchOpen && filteredSearchSuggestions.length > 0 && (
+            <div className="autocomplete-menu">
+              {filteredSearchSuggestions.map((token) => (
+                <button
+                  key={`job-search-${token}`}
+                  type="button"
+                  className="autocomplete-item"
+                  onMouseDown={(e) => {
+                    e.preventDefault()
+                    setSearchTerm(token)
+                    setIsSearchOpen(false)
+                  }}
+                >
+                  {token}
+                </button>
+              ))}
+            </div>
+          )}
+        </div>
         <CustomDropdown
           className="jobs-filter"
           options={statusOptions}
@@ -908,8 +951,9 @@ function JobPostingPage({ uploads = [], isEmployer = false, isJobSeeker = false,
                       rows={4}
                       ref={descriptionRef}
                       value={newJobDescription}
-                        placeholder="Describe the role, responsibilities and what you're looking for...."
-                      />
+                      onChange={(e) => setNewJobDescription(e.target.value)}
+                      placeholder="Describe the role, responsibilities and what you're looking for...."
+                    />
                   </div>
                 </section>
 

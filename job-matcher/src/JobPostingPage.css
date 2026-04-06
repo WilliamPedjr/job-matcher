@@ -328,7 +328,9 @@ body {
   border: 1px solid #d8dee8;
   border-radius: 8px;
   box-shadow: 0 8px 22px rgba(0, 0, 0, 0.12);
-  overflow: hidden;
+  max-height: 240px;
+  overflow-y: auto;
+  overflow-x: hidden;
   z-index: 60;
   transform-origin: top;
   animation: dropdownIn 140ms ease-out;
@@ -1202,7 +1204,7 @@ optgroup {
   padding: 18px;
   box-shadow: 0 12px 20px rgba(15, 23, 42, 0.05);
   position: relative;
-  overflow: hidden;
+  overflow: visible;
 }
 
 .create-job-panel::before {
