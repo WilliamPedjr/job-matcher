@@ -336,6 +336,29 @@ body {
   animation: dropdownIn 140ms ease-out;
 }
 
+.autocomplete-group {
+  padding: 6px 0;
+  border-bottom: 1px solid #eef2f7;
+}
+
+.autocomplete-group:last-child {
+  border-bottom: none;
+}
+
+.autocomplete-group-label {
+  padding: 6px 12px 4px;
+  font-size: 12px;
+  font-weight: 700;
+  color: #6b7280;
+  text-transform: uppercase;
+  letter-spacing: 0.6px;
+  width: 100%;
+  text-align: left;
+  border: none;
+  background: transparent;
+  cursor: pointer;
+}
+
 .autocomplete-item {
   width: 100%;
   border: none;
@@ -361,6 +384,22 @@ body {
   align-items: center;
   justify-content: space-between;
   text-align: left;
+}
+
+.job-position-input {
+  position: relative;
+  display: flex;
+  align-items: center;
+}
+
+.job-position-input .input {
+  padding-right: 36px;
+}
+
+.job-position-input .dropdown-caret {
+  position: absolute;
+  right: 12px;
+  pointer-events: none;
 }
 
 .dropdown-trigger:disabled {
@@ -735,6 +774,7 @@ optgroup {
   font-size: var(--fs-26);
   font-weight: 600;
 }
+
 
 .modal-modern .input {
   font-size: var(--fs-22);
@@ -1374,6 +1414,7 @@ optgroup {
   font-weight: 600;
 }
 
+
 .job-status {
   border-radius: 999px;
   padding: 3px 10px;
@@ -1462,6 +1503,24 @@ optgroup {
   background: #f8fafc;
   border: 1px dashed #cbd5f5;
   color: #475569;
+}
+
+.job-chip.chip-good {
+  background: #e6f7ee;
+  border: 1px solid #9dd8bd;
+  color: #1c8a5a;
+}
+
+.job-chip.chip-bad {
+  background: #fee2e2;
+  border: 1px solid #f0b9c1;
+  color: #b42318;
+}
+
+.job-chip.chip-warning {
+  background: #fff2dc;
+  border: 1px solid #ecd291;
+  color: #b86a00;
 }
 
 .job-description {

@@ -7,13 +7,13 @@ import eyeSolidIcon from "./assets/eye-solid-full.svg"
 import eyeRegularIcon from "./assets/eye-regular-full.svg"
 import facebookIcon from "./assets/facebook-f-brands-solid-full.svg"
 import instagramIcon from "./assets/instagram-brands-solid-full.svg"
-import loginImage from "./assets/Logo.png"
+import loginImage from "./assets/image1.jpg"
 
 function LoginPage({
   loginEmail,
   setLoginEmail,
   loginPassword,
-  setLoginPassword,
+  setLoginPassword, 
   loginError,
   captchaBypassEnabled,
   setCaptchaBypassEnabled,
@@ -191,8 +191,8 @@ function LoginPage({
         <div className="login-right-modern">
           <div className="login-brand-card">
             <img src={loginImage} alt="LNU RecruitIQ" className="login-brand-logo" />
-            <h2 className="login-brand-title">LNU RecruitIQ</h2>
-            <p className="login-brand-school">Leyte Normal University</p>
+            {/* <h2 className="login-brand-title">LNU RecruitIQ</h2>
+            <p className="login-brand-school">Leyte Normal University</p> */}
             {/* <p className="login-brand-tagline">Connecting Talent · Empowering Futures</p> */}
           </div>
         </div>

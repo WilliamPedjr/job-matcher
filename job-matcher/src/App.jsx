@@ -134,6 +134,7 @@ function App() {
   const [isLoadingUploads, setIsLoadingUploads] = useState(false)
   const [searchTerm, setSearchTerm] = useState("")
   const [sortConfig, setSortConfig] = useState({ key: "date", direction: "desc" })
+  const [showTopApplicants, setShowTopApplicants] = useState(false)
   const [actionsMenu, setActionsMenu] = useState(null)
   const [viewItem, setViewItem] = useState(null)
   const [activePage, setActivePage] = useState(() => localStorage.getItem("activePage") || "applicants")
@@ -154,6 +155,7 @@ function App() {
     }
   })
   const [jobSeekerResume, setJobSeekerResume] = useState(null)
+  const [jobSeekerSupporting, setJobSeekerSupporting] = useState([])
   const [jobSeekerId, setJobSeekerId] = useState(() => {
     const stored = localStorage.getItem("jobSeekerId")
     return stored ? Number(stored) : null
@@ -188,6 +190,7 @@ function App() {
   const [summaryItem, setSummaryItem] = useState(null)
   const [summarySupportingFiles, setSummarySupportingFiles] = useState([])
   const [summarySupportingError, setSummarySupportingError] = useState("")
+  const [resumeAttention, setResumeAttention] = useState(false)
   const summaryRef = useRef(null)
   const isHandlingPopState = useRef(false)
   const isEmployer = userRole === "employer"
@@ -198,6 +201,15 @@ function App() {
 
   const handleJobSeekerResumeUpdate = useCallback((resume) => {
     setJobSeekerResume(resume || null)
+  }, [])
+
+  const handleJobSeekerSupportingUpdate = useCallback((files) => {
+    setJobSeekerSupporting(Array.isArray(files) ? files : [])
+  }, [])
+
+  const requestResumeAttention = useCallback(() => {
+    setResumeAttention(true)
+    setActivePage("profile")
   }, [])
 
   useEffect(() => {
@@ -223,6 +235,34 @@ function App() {
       }
     }
     fetchResume()
+    return () => {
+      isMounted = false
+    }
+  }, [isAuthenticated, isJobSeeker, resolvedJobSeekerId])
+
+  useEffect(() => {
+    if (!isAuthenticated || !isJobSeeker || !resolvedJobSeekerId) {
+      setJobSeekerSupporting([])
+      return
+    }
+    let isMounted = true
+    const fetchSupporting = async () => {
+      try {
+        const response = await fetch(`http://localhost:5000/job-seekers/${resolvedJobSeekerId}/supporting`)
+        if (!response.ok) {
+          setJobSeekerSupporting([])
+          return
+        }
+        const payload = await response.json()
+        if (!isMounted) return
+        setJobSeekerSupporting(Array.isArray(payload?.files) ? payload.files : [])
+      } catch {
+        if (isMounted) {
+          setJobSeekerSupporting([])
+        }
+      }
+    }
+    fetchSupporting()
     return () => {
       isMounted = false
     }
@@ -595,6 +635,7 @@ function App() {
     setIsProfileMenuOpen(false)
     setViewItem(null)
     setJobSeekerProfile(null)
+    setJobSeekerSupporting([])
     setJobSeekerId(null)
     setActivePage("applicants")
     setSelectedJobView(null)
@@ -779,7 +820,7 @@ function App() {
     }
   }
 
-  const handleJobSeekerApply = async ({ name: applicantName, email: applicantEmail, phone: applicantPhone, file: resumeFile, supportingFiles = [], appliedJobTitle }) => {
+  const handleJobSeekerApply = async ({ name: applicantName, email: applicantEmail, phone: applicantPhone, file: resumeFile, supportingFiles = [], supportingTypes = [], appliedJobTitle }) => {
     const normalizedName = String(applicantName || "").trim()
     const normalizedEmail = String(applicantEmail || "").trim()
     const phoneDigits = String(applicantPhone || "").replace(/\D/g, "")
@@ -811,6 +852,9 @@ function App() {
     supportingFiles.forEach((file) => {
       formData.append("supportingFiles", file)
     })
+    supportingTypes.forEach((type) => {
+      formData.append("supportingTypes", type)
+    })
 
     try {
       const response = await fetch("http://localhost:5000/upload", {
@@ -822,7 +866,7 @@ function App() {
         const payload = await response.json().catch(() => null)
         const message = payload?.message || "Failed to submit application."
         showUploadNotice("fail", message)
-        return { ok: false, message }
+        return { ok: false, message, invalidSupporting: payload?.invalidSupporting || [] }
       }
 
       showUploadNotice("success", "Application submitted successfully.")
@@ -949,6 +993,17 @@ function App() {
       }
       return (new Date(a.uploaded_at) - new Date(b.uploaded_at)) * direction
     })
+
+  const topApplicants = useMemo(() => {
+    const ranked = [...filteredUploads].sort((a, b) => {
+      const scoreDelta = Number(b.match_score || 0) - Number(a.match_score || 0)
+      if (scoreDelta !== 0) return scoreDelta
+      return new Date(b.uploaded_at || 0) - new Date(a.uploaded_at || 0)
+    })
+    return ranked.slice(0, 10)
+  }, [filteredUploads])
+
+  const displayedUploads = showTopApplicants ? topApplicants : filteredUploads
 
   const activeJobPosts = jobPosts.filter(
     (job) => String(job.status || "active").toLowerCase() === "active"
@@ -1218,6 +1273,10 @@ function App() {
           onJobSeekerProfileUpdate={handleJobSeekerProfileUpdate}
           jobSeekerResume={jobSeekerResume}
           onJobSeekerResumeUpdate={handleJobSeekerResumeUpdate}
+          jobSeekerSupporting={jobSeekerSupporting}
+          onJobSeekerSupportingUpdate={handleJobSeekerSupportingUpdate}
+          resumeAttention={resumeAttention}
+          onResumeAttentionConsumed={() => setResumeAttention(false)}
         />
       )
     }
@@ -1230,6 +1289,8 @@ function App() {
           uploads={uploads}
           isEmployer={isEmployer}
           isJobSeeker={isJobSeeker}
+          jobSeekerId={resolvedJobSeekerId}
+          jobSeekerResume={jobSeekerResume}
           onViewApplicant={handleViewApplicantFromJobs}
           onDeleteApplicant={handleDelete}
           onJobsChanged={fetchJobPosts}
@@ -1249,8 +1310,10 @@ function App() {
             setActivePage("jobs")
           }}
           onApply={handleJobSeekerApply}
+          onRequireResume={requestResumeAttention}
           jobSeekerProfile={jobSeekerProfile}
           jobSeekerResume={jobSeekerResume}
+          jobSeekerSupporting={jobSeekerSupporting}
           jobSeekerId={resolvedJobSeekerId}
         />
       )
@@ -1299,7 +1362,7 @@ function App() {
     if (isLoadingUploads && !isJobSeeker) {
       return <p>Loading uploads...</p>
     }
-    if (filteredUploads.length === 0 && !isJobSeeker) {
+    if (displayedUploads.length === 0 && !isJobSeeker) {
       return (
         <section className="empty-state">
           <h3>No applicants found</h3>
@@ -1325,7 +1388,7 @@ function App() {
               </tr>
             </thead>
             <tbody>
-              {filteredUploads.map((item, index) => (
+              {displayedUploads.map((item, index) => (
                 <tr key={item.id}>
                   <td>{index + 1}</td>
                   <td>
@@ -1747,7 +1810,11 @@ function App() {
           </div>
 
           <div className="panel-meta applicants-meta">
-            <p>Showing {filteredUploads.length} of {uploads.length} applicants</p>
+            <p>
+              {showTopApplicants
+                ? `Showing ${displayedUploads.length} of ${uploads.length} applicants (Top 10 by score)`
+                : `Showing ${displayedUploads.length} of ${uploads.length} applicants`}
+            </p>
             <div className="sort-wrap applicants-sort">
               <span>Sort by:</span>
               <button
@@ -1767,6 +1834,13 @@ function App() {
                 onClick={() => toggleSort("score")}
               >
                 Score {sortConfig.key === "score" ? (sortConfig.direction === "asc" ? "↑" : "↓") : ""}
+              </button>
+              <button
+                type="button"
+                className={`sort-btn ${showTopApplicants ? "active" : ""}`}
+                onClick={() => setShowTopApplicants((prev) => !prev)}
+              >
+                {showTopApplicants ? "Show All" : "Top 10 by Score"}
               </button>
             </div>
           </div>

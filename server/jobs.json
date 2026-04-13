@@ -8,10 +8,11 @@
     "location": "Leyte Normal University",
     "type": "Full-time",
     "requiredSkills": "HTML5, CSS3, JavaScript (ES6+), React, Responsive Design, REST APIs, Git",
-    "minimumEducation": "Bachelor's Degree",
+    "minimumEducation": "Bachelor's Degree in Computer Science",
     "minimumExperienceYears": 1,
-    "salaryMin": 30000,
-    "salaryMax": 60000
+    "salaryMin": 20,
+    "salaryMax": 62967,
+    "hourlyRate": 393.54
   },
   {
     "id": 2,
@@ -22,10 +23,11 @@
     "location": "Leyte Normal University",
     "type": "Full-time",
     "requiredSkills": "Node.js, Express, REST APIs, SQL, MySQL, Authentication, Git",
-    "minimumEducation": "Bachelor's Degree",
+    "minimumEducation": "Bachelor's Degree in Computer Science",
     "minimumExperienceYears": 1,
-    "salaryMin": 30000,
-    "salaryMax": 60000
+    "salaryMin": 20,
+    "salaryMax": 62967,
+    "hourlyRate": 393.54
   },
   {
     "id": 3,
@@ -36,10 +38,11 @@
     "location": "Leyte Normal University",
     "type": "Full-time",
     "requiredSkills": "Lesson Planning, Classroom Management, Curriculum Development, Communication, Assessment, Academic Writing, MS Office",
-    "minimumEducation": "Bachelor's Degree",
+    "minimumEducation": "Bachelor's Degree in Education",
     "minimumExperienceYears": 1,
-    "salaryMin": 25000,
-    "salaryMax": 45000
+    "salaryMin": 16,
+    "salaryMax": 43560,
+    "hourlyRate": 272.25
   },
   {
     "id": 4,
@@ -50,10 +53,11 @@
     "location": "Leyte Normal University",
     "type": "Full-time",
     "requiredSkills": "Office Administration, Records Management, Scheduling, Communication, Attention to Detail, MS Office, Basic Accounting",
-    "minimumEducation": "Bachelor's Degree",
+    "minimumEducation": "Bachelor's Degree in Business Administration",
     "minimumExperienceYears": 1,
-    "salaryMin": 22000,
-    "salaryMax": 40000
+    "salaryMin": 15,
+    "salaryMax": 40208,
+    "hourlyRate": 251.3
   },
   {
     "id": 5,
@@ -64,10 +68,11 @@
     "location": "Leyte Normal University",
     "type": "Full-time",
     "requiredSkills": "Lesson Planning, English Language Instruction, Classroom Management, Assessment, Communication, Academic Writing, MS Office",
-    "minimumEducation": "Bachelor's Degree",
+    "minimumEducation": "BSEd major in English",
     "minimumExperienceYears": 0,
-    "salaryMin": 25000,
-    "salaryMax": 45000
+    "salaryMin": 16,
+    "salaryMax": 43560,
+    "hourlyRate": 272.25
   },
   {
     "id": 6,
@@ -78,10 +83,11 @@
     "location": "Leyte Normal University",
     "type": "Full-time",
     "requiredSkills": "Lesson Planning, Mathematics Instruction, Classroom Management, Assessment, Communication, Problem Solving, MS Office",
-    "minimumEducation": "Bachelor's Degree",
+    "minimumEducation": "BSEd major in Mathematics",
     "minimumExperienceYears": 0,
-    "salaryMin": 25000,
-    "salaryMax": 45000
+    "salaryMin": 16,
+    "salaryMax": 43560,
+    "hourlyRate": 272.25
   },
   {
     "id": 7,
@@ -92,10 +98,11 @@
     "location": "Leyte Normal University",
     "type": "Full-time",
     "requiredSkills": "Lesson Planning, Social Studies Instruction, Classroom Management, Assessment, Communication, Curriculum Development, MS Office",
-    "minimumEducation": "Bachelor's Degree",
+    "minimumEducation": "BSEd major in Social Studies",
     "minimumExperienceYears": 0,
-    "salaryMin": 25000,
-    "salaryMax": 45000
+    "salaryMin": 16,
+    "salaryMax": 43560,
+    "hourlyRate": 272.25
   },
   {
     "id": 8,
@@ -106,10 +113,11 @@
     "location": "Leyte Normal University",
     "type": "Full-time",
     "requiredSkills": "Lesson Planning, Values Education Instruction, Classroom Management, Assessment, Communication, Counseling Basics, MS Office",
-    "minimumEducation": "Bachelor's Degree",
+    "minimumEducation": "BSEd major in Values Education",
     "minimumExperienceYears": 0,
-    "salaryMin": 25000,
-    "salaryMax": 45000
+    "salaryMin": 16,
+    "salaryMax": 43560,
+    "hourlyRate": 272.25
   },
   {
     "id": 9,
@@ -120,10 +128,11 @@
     "location": "Leyte Normal University",
     "type": "Full-time",
     "requiredSkills": "Lesson Planning, Professional Education Instruction, Classroom Management, Assessment, Communication, Curriculum Development, MS Office",
-    "minimumEducation": "Bachelor's Degree",
+    "minimumEducation": "Education Graduate",
     "minimumExperienceYears": 0,
-    "salaryMin": 25000,
-    "salaryMax": 45000
+    "salaryMin": 16,
+    "salaryMax": 43560,
+    "hourlyRate": 272.25
   },
   {
     "id": 10,
@@ -134,10 +143,11 @@
     "location": "Leyte Normal University",
     "type": "Full-time",
     "requiredSkills": "Lesson Planning, Special Education Instruction, Classroom Management, Assessment, Communication, Inclusive Education, MS Office",
-    "minimumEducation": "Bachelor's Degree",
+    "minimumEducation": "BSEd major in Special Needs Education",
     "minimumExperienceYears": 0,
-    "salaryMin": 25000,
-    "salaryMax": 45000
+    "salaryMin": 16,
+    "salaryMax": 43560,
+    "hourlyRate": 272.25
   },
   {
     "id": 11,
@@ -148,10 +158,11 @@
     "location": "Leyte Normal University",
     "type": "Full-time",
     "requiredSkills": "Lesson Planning, TLE Instruction, Classroom Management, Assessment, Communication, Technical Skills, MS Office",
-    "minimumEducation": "Bachelor's Degree",
+    "minimumEducation": "BSEd major in TLE",
     "minimumExperienceYears": 0,
-    "salaryMin": 25000,
-    "salaryMax": 45000
+    "salaryMin": 16,
+    "salaryMax": 43560,
+    "hourlyRate": 272.25
   },
   {
     "id": 12,
@@ -162,10 +173,11 @@
     "location": "Leyte Normal University",
     "type": "Full-time",
     "requiredSkills": "Lesson Planning, Tourism Management Instruction, Classroom Management, Assessment, Communication, Industry Practices, MS Office",
-    "minimumEducation": "Bachelor's Degree",
+    "minimumEducation": "BS Tourism Management",
     "minimumExperienceYears": 0,
-    "salaryMin": 25000,
-    "salaryMax": 45000
+    "salaryMin": 16,
+    "salaryMax": 43560,
+    "hourlyRate": 272.25
   },
   {
     "id": 13,
@@ -176,10 +188,11 @@
     "location": "Leyte Normal University",
     "type": "Full-time",
     "requiredSkills": "Lesson Planning, Hospitality Management Instruction, Classroom Management, Assessment, Communication, Industry Practices, MS Office",
-    "minimumEducation": "Bachelor's Degree",
+    "minimumEducation": "BS Hospitality Management",
     "minimumExperienceYears": 0,
-    "salaryMin": 25000,
-    "salaryMax": 45000
+    "salaryMin": 16,
+    "salaryMax": 43560,
+    "hourlyRate": 272.25
   },
   {
     "id": 14,
@@ -190,10 +203,11 @@
     "location": "Leyte Normal University",
     "type": "Full-time",
     "requiredSkills": "Lesson Planning, Entrepreneurship Instruction, Classroom Management, Assessment, Communication, Business Development, MS Office",
-    "minimumEducation": "Bachelor's Degree",
+    "minimumEducation": "BS Entrepreneurship",
     "minimumExperienceYears": 0,
-    "salaryMin": 25000,
-    "salaryMax": 45000
+    "salaryMin": 16,
+    "salaryMax": 43560,
+    "hourlyRate": 272.25
   },
   {
     "id": 15,
@@ -204,10 +218,11 @@
     "location": "Leyte Normal University",
     "type": "Full-time",
     "requiredSkills": "Lesson Planning, Biotechnology Instruction, Classroom Management, Assessment, Communication, Laboratory Skills, MS Office",
-    "minimumEducation": "Bachelor's Degree",
+    "minimumEducation": "BS Biology",
     "minimumExperienceYears": 0,
-    "salaryMin": 25000,
-    "salaryMax": 45000
+    "salaryMin": 16,
+    "salaryMax": 43560,
+    "hourlyRate": 272.25
   },
   {
     "id": 16,
@@ -218,10 +233,11 @@
     "location": "Leyte Normal University",
     "type": "Full-time",
     "requiredSkills": "Lesson Planning, Social Work Instruction, Classroom Management, Assessment, Communication, Case Management, MS Office",
-    "minimumEducation": "Bachelor's Degree",
+    "minimumEducation": "BS Social Work",
     "minimumExperienceYears": 0,
-    "salaryMin": 25000,
-    "salaryMax": 45000
+    "salaryMin": 16,
+    "salaryMax": 43560,
+    "hourlyRate": 272.25
   },
   {
     "id": 17,
@@ -232,10 +248,11 @@
     "location": "Leyte Normal University",
     "type": "Full-time",
     "requiredSkills": "Lesson Planning, English Language Instruction, Classroom Management, Assessment, Communication, Academic Writing, MS Office",
-    "minimumEducation": "Bachelor's Degree",
+    "minimumEducation": "BA English Language",
     "minimumExperienceYears": 0,
-    "salaryMin": 25000,
-    "salaryMax": 45000
+    "salaryMin": 16,
+    "salaryMax": 43560,
+    "hourlyRate": 272.25
   },
   {
     "id": 18,
@@ -246,10 +263,11 @@
     "location": "Leyte Normal University",
     "type": "Full-time",
     "requiredSkills": "Teaching, Curriculum Development, Ecology, Biodiversity, Conservation Biology, Research Methods, Communication",
-    "minimumEducation": "Bachelor's Degree",
+    "minimumEducation": "BS Biology",
     "minimumExperienceYears": 0,
-    "salaryMin": 25000,
-    "salaryMax": 45000
+    "salaryMin": 18,
+    "salaryMax": 51304,
+    "hourlyRate": 320.65
   },
   {
     "id": 19,
@@ -260,10 +278,11 @@
     "location": "Leyte Normal University",
     "type": "Full-time",
     "requiredSkills": "Teaching, Curriculum Development, Medical Biology, Animal Physiology, Research Methods, Communication, Laboratory Skills",
-    "minimumEducation": "Bachelor's Degree",
+    "minimumEducation": "BS Biology",
     "minimumExperienceYears": 0,
-    "salaryMin": 25000,
-    "salaryMax": 45000
+    "salaryMin": 18,
+    "salaryMax": 51304,
+    "hourlyRate": 320.65
   },
   {
     "id": 20,
@@ -274,10 +293,11 @@
     "location": "Leyte Normal University",
     "type": "Full-time",
     "requiredSkills": "Teaching, Curriculum Development, Chemistry, Laboratory Techniques, Research Methods, Communication",
-    "minimumEducation": "Bachelor's Degree",
+    "minimumEducation": "BS Chemistry",
     "minimumExperienceYears": 0,
-    "salaryMin": 25000,
-    "salaryMax": 45000
+    "salaryMin": 18,
+    "salaryMax": 51304,
+    "hourlyRate": 320.65
   },
   {
     "id": 21,
@@ -288,9 +308,10 @@
     "location": "Leyte Normal University",
     "type": "Full-time",
     "requiredSkills": "Basic Accounting, Bookkeeping, MS Office, Attention to Detail",
-    "minimumEducation": "Bachelor's Degree",
+    "minimumEducation": "BS Accountancy",
     "minimumExperienceYears": 0,
-    "salaryMin": 22000,
-    "salaryMax": 40000
+    "salaryMin": 15,
+    "salaryMax": 40208,
+    "hourlyRate": 251.3
   }
 ]

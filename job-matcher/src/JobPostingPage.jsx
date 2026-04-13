@@ -2,7 +2,7 @@ import { useEffect, useMemo, useRef, useState } from 'react'
 import './JobPostingPage.css'
 import CustomDropdown from './CustomDropdown'
 
-function JobPostingPage({ uploads = [], isEmployer = false, isJobSeeker = false, onViewApplicant, onDeleteApplicant, onJobsChanged, onViewJob }) {
+function JobPostingPage({ uploads = [], isEmployer = false, isJobSeeker = false, jobSeekerId, jobSeekerResume, onViewApplicant, onDeleteApplicant, onJobsChanged, onViewJob }) {
   const [jobs, setJobs] = useState([])
   const [templates, setTemplates] = useState([])
   const [searchTerm, setSearchTerm] = useState("")
@@ -14,23 +14,34 @@ function JobPostingPage({ uploads = [], isEmployer = false, isJobSeeker = false,
   const [editingJobId, setEditingJobId] = useState(null)
   const [newJobTitle, setNewJobTitle] = useState("")
   const [newJobDescription, setNewJobDescription] = useState("")
-  const [newJobDepartment, setNewJobDepartment] = useState("Information Technology")
+  const [newJobDepartment, setNewJobDepartment] = useState("")
+  const [isJobPositionOpen, setIsJobPositionOpen] = useState(false)
+  const [expandedDepartments, setExpandedDepartments] = useState({})
   const defaultJobLocation = "Leyte Normal University"
   const [newJobType, setNewJobType] = useState("Full-time")
   const [newJobStatus, setNewJobStatus] = useState("active")
   const [newRequiredSkills, setNewRequiredSkills] = useState("")
-  const [newMinimumEducation, setNewMinimumEducation] = useState("")
+  const [newMinimumEducation, setNewMinimumEducation] = useState("Bachelor's Degree")
   const [newMinimumExperienceYears, setNewMinimumExperienceYears] = useState("0")
   const [newSalaryMin, setNewSalaryMin] = useState("")
   const [newSalaryMax, setNewSalaryMax] = useState("")
+  const lastMonthlySalaryRef = useRef(null)
   const [isCreatingJob, setIsCreatingJob] = useState(false)
   const [isLoading, setIsLoading] = useState(false)
   const [error, setError] = useState("")
   const [createJobStatus, setCreateJobStatus] = useState("")
   const [createJobNotice, setCreateJobNotice] = useState("")
-  const [isJobTitleOpen, setIsJobTitleOpen] = useState(false)
   const [isSearchOpen, setIsSearchOpen] = useState(false)
+  const [isSkillsOpen, setIsSkillsOpen] = useState(false)
   const [confirmDeleteJobId, setConfirmDeleteJobId] = useState(null)
+  const [jobMatches, setJobMatches] = useState({})
+  const [jobMatchStatus, setJobMatchStatus] = useState("idle")
+  const [jobSkillCatalog, setJobSkillCatalog] = useState([])
+  const [jobSkillStatus, setJobSkillStatus] = useState("idle")
+  const [globalSkillCatalog, setGlobalSkillCatalog] = useState([])
+  const [globalSkillStatus, setGlobalSkillStatus] = useState("idle")
+  const [templateSkillCatalog, setTemplateSkillCatalog] = useState([])
+  const [templateSkillStatus, setTemplateSkillStatus] = useState("idle")
   const isEditingJob = editingJobId != null
   const descriptionRef = useRef(null)
 
@@ -101,16 +112,184 @@ function JobPostingPage({ uploads = [], isEmployer = false, isJobSeeker = false,
   }, [actionsJobId])
 
   useEffect(() => {
-    const onDocClick = () => setIsJobTitleOpen(false)
+    if (!isJobPositionOpen) return
+    const onDocClick = () => setIsJobPositionOpen(false)
     document.addEventListener("click", onDocClick)
     return () => document.removeEventListener("click", onDocClick)
-  }, [])
+  }, [isJobPositionOpen])
 
   useEffect(() => {
     if (isJobSeeker && isCreateModalOpen) {
       setIsCreateModalOpen(false)
     }
   }, [isJobSeeker, isCreateModalOpen])
+
+  useEffect(() => {
+    if (isEditingJob) return
+    const title = newJobTitle.trim()
+    if (!title) {
+      setTemplateSkillCatalog([])
+      setTemplateSkillStatus("idle")
+      return
+    }
+    let isMounted = true
+    const controller = new AbortController()
+    setTemplateSkillStatus("loading")
+    const fetchCatalog = async () => {
+      try {
+        const response = await fetch(`http://localhost:5000/skills/catalog?title=${encodeURIComponent(title)}`, {
+          signal: controller.signal
+        })
+        if (!response.ok) {
+          throw new Error("Failed to load skill catalog.")
+        }
+        const payload = await response.json()
+        if (!isMounted) return
+        setTemplateSkillCatalog(Array.isArray(payload?.skills) ? payload.skills : [])
+        setTemplateSkillStatus("ready")
+      } catch (error) {
+        if (!isMounted || error?.name === "AbortError") return
+        setTemplateSkillCatalog([])
+        setTemplateSkillStatus("error")
+      }
+    }
+    fetchCatalog()
+    return () => {
+      isMounted = false
+      controller.abort()
+    }
+  }, [isEditingJob, newJobTitle])
+
+  useEffect(() => {
+    let isMounted = true
+    const controller = new AbortController()
+    setGlobalSkillStatus("loading")
+    const fetchGlobalSkills = async () => {
+      try {
+        const response = await fetch("http://localhost:5000/skills", { signal: controller.signal })
+        if (!response.ok) {
+          throw new Error("Failed to load skills.")
+        }
+        const payload = await response.json()
+        if (!isMounted) return
+        setGlobalSkillCatalog(Array.isArray(payload?.skills) ? payload.skills : [])
+        setGlobalSkillStatus("ready")
+      } catch (error) {
+        if (!isMounted || error?.name === "AbortError") return
+        setGlobalSkillCatalog([])
+        setGlobalSkillStatus("error")
+      }
+    }
+    fetchGlobalSkills()
+    return () => {
+      isMounted = false
+      controller.abort()
+    }
+  }, [])
+
+  useEffect(() => {
+    if (!editingJobId) {
+      setJobSkillCatalog([])
+      setJobSkillStatus("idle")
+      return
+    }
+    let isMounted = true
+    const controller = new AbortController()
+    setJobSkillStatus("loading")
+    const fetchCatalog = async () => {
+      try {
+        const response = await fetch(`http://localhost:5000/jobs/${editingJobId}/skills`, {
+          signal: controller.signal
+        })
+        if (!response.ok) {
+          throw new Error("Failed to load job skills.")
+        }
+        const payload = await response.json()
+        if (!isMounted) return
+        setJobSkillCatalog(Array.isArray(payload?.skills) ? payload.skills : [])
+        setJobSkillStatus("ready")
+      } catch (error) {
+        if (!isMounted || error?.name === "AbortError") return
+        setJobSkillCatalog([])
+        setJobSkillStatus("error")
+      }
+    }
+    fetchCatalog()
+    return () => {
+      isMounted = false
+      controller.abort()
+    }
+  }, [editingJobId])
+
+  useEffect(() => {
+    if (!isJobSeeker || !jobSeekerId) {
+      setJobMatches({})
+      setJobMatchStatus("idle")
+      return
+    }
+    if (!jobSeekerResume) {
+      setJobMatches({})
+      setJobMatchStatus("no-resume")
+      return
+    }
+    if (!jobs.length) {
+      setJobMatches({})
+      setJobMatchStatus("idle")
+      return
+    }
+
+    let isMounted = true
+    const controller = new AbortController()
+    setJobMatchStatus("loading")
+
+    const fetchMatches = async () => {
+      try {
+        const results = await Promise.all(
+          jobs.map(async (job) => {
+            const title = String(job.title || "").trim()
+            if (!title) return null
+            try {
+              const response = await fetch(
+                `http://localhost:5000/job-seekers/${jobSeekerId}/resume/match?jobTitle=${encodeURIComponent(title)}`,
+                { signal: controller.signal }
+              )
+              if (!response.ok) {
+                return { key: title.toLowerCase(), score: null, qualifies: false }
+              }
+              const payload = await response.json()
+              const score = Number(payload?.matchScore)
+              return {
+                key: title.toLowerCase(),
+                score: Number.isNaN(score) ? null : score,
+                qualifies: Boolean(payload?.qualifies)
+              }
+            } catch (error) {
+              if (error?.name === "AbortError") return null
+              return { key: title.toLowerCase(), score: null, qualifies: false }
+            }
+          })
+        )
+
+        if (!isMounted) return
+        const next = {}
+        results.filter(Boolean).forEach((item) => {
+          next[item.key] = { score: item.score, qualifies: item.qualifies }
+        })
+        setJobMatches(next)
+        setJobMatchStatus("ready")
+      } catch {
+        if (!isMounted) return
+        setJobMatches({})
+        setJobMatchStatus("error")
+      }
+    }
+
+    fetchMatches()
+    return () => {
+      isMounted = false
+      controller.abort()
+    }
+  }, [isJobSeeker, jobSeekerId, jobSeekerResume, jobs])
 
   const filteredJobs = useMemo(() => {
     return jobs.filter((job) => {
@@ -126,13 +305,44 @@ function JobPostingPage({ uploads = [], isEmployer = false, isJobSeeker = false,
     })
   }, [jobs, searchTerm, statusFilter])
 
-  const jobTitleSuggestions = useMemo(() => {
-    const titles = [
-      ...jobs.map((job) => String(job.title || "").trim()),
-      ...templates.map((template) => String(template.title || "").trim())
+  const jobCategoryGroups = useMemo(() => {
+    const map = new Map()
+    const sources = [
+      ...templates.map((item) => ({ ...item, source: "template" })),
+      ...jobs.map((item) => ({ ...item, source: "job" }))
     ]
-    return Array.from(new Set(titles.filter(Boolean)))
+    sources.forEach((item) => {
+      const title = String(item.title || "").trim()
+      if (!title) return
+      const department = String(item.department || "Other").trim() || "Other"
+      if (!map.has(department)) {
+        map.set(department, new Set())
+      }
+      map.get(department).add(title)
+    })
+    return Array.from(map.entries())
+      .map(([department, titles]) => ({
+        department,
+        titles: Array.from(titles).sort((a, b) => a.localeCompare(b))
+      }))
+      .sort((a, b) => a.department.localeCompare(b.department))
   }, [jobs, templates])
+
+  const filteredJobCategoryGroups = useMemo(() => {
+    const query = newJobTitle.trim().toLowerCase()
+    if (!query) return jobCategoryGroups
+    return jobCategoryGroups
+      .map((group) => ({
+        department: group.department,
+        titles: group.titles.filter((title) => title.toLowerCase().includes(query))
+      }))
+      .filter((group) => group.titles.length > 0)
+  }, [jobCategoryGroups, newJobTitle])
+
+  const jobPositionLabel = useMemo(() => {
+    if (!newJobTitle) return ""
+    return newJobTitle
+  }, [newJobTitle])
 
   const searchSuggestions = useMemo(() => {
     const tokens = [
@@ -143,21 +353,12 @@ function JobPostingPage({ uploads = [], isEmployer = false, isJobSeeker = false,
     return Array.from(new Set(tokens))
   }, [jobs])
 
-  const filteredSearchSuggestions = useMemo(() => {
-    const query = searchTerm.trim().toLowerCase()
-    if (!query) return searchSuggestions.slice(0, 8)
-    return searchSuggestions
-      .filter((token) => token.toLowerCase().includes(query))
-      .slice(0, 8)
-  }, [searchSuggestions, searchTerm])
-
-  const filteredJobTitleSuggestions = useMemo(() => {
-    const query = newJobTitle.trim().toLowerCase()
-    if (!query) return jobTitleSuggestions.slice(0, 8)
-    return jobTitleSuggestions
-      .filter((title) => title.toLowerCase().includes(query))
-      .slice(0, 8)
-  }, [jobTitleSuggestions, newJobTitle])
+  const parseSkills = (value) => (
+    String(value || "")
+      .split(",")
+      .map((item) => item.trim())
+      .filter(Boolean)
+  )
 
   const templateByTitle = useMemo(() => {
     const map = new Map()
@@ -175,11 +376,108 @@ function JobPostingPage({ uploads = [], isEmployer = false, isJobSeeker = false,
     return map
   }, [templates, jobs])
 
+  const allSkillSuggestions = useMemo(() => {
+    const collected = [
+      ...jobs.map((job) => job.requiredSkills),
+      ...templates.map((template) => template.requiredSkills)
+    ]
+      .flatMap((text) => parseSkills(text))
+      .filter(Boolean)
+    return Array.from(new Set(collected)).sort((a, b) => a.localeCompare(b))
+  }, [jobs, templates])
+
+  const templateSkills = useMemo(() => {
+    const key = newJobTitle.trim().toLowerCase()
+    if (!key) return []
+    const matched = templateByTitle.get(key)
+    return parseSkills(matched?.requiredSkills || "")
+  }, [newJobTitle, templateByTitle])
+
+  const degreeMap = useMemo(() => ({
+    "Frontend Developer": { bachelor: "Bachelor's Degree in Computer Science", master: "Master's Degree in Computer Science" },
+    "Backend Developer": { bachelor: "Bachelor's Degree in Computer Science", master: "Master's Degree in Computer Science" },
+    "Accounting Staff": { bachelor: "BS Accountancy", master: "Master's Degree in Accountancy" },
+    "Administrative Staff": { bachelor: "Bachelor's Degree in Business Administration", master: "Master's Degree in Business Administration" },
+    "English Instructor": { bachelor: "BSEd major in English", master: "Master's Degree in English Education" },
+    "Math Instructor": { bachelor: "BSEd major in Mathematics", master: "Master's Degree in Mathematics Education" },
+    "Social Studies Instructor": { bachelor: "BSEd major in Social Studies", master: "Master's Degree in Social Studies Education" },
+    "Values Education Instructor": { bachelor: "BSEd major in Values Education", master: "Master's Degree in Values Education" },
+    "Professional Education Instructor": { bachelor: "Education Graduate", master: "Master's Degree in Education" },
+    "Special Needs Education Instructor": { bachelor: "BSEd major in Special Needs Education", master: "Master's Degree in Special Needs Education" },
+    "Technology and Livelihood Education Instructor": { bachelor: "BSEd major in TLE", master: "Master's Degree in TLE" },
+    "Tourism Management Instructor": { bachelor: "BS Tourism Management", master: "Master's Degree in Tourism Management" },
+    "Hospitality Management Instructor": { bachelor: "BS Hospitality Management", master: "Master's Degree in Hospitality Management" },
+    "Entrepreneurship Instructor": { bachelor: "BS Entrepreneurship", master: "Master's Degree in Entrepreneurship" },
+    "Biotechnology Instructor": { bachelor: "BS Biology", master: "Master's Degree in Biology" },
+    "Social Work Instructor": { bachelor: "BS Social Work", master: "Master's Degree in Social Work" },
+    "English Language Instructor": { bachelor: "BA English Language", master: "Master's Degree in English Language" },
+    "Faculty Member - Environmental Biology": { bachelor: "BS Biology", master: "Master's Degree in Biology" },
+    "Faculty Member - Medical Biology": { bachelor: "BS Biology", master: "Master's Degree in Medical Biology" },
+    "Faculty Member - Chemistry": { bachelor: "BS Chemistry", master: "Master's Degree in Chemistry" },
+    "Instructor": { bachelor: "Bachelor's Degree in Education", master: "Master's Degree in Education" }
+  }), [])
+
+  const educationMapping = useMemo(() => {
+    const title = String(newJobTitle || "").trim()
+    if (!title) return null
+    let mapping = degreeMap[title]
+    if (!mapping && /instructor/i.test(title)) {
+      mapping = degreeMap["Instructor"]
+    }
+    return mapping || null
+  }, [newJobTitle, degreeMap])
+
+  const educationOptions = useMemo(() => {
+    if (!educationMapping) {
+      return [
+        { value: "Bachelor's Degree", label: "Bachelor's Degree" },
+        { value: "Master's Degree", label: "Master's Degree" }
+      ]
+    }
+    return [
+      { value: educationMapping.bachelor, label: educationMapping.bachelor },
+      { value: educationMapping.master, label: educationMapping.master }
+    ]
+  }, [educationMapping])
+
+  useEffect(() => {
+    if (!educationMapping) return
+    const current = String(newMinimumEducation || "")
+    const isGeneric = current === "Bachelor's Degree" || current === "Master's Degree" || !current
+    if (isGeneric) {
+      setNewMinimumEducation(educationMapping.bachelor)
+    }
+  }, [educationMapping, newMinimumEducation])
+
+  const filteredSkillSuggestions = useMemo(() => {
+    const raw = String(newRequiredSkills || "")
+    const parts = raw.split(",")
+    const currentToken = String(parts[parts.length - 1] || "").trim().toLowerCase()
+    const existing = new Set(parseSkills(newRequiredSkills).map((item) => item.toLowerCase()))
+    const templatePool = templateSkillCatalog.length ? templateSkillCatalog : templateSkills
+    const pool = (isEditingJob ? jobSkillCatalog : templatePool)
+      .filter((skill) => !existing.has(skill.toLowerCase()))
+    if (!pool.length) return []
+    if (!currentToken) return pool
+    return pool
+      .filter((skill) => skill.toLowerCase().includes(currentToken))
+      .slice(0)
+  }, [newRequiredSkills, isEditingJob, jobSkillCatalog, templateSkills, templateSkillCatalog])
+
+  const filteredSearchSuggestions = useMemo(() => {
+    const query = searchTerm.trim().toLowerCase()
+    if (!query) return searchSuggestions.slice(0, 8)
+    return searchSuggestions
+      .filter((token) => token.toLowerCase().includes(query))
+      .slice(0, 8)
+  }, [searchSuggestions, searchTerm])
+
+
   const applyTemplate = (templateId) => {
     const selected = templates.find((item) => String(item.id) === String(templateId))
     if (!selected) return
     setNewJobDescription(selected.description || "")
-    setNewJobDepartment(selected.department || "Information Technology")
+    setNewJobDepartment(selected.department || "")
     setNewJobType(selected.type || "Full-time")
     setNewRequiredSkills(selected.requiredSkills || "")
     setNewMinimumEducation(selected.minimumEducation || "")
@@ -191,7 +489,7 @@ function JobPostingPage({ uploads = [], isEmployer = false, isJobSeeker = false,
   const applyTemplateFromRecord = (record) => {
     if (!record) return
     setNewJobDescription(record.description || "")
-    setNewJobDepartment(record.department || "Information Technology")
+    setNewJobDepartment(record.department || "")
     setNewJobType(record.type || "Full-time")
     setNewRequiredSkills(record.requiredSkills || "")
     setNewMinimumEducation(record.minimumEducation || "")
@@ -306,7 +604,8 @@ function JobPostingPage({ uploads = [], isEmployer = false, isJobSeeker = false,
   const resetJobForm = () => {
     setNewJobTitle("")
     setNewJobDescription("")
-    setNewJobDepartment("Information Technology")
+    setNewJobDepartment("")
+    setExpandedDepartments({})
     setNewJobType("Full-time")
     setNewJobStatus("active")
     setNewRequiredSkills("")
@@ -321,7 +620,8 @@ function JobPostingPage({ uploads = [], isEmployer = false, isJobSeeker = false,
     setEditingJobId(job.id)
     setNewJobTitle(job.title || "")
     setNewJobDescription(job.description || "")
-    setNewJobDepartment(job.department || "Information Technology")
+    setNewJobDepartment(job.department || "")
+    setExpandedDepartments({})
     setNewJobType(job.type || "Full-time")
     setNewJobStatus(job.status || "active")
     setNewRequiredSkills(job.requiredSkills || "")
@@ -336,6 +636,34 @@ function JobPostingPage({ uploads = [], isEmployer = false, isJobSeeker = false,
     setIsCreateModalOpen(false)
     setEditingJobId(null)
   }
+
+  const salaryLabel = useMemo(() => {
+    const type = String(newJobType || "").toLowerCase()
+    if (type.includes("part")) {
+      return { min: "Salary Grade", max: "Hourly Rate" }
+    }
+    return { min: "Salary Grade", max: "Salary per Month" }
+  }, [newJobType])
+
+  useEffect(() => {
+    const isPartTime = String(newJobType || "").toLowerCase().includes("part")
+    const salaryValue = Number(newSalaryMax)
+    if (!Number.isFinite(salaryValue) || salaryValue <= 0) return
+
+    if (isPartTime) {
+      if (lastMonthlySalaryRef.current == null) {
+        lastMonthlySalaryRef.current = salaryValue
+      }
+      const hourly = Math.round((salaryValue / 160) * 100) / 100
+      setNewSalaryMax(String(hourly))
+      return
+    }
+
+    if (lastMonthlySalaryRef.current != null) {
+      setNewSalaryMax(String(lastMonthlySalaryRef.current))
+      lastMonthlySalaryRef.current = null
+    }
+  }, [newJobType])
 
   const createJobPost = async () => {
     const hasMissingField = (
@@ -366,12 +694,7 @@ function JobPostingPage({ uploads = [], isEmployer = false, isJobSeeker = false,
     }
 
     if (Number.isNaN(salaryMin) || Number.isNaN(salaryMax) || salaryMin < 0 || salaryMax < 0) {
-      showCreateJobNotice("fail", "Salary range must be valid non-negative numbers.")
-      return
-    }
-
-    if (salaryMax < salaryMin) {
-      showCreateJobNotice("fail", "Salary Range (Max) must be greater than or equal to Salary Range (Min).")
+      showCreateJobNotice("fail", "Salary grade and salary amount must be valid non-negative numbers.")
       return
     }
 
@@ -443,12 +766,7 @@ function JobPostingPage({ uploads = [], isEmployer = false, isJobSeeker = false,
     }
 
     if (Number.isNaN(salaryMin) || Number.isNaN(salaryMax) || salaryMin < 0 || salaryMax < 0) {
-      showCreateJobNotice("fail", "Salary range must be valid non-negative numbers.")
-      return
-    }
-
-    if (salaryMax < salaryMin) {
-      showCreateJobNotice("fail", "Salary Range (Max) must be greater than or equal to Salary Range (Min).")
+      showCreateJobNotice("fail", "Salary grade and salary amount must be valid non-negative numbers.")
       return
     }
 
@@ -661,6 +979,32 @@ function JobPostingPage({ uploads = [], isEmployer = false, isJobSeeker = false,
                 <span className="job-chip">{job.location || "-"}</span>
                 <span className="job-chip chip-outline">{job.type || "-"}</span>
                 {job.source === "template" && <span className="job-chip chip-muted">template</span>}
+                {isJobSeeker && (
+                  (() => {
+                    const key = String(job.title || "").trim().toLowerCase()
+                    const match = key ? jobMatches[key] : null
+                    if (!jobSeekerResume) {
+                      return <span className="job-chip chip-warning">Upload resume to see match</span>
+                    }
+                    if (jobMatchStatus === "loading") {
+                      // return <span className="job-chip chip-muted">Checking match...</span>
+                    }
+                    if (jobMatchStatus === "error") {
+                      // return <span className="job-chip chip-warning">Match unavailable</span>
+                    }
+                    if (!match || match.score == null) {
+                      // return <span className="job-chip chip-warning">Match unavailable</span>
+                    }
+                    return (
+                      // <span className={`job-chip ${match.qualifies ? "chip-good" : "chip-bad"}`}>
+                      //   Match: {match.score.toFixed(2)}%
+                      // </span>
+                      <span>
+
+                      </span>
+                    )
+                  })()
+                )}
               </div>
 
               <p className="job-description">{job.description}</p>
@@ -842,54 +1186,74 @@ function JobPostingPage({ uploads = [], isEmployer = false, isJobSeeker = false,
 
                   <div className="modal-grid">
                     <div className="field-group">
-                      <label>Job Title</label>
+                      <label>Job Position</label>
                       <div
                         className="autocomplete"
                         onClick={(e) => e.stopPropagation()}
                       >
-                        <input
-                          className="input"
-                          type="text"
-                          value={newJobTitle}
-                          onChange={(e) => {
-                            setNewJobTitle(e.target.value)
-                            setIsJobTitleOpen(true)
-                          }}
-                          onFocus={() => setIsJobTitleOpen(true)}
-                          onBlur={() => {
-                            setTimeout(() => setIsJobTitleOpen(false), 0)
-                          }}
-                          placeholder="e.g., Senior Software Engineer"
-                        />
-                        {isJobTitleOpen && filteredJobTitleSuggestions.length > 0 && (
+                        <div className="job-position-input">
+                          <input
+                            className="input"
+                            type="text"
+                            value={newJobTitle}
+                            onChange={(e) => {
+                              setNewJobTitle(e.target.value)
+                              setIsJobPositionOpen(true)
+                            }}
+                            onFocus={() => setIsJobPositionOpen(true)}
+                            placeholder="Select or type job position"
+                          />
+                          <span className="dropdown-caret">▾</span>
+                        </div>
+                        {isJobPositionOpen && (
                           <div className="autocomplete-menu">
-                            {filteredJobTitleSuggestions.map((title) => (
-                              <button
-                                key={`job-title-${title}`}
-                                type="button"
-                                className="autocomplete-item"
-                                onMouseDown={(e) => {
-                                  e.preventDefault()
-                                  setNewJobTitle(title)
-                                  setIsJobTitleOpen(false)
-                                }}
-                              >
-                                {title}
-                              </button>
-                            ))}
-                          </div>
-                        )}
-                      </div>
+                            {filteredJobCategoryGroups.map((group) => {
+                              const autoExpand = Boolean(newJobTitle.trim())
+                              const isExpanded = autoExpand || Boolean(expandedDepartments[group.department])
+                              return (
+                                <div key={`job-group-${group.department}`} className="autocomplete-group">
+                                  <button
+                                    type="button"
+                                    className="autocomplete-group-label"
+                                    onMouseDown={(e) => {
+                                      e.preventDefault()
+                                      setExpandedDepartments((prev) => ({
+                                        ...prev,
+                                        [group.department]: !isExpanded
+                                      }))
+                                    }}
+                                  >
+                                    {group.department}
+                                  </button>
+                                {isExpanded && group.titles.map((title) => (
+                                  <button
+                                    key={`job-title-${group.department}-${title}`}
+                                    type="button"
+                                    className="autocomplete-item"
+                                    onMouseDown={(e) => {
+                                      e.preventDefault()
+                                      setNewJobTitle(title)
+                                      setNewJobDepartment(group.department || "")
+                                      setIsJobPositionOpen(false)
+                                    }}
+                                  >
+                                    {title}
+                                  </button>
+                                ))}
+                              </div>
+                            )
+                          })}
+                        </div>
+                      )}
                     </div>
-
+                    </div>
                     <div className="field-group">
                       <label>Department</label>
                       <input
                         className="input"
                         type="text"
                         value={newJobDepartment}
-                        onChange={(e) => setNewJobDepartment(e.target.value)}
-                        placeholder="e.g., Engineering"
+                        disabled
                       />
                     </div>
                   </div>
@@ -967,13 +1331,45 @@ function JobPostingPage({ uploads = [], isEmployer = false, isJobSeeker = false,
 
                   <div className="field-group">
                     <label>Required Skills</label>
-                    <input
-                      className="input"
-                      type="text"
-                      value={newRequiredSkills}
-                      onChange={(e) => setNewRequiredSkills(e.target.value)}
-                      placeholder="Add a skill (e.g., Python, React, Project Management)"
-                    />
+                    <div
+                      className="autocomplete"
+                      onClick={(e) => e.stopPropagation()}
+                    >
+                      <input
+                        className="input"
+                        type="text"
+                        value={newRequiredSkills}
+                        onChange={(e) => {
+                          setNewRequiredSkills(e.target.value)
+                          setIsSkillsOpen(true)
+                        }}
+                        onFocus={() => setIsSkillsOpen(true)}
+                        onBlur={() => setTimeout(() => setIsSkillsOpen(false), 0)}
+                        placeholder="Add a skill (e.g., Python, React, Project Management)"
+                      />
+                      {isSkillsOpen && filteredSkillSuggestions.length > 0 && (
+                        <div className="autocomplete-menu">
+                          {filteredSkillSuggestions.map((skill) => (
+                            <button
+                              key={`skill-${skill}`}
+                              type="button"
+                              className="autocomplete-item"
+                              onMouseDown={(e) => {
+                                e.preventDefault()
+                                const raw = String(newRequiredSkills || "")
+                                const parts = raw.split(",")
+                                const base = parts.slice(0, -1).map((item) => item.trim()).filter(Boolean)
+                                const next = [...base, skill]
+                                setNewRequiredSkills(next.join(", "))
+                                setIsSkillsOpen(false)
+                              }}
+                            >
+                              {skill}
+                            </button>
+                          ))}
+                        </div>
+                      )}
+                    </div>
                   </div>
 
                   <div className="modal-grid">
@@ -981,14 +1377,7 @@ function JobPostingPage({ uploads = [], isEmployer = false, isJobSeeker = false,
                       <label>Minimum Education</label>
                       <CustomDropdown
                         className="input-dropdown"
-                        options={[
-                          { value: "", label: "Select education level" },
-                          { value: "High School", label: "High School" },
-                          { value: "Associate Degree", label: "Associate Degree" },
-                          { value: "Bachelor's Degree", label: "Bachelor's Degree" },
-                          { value: "Master's Degree", label: "Master's Degree" },
-                          { value: "Doctorate", label: "Doctorate" }
-                        ]}
+                        options={educationOptions}
                         value={newMinimumEducation}
                         onChange={setNewMinimumEducation}
                         placeholder="Select education level"
@@ -1009,26 +1398,26 @@ function JobPostingPage({ uploads = [], isEmployer = false, isJobSeeker = false,
 
                   <div className="modal-grid">
                     <div className="field-group">
-                      <label>Salary Range (Min)</label>
+                      <label>{salaryLabel.min}</label>
                       <input
                         className="input"
                         type="number"
                         min="0"
                         value={newSalaryMin}
                         onChange={(e) => setNewSalaryMin(e.target.value)}
-                        placeholder="e.g., 80000"
+                        placeholder="e.g., 15"
                       />
                     </div>
 
                     <div className="field-group">
-                      <label>Salary Range (Max)</label>
+                      <label>{salaryLabel.max}</label>
                       <input
                         className="input"
                         type="number"
                         min="0"
                         value={newSalaryMax}
                         onChange={(e) => setNewSalaryMax(e.target.value)}
-                        placeholder="e.g., 120000"
+                        placeholder={String(newJobType || "").toLowerCase().includes("part") ? "e.g., 150" : "e.g., 30000"}
                       />
                     </div>
                   </div>

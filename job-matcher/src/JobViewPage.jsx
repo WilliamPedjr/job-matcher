@@ -1,7 +1,7 @@
 import { useEffect, useRef, useState } from "react"
 import "./JobViewPage.css"
 
-function JobViewPage({ job, onBack, onApply, jobSeekerProfile, jobSeekerResume, jobSeekerId }) {
+function JobViewPage({ job, onBack, onApply, onRequireResume, jobSeekerProfile, jobSeekerResume, jobSeekerSupporting, jobSeekerId }) {
   const [isApplyModalOpen, setIsApplyModalOpen] = useState(false)
   const [applicantName, setApplicantName] = useState("")
   const [applicantEmail, setApplicantEmail] = useState("")
@@ -15,9 +15,18 @@ function JobViewPage({ job, onBack, onApply, jobSeekerProfile, jobSeekerResume, 
     transcript: null,
     others: []
   })
+  const [invalidSupportingDetails, setInvalidSupportingDetails] = useState([])
   const [forcedSupportingKey, setForcedSupportingKey] = useState(null)
   const [applyNotice, setApplyNotice] = useState("")
+  const [applyGateNotice, setApplyGateNotice] = useState("")
   const [isSubmitting, setIsSubmitting] = useState(false)
+  const [resumeMatch, setResumeMatch] = useState({
+    status: "idle",
+    score: null,
+    qualifies: false,
+    minimumScore: 50,
+    message: ""
+  })
   const supportingInputRef = useRef(null)
   const resumeInputRef = useRef(null)
   const [showErrors, setShowErrors] = useState(false)
@@ -36,6 +45,7 @@ function JobViewPage({ job, onBack, onApply, jobSeekerProfile, jobSeekerResume, 
     setApplyNotice("")
     setApplicantAddress("")
     setResumeFiles([])
+    setInvalidSupportingDetails([])
     setSupportingDocs({
       certificate: null,
       portfolio: null,
@@ -55,6 +65,14 @@ function JobViewPage({ job, onBack, onApply, jobSeekerProfile, jobSeekerResume, 
     }, 2400)
     return () => clearTimeout(timer)
   }, [applyNotice])
+
+  useEffect(() => {
+    if (!applyGateNotice) return
+    const timer = setTimeout(() => {
+      setApplyGateNotice("")
+    }, 2400)
+    return () => clearTimeout(timer)
+  }, [applyGateNotice])
 
   const supportingSteps = [
     { key: "certificate", label: "Certificate", accept: ".pdf,.png,.jpg,.jpeg", multiple: false },
@@ -76,6 +94,7 @@ function JobViewPage({ job, onBack, onApply, jobSeekerProfile, jobSeekerResume, 
 
   const handleSupportingFiles = (key, files) => {
     if (!files?.length) return
+    setInvalidSupportingDetails([])
     setSupportingDocs((prev) => {
       const next = { ...prev }
       if (key === "others") {
@@ -123,12 +142,25 @@ function JobViewPage({ job, onBack, onApply, jobSeekerProfile, jobSeekerResume, 
     return Boolean(supportingDocs[step.key])
   })
 
+  const invalidSupportingTypes = Array.from(
+    new Set((invalidSupportingDetails || []).map((item) => item?.type).filter(Boolean))
+  )
+
+  const typeLabelMap = {
+    certificate: "Certificate",
+    portfolio: "Portfolio",
+    recommendation: "Application Letter",
+    transcript: "Transcript",
+    others: "Other Supporting Documents",
+    other: "Other Supporting Documents"
+  }
+
   useEffect(() => {
     if (!isApplyModalOpen) return
     const profileName = jobSeekerProfile?.fullName || ""
     const profileEmail = jobSeekerProfile?.email || ""
     const profilePhone = normalizePhoneInput(jobSeekerProfile?.phone || "")
-    const profileAddress = jobSeekerProfile?.address || ""
+    const profileAddress = jobSeekerProfile?.address || jobSeekerProfile?.location || ""
     setApplicantName(profileName)
     setApplicantEmail(profileEmail)
     setApplicantPhone(profilePhone)
@@ -160,6 +192,114 @@ function JobViewPage({ job, onBack, onApply, jobSeekerProfile, jobSeekerResume, 
     return () => controller.abort()
   }, [isApplyModalOpen, jobSeekerId, jobSeekerResume])
 
+  useEffect(() => {
+    if (!isApplyModalOpen) return
+    if (!jobSeekerId) return
+    const profileSupporting = Array.isArray(jobSeekerSupporting) ? jobSeekerSupporting : []
+    if (!profileSupporting.length) return
+
+    const controller = new AbortController()
+    const fetchSupporting = async () => {
+      const next = {
+        certificate: null,
+        portfolio: null,
+        recommendation: null,
+        transcript: null,
+        others: []
+      }
+
+      for (const item of profileSupporting) {
+        const supportId = Number(item?.id)
+        if (!supportId) continue
+        try {
+          const response = await fetch(
+            `http://localhost:5000/job-seekers/${jobSeekerId}/supporting/${supportId}/download`,
+            { signal: controller.signal }
+          )
+          if (!response.ok) continue
+          const blob = await response.blob()
+          const file = new File([blob], item?.originalName || `supporting-${supportId}`, {
+            type: item?.mimeType || blob.type || "application/octet-stream"
+          })
+          const typeKey = String(item?.type || "others").toLowerCase()
+          if (typeKey === "others" || typeKey === "other") {
+            next.others.push(file)
+          } else if (["certificate", "portfolio", "recommendation", "transcript"].includes(typeKey)) {
+            next[typeKey] = file
+          }
+        } catch (error) {
+          if (error?.name === "AbortError") {
+            return
+          }
+        }
+      }
+
+      setSupportingDocs(next)
+    }
+
+    fetchSupporting()
+    return () => controller.abort()
+  }, [isApplyModalOpen, jobSeekerId, jobSeekerSupporting])
+
+  useEffect(() => {
+    if (!job || !jobSeekerId) return
+    if (!jobSeekerResume) {
+      setResumeMatch({
+        status: "missing",
+        score: null,
+        qualifies: false,
+        minimumScore: 50,
+        message: "Resume is required."
+      })
+      return
+    }
+
+    let isMounted = true
+    const controller = new AbortController()
+    setResumeMatch((prev) => ({
+      ...prev,
+      status: "loading",
+      message: ""
+    }))
+
+    const fetchMatch = async () => {
+      try {
+        const response = await fetch(
+          `http://localhost:5000/job-seekers/${jobSeekerId}/resume/match?jobTitle=${encodeURIComponent(job.title)}`,
+          { signal: controller.signal }
+        )
+        if (!response.ok) {
+          const payload = await response.json().catch(() => null)
+          throw new Error(payload?.message || "Failed to check resume match.")
+        }
+        const payload = await response.json()
+        if (!isMounted) return
+        setResumeMatch({
+          status: "ready",
+          score: payload?.matchScore ?? null,
+          qualifies: Boolean(payload?.qualifies),
+          minimumScore: payload?.minimumScore ?? 50,
+          message: ""
+        })
+      } catch (error) {
+        if (!isMounted || error?.name === "AbortError") return
+        setResumeMatch({
+          status: "error",
+          score: null,
+          qualifies: false,
+          minimumScore: 50,
+          message: error.message || "Failed to check resume match."
+        })
+      }
+    }
+
+    fetchMatch()
+    return () => {
+      isMounted = false
+      controller.abort()
+    }
+  }, [job, jobSeekerId, jobSeekerResume])
+
   const isApplyDisabled = isSubmitting
 
   const nameError = !applicantName.trim()
@@ -172,6 +312,11 @@ function JobViewPage({ job, onBack, onApply, jobSeekerProfile, jobSeekerResume, 
   const profileComplete = !nameError && !emailError && !phoneMissing && !phoneLengthInvalid && !addressError
   const resumeComplete = !resumeError
   const credentialsComplete = !supportingError
+  const resumeMatchLoading = resumeMatch.status === "loading"
+  const resumeMatchReady = resumeMatch.status === "ready"
+  const resumeMatchQualified = resumeMatchReady && resumeMatch.qualifies
+  const resumeMatchError = resumeMatch.status === "error"
+  const applyGateDisabled = Boolean(resumeMatchLoading || resumeMatchError)
   const skillItems = (job?.requiredSkills || "")
     .split(",")
     .map((item) => item.trim())
@@ -204,10 +349,10 @@ function JobViewPage({ job, onBack, onApply, jobSeekerProfile, jobSeekerResume, 
         <div className="job-view-card-header">
           <h3>Job Description</h3>
           <div className="job-view-salary">
-            <span>Salary Range</span>
+            <span>{String(job.type || "").toLowerCase().includes("part") ? "Salary Grade & Hourly Rate" : "Salary Grade & Salary per Month"}</span>
             <strong>
               {job.salaryMin != null || job.salaryMax != null
-                ? `₱${job.salaryMin ?? "0"} - ₱${job.salaryMax ?? "0"}`
+                ? `Grade ${job.salaryMin ?? "0"} · ₱${job.salaryMax ?? "0"}${String(job.type || "").toLowerCase().includes("part") ? " / hour" : " / month"}`
                 : "-"}
             </strong>
           </div>
@@ -261,15 +406,43 @@ function JobViewPage({ job, onBack, onApply, jobSeekerProfile, jobSeekerResume, 
 
       {String(job.status || "active").toLowerCase() !== "closed" && (
         <div className="job-view-footer">
-          <button
-            type="button"
-            className="btn"
-            onClick={() => {
-              setIsApplyModalOpen(true)
-            }}
-          >
-            Apply
-          </button>
+          {resumeMatchReady && resumeMatchQualified && (
+            <button
+              type="button"
+              className="btn"
+              disabled={applyGateDisabled}
+              onClick={() => {
+                if (!jobSeekerResume) {
+                  setApplyGateNotice("Please upload your resume in Profile before applying.")
+                  onRequireResume?.()
+                  return
+                }
+                setIsApplyModalOpen(true)
+              }}
+            >
+              Apply
+            </button>
+          )}
+          {!resumeMatchReady && !resumeMatchError && (
+            <p className="job-view-apply-notice">
+              Checking your resume match...
+            </p>
+          )}
+          {resumeMatchReady && !resumeMatchQualified && (
+            <p className="job-view-apply-notice">
+              You are not a match for this job based on your resume.
+            </p>
+          )}
+          {resumeMatchError && (
+            <p className="job-view-apply-notice">
+              {resumeMatch.message || "Unable to verify resume match."}
+            </p>
+          )}
+          {applyGateNotice && (
+            <p className="job-view-apply-notice">
+              {applyGateNotice}
+            </p>
+          )}
         </div>
       )}
 
@@ -507,6 +680,7 @@ function JobViewPage({ job, onBack, onApply, jobSeekerProfile, jobSeekerResume, 
                               return (supportingDocs.others || []).map((file) => (
                                 <tr
                                   key={`${step.key}-${file.name}-${file.size}-${file.lastModified}`}
+                                  className={invalidSupportingTypes.includes(step.key) ? "row-error" : ""}
                                   role="button"
                                   tabIndex={0}
                                   onClick={() => {
@@ -533,6 +707,7 @@ function JobViewPage({ job, onBack, onApply, jobSeekerProfile, jobSeekerResume, 
                             return (
                               <tr
                                 key={`${step.key}-${file.name}-${file.size}-${file.lastModified}`}
+                                className={invalidSupportingTypes.includes(step.key) ? "row-error" : ""}
                                 role="button"
                                 tabIndex={0}
                                 onClick={() => {
@@ -575,6 +750,19 @@ function JobViewPage({ job, onBack, onApply, jobSeekerProfile, jobSeekerResume, 
                       </tfoot>
                     </table>
                   </div>
+                  {invalidSupportingDetails.length > 0 && (
+                    <div className="field-error">
+                      {invalidSupportingDetails.map((item) => {
+                        const label = typeLabelMap[item?.type] || "Supporting Document"
+                        const name = item?.name || "document"
+                        return (
+                          <div key={`${item.type}-${name}`}>
+                            {label} "{name}" does not match the required document type.
+                          </div>
+                        )
+                      })}
+                    </div>
+                  )}
                 </div>
               </div>
             )}
@@ -642,6 +830,12 @@ function JobViewPage({ job, onBack, onApply, jobSeekerProfile, jobSeekerResume, 
                     setApplyNotice("Please complete all required fields.")
                     return
                   }
+                  if (!resumeMatchQualified) {
+                    const score = Number(resumeMatch.score || 0)
+                    const minScore = resumeMatch.minimumScore ?? 50
+                    setApplyNotice(`Resume match score ${score.toFixed(2)}% is below the required ${minScore}%.`)
+                    return
+                  }
 
                   setIsSubmitting(true)
                   const result = await onApply?.({
@@ -655,6 +849,12 @@ function JobViewPage({ job, onBack, onApply, jobSeekerProfile, jobSeekerResume, 
                       }
                       return supportingDocs[step.key] ? [supportingDocs[step.key]] : []
                     }).concat(resumeFiles.slice(1)),
+                    supportingTypes: supportingSteps.flatMap((step) => {
+                      if (step.key === "others") {
+                        return (supportingDocs.others || []).map(() => step.key)
+                      }
+                      return supportingDocs[step.key] ? [step.key] : []
+                    }).concat(resumeFiles.slice(1).map(() => "other")),
                     address: applicantAddress,
                     appliedJobTitle: job.title,
                   })
@@ -662,6 +862,11 @@ function JobViewPage({ job, onBack, onApply, jobSeekerProfile, jobSeekerResume, 
                     setIsApplyModalOpen(false)
                     resetApplyForm()
                   } else {
+                    if (Array.isArray(result?.invalidSupporting) && result.invalidSupporting.length) {
+                      setInvalidSupportingDetails(result.invalidSupporting)
+                    } else {
+                      setInvalidSupportingDetails([])
+                    }
                     setApplyNotice(result?.message || "Failed to submit application.")
                   }
                   setIsSubmitting(false)

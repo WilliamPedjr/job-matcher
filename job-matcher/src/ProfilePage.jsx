@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react"
+import { useEffect, useRef, useState } from "react"
 import "./ProfilePage.css"
 import profileIcon from "./assets/circle-user-solid-full.svg"
 
@@ -9,7 +9,11 @@ function ProfilePage({
   jobSeekerId,
   onJobSeekerProfileUpdate,
   jobSeekerResume,
-  onJobSeekerResumeUpdate
+  onJobSeekerResumeUpdate,
+  jobSeekerSupporting,
+  onJobSeekerSupportingUpdate,
+  resumeAttention,
+  onResumeAttentionConsumed
 }) {
   const roleLabel = userRole === "admin"
     ? "Administrator"
@@ -31,7 +35,7 @@ function ProfilePage({
   const createdAt = isJobSeeker && jobSeekerProfile?.createdAt
     ? new Date(jobSeekerProfile.createdAt).toLocaleDateString(undefined, { month: "long", day: "numeric", year: "numeric" })
     : "-"
-  const location = isJobSeeker ? (jobSeekerProfile?.location || "Leyte Normal University") : "Leyte Normal University"
+  const address = isJobSeeker ? (jobSeekerProfile?.address || jobSeekerProfile?.location || "") : ""
   const aboutText = isJobSeeker ? (jobSeekerProfile?.aboutText || "") : ""
   const defaultAbout = `${email} · ${phone} · ${status} · Joined ${createdAt}`
   const education = isJobSeeker ? (jobSeekerProfile?.education || []) : []
@@ -46,7 +50,7 @@ function ProfilePage({
     email: "",
     phone: "",
     status: "",
-    location: "",
+    address: "",
     aboutText: "",
     school: "",
     program: "",
@@ -64,8 +68,32 @@ function ProfilePage({
   })
   const [isEditingContact, setIsEditingContact] = useState(false)
   const [resumeStatus, setResumeStatus] = useState("")
+  const [supportingStatus, setSupportingStatus] = useState("")
+  const [pendingSupportingType, setPendingSupportingType] = useState("certificate")
+  const [resumeAttentionActive, setResumeAttentionActive] = useState(false)
+  const resumeSectionRef = useRef(null)
+  const supportingInputRef = useRef(null)
   const [confirmDeleteEducationId, setConfirmDeleteEducationId] = useState(null)
   const [confirmDeleteExperienceId, setConfirmDeleteExperienceId] = useState(null)
+  const [confirmDeleteSupportingId, setConfirmDeleteSupportingId] = useState(null)
+
+  const supportingTypeConfig = [
+    { key: "certificate", label: "Certificate" },
+    { key: "portfolio", label: "Portfolio" },
+    { key: "recommendation", label: "Application Letter" },
+    { key: "transcript", label: "Transcript" },
+    { key: "others", label: "Other Supporting Documents" }
+  ]
+
+  const supportingFiles = Array.isArray(jobSeekerSupporting) ? jobSeekerSupporting : []
+  const requiredSupportingKeys = ["certificate", "portfolio", "recommendation", "transcript"]
+  const supportingByType = supportingFiles.reduce((acc, item) => {
+    const type = String(item?.type || "others")
+    if (!acc[type]) acc[type] = []
+    acc[type].push(item)
+    return acc
+  }, {})
+  const supportingComplete = requiredSupportingKeys.every((key) => Array.isArray(supportingByType[key]) && supportingByType[key].length > 0)
 
   const normalizePhoneInput = (value) => {
     const digitsOnly = String(value || "").replace(/\D/g, "")
@@ -79,6 +107,20 @@ function ProfilePage({
   const formatPhoneWithPrefix = (value) => `+63${normalizePhoneInput(value)}`
 
   const resolvedJobSeekerId = jobSeekerId || jobSeekerProfile?.id || null
+
+  useEffect(() => {
+    if (resumeAttention) {
+      setResumeAttentionActive(true)
+      onResumeAttentionConsumed?.()
+      resumeSectionRef.current?.scrollIntoView({ behavior: "smooth", block: "center" })
+    }
+  }, [resumeAttention, onResumeAttentionConsumed])
+
+  useEffect(() => {
+    if (jobSeekerResume) {
+      setResumeAttentionActive(false)
+    }
+  }, [jobSeekerResume])
 
   useEffect(() => {
     if (!isJobSeeker) return
@@ -126,7 +168,7 @@ function ProfilePage({
       email,
       phone: normalizePhoneInput(phone),
       status: status || "active",
-      location,
+      address,
       aboutText,
       school: "",
       program: "",
@@ -173,7 +215,7 @@ function ProfilePage({
           email: contactForm.email || email,
           phone: formatPhoneWithPrefix(contactForm.phone || phone),
           status: status || "active",
-          location,
+          address,
           aboutText,
           linkedInUrl: contactForm.linkedInUrl
         })
@@ -261,7 +303,7 @@ function ProfilePage({
           email: formState.email,
           phone: formatPhoneWithPrefix(formState.phone),
           status: formState.status || "active",
-          location: formState.location,
+          address: formState.address,
           aboutText: aboutToSave
         })
       })
@@ -482,6 +524,69 @@ function ProfilePage({
       })
   }
 
+  const openSupportingUpload = (type) => {
+    setPendingSupportingType(type)
+    supportingInputRef.current?.click()
+  }
+
+  const handleSupportingUpload = (file) => {
+    if (!file) return
+    if (!resolvedJobSeekerId) {
+      setSupportingStatus("Missing job seeker id.")
+      return
+    }
+    setSupportingStatus("Uploading...")
+    const formData = new FormData()
+    formData.append("supportingFiles", file)
+    formData.append("supportingTypes", pendingSupportingType || "others")
+
+    fetch(`http://localhost:5000/job-seekers/${resolvedJobSeekerId}/supporting`, {
+      method: "POST",
+      body: formData
+    })
+      .then(async (response) => {
+        if (!response.ok) {
+          const payload = await response.json().catch(() => null)
+          throw new Error(payload?.message || "Failed to upload supporting document.")
+        }
+        return response.json()
+      })
+      .then((payload) => {
+        onJobSeekerSupportingUpdate?.(payload?.files || [])
+        setSupportingStatus("Saved.")
+        setTimeout(() => setSupportingStatus(""), 2000)
+      })
+      .catch((error) => {
+        setSupportingStatus(error.message || "Failed to upload supporting document.")
+      })
+  }
+
+  const handleSupportingDelete = (supportId) => {
+    if (!resolvedJobSeekerId) {
+      setSupportingStatus("Missing job seeker id.")
+      return
+    }
+    setSupportingStatus("Removing...")
+    fetch(`http://localhost:5000/job-seekers/${resolvedJobSeekerId}/supporting/${supportId}`, {
+      method: "DELETE"
+    })
+      .then(async (response) => {
+        if (!response.ok) {
+          const payload = await response.json().catch(() => null)
+          throw new Error(payload?.message || "Failed to remove supporting document.")
+        }
+        return response.json()
+      })
+      .then((payload) => {
+        onJobSeekerSupportingUpdate?.(payload?.files || [])
+        setSupportingStatus("Removed.")
+        setTimeout(() => setSupportingStatus(""), 2000)
+      })
+      .catch((error) => {
+        setSupportingStatus(error.message || "Failed to remove supporting document.")
+      })
+  }
+
   return (
     <section className="profile-page">
       {isJobSeeker ? (
@@ -495,7 +600,7 @@ function ProfilePage({
               <div className="js-profile-main">
                 <h2>{displayName.toUpperCase()}</h2>
                 <div className="js-profile-meta">
-                  <span>{location}</span>
+                  <span>{address || "-"}</span>
                   <span className="js-contact-anchor">
                     <button type="button" className="js-profile-link" onClick={openContactInfo}>
                       Contact Info
@@ -619,14 +724,14 @@ function ProfilePage({
               )}
             </section>
 
-            <section className="js-profile-panel">
+            <section className="js-profile-panel" ref={resumeSectionRef}>
               <div className="js-panel-header">
                 <div>
                   <h3>Resume/CV</h3>
                   <p className="js-panel-subtitle">Upload once to reuse for job applications</p>
                 </div>
               </div>
-              <div className="js-resume-body">
+              <div className={`js-resume-body ${resumeAttentionActive && !jobSeekerResume ? "attention" : ""}`}>
                 <input
                   id="job-seeker-resume"
                   className="hidden-file-input"
@@ -669,6 +774,72 @@ function ProfilePage({
                   </>
                 )}
                 {resumeStatus && <span className="js-resume-status">{resumeStatus}</span>}
+              </div>
+            </section>
+
+            <section className="js-profile-panel">
+              <div className="js-panel-header">
+                <div>
+                  <h3>Supporting Documents</h3>
+                  <p className="js-panel-subtitle">Saved documents are auto-used when you apply</p>
+                </div>
+              </div>
+              <div className="js-resume-body">
+                <input
+                  ref={supportingInputRef}
+                  className="hidden-file-input"
+                  type="file"
+                  accept=".pdf,.png,.jpg,.jpeg"
+                  onChange={(e) => {
+                    handleSupportingUpload(e.target.files?.[0] || null)
+                    e.target.value = ""
+                  }}
+                />
+                <div className={`js-panel-subtext ${supportingComplete ? "js-supporting-ready" : "js-supporting-missing"}`}>
+                  {supportingComplete
+                    ? "All required supporting document types are uploaded."
+                    : "Upload Certificate, Portfolio, Application Letter, and Transcript."}
+                </div>
+                {supportingTypeConfig.map((typeConfig) => {
+                  const docs = supportingByType[typeConfig.key] || []
+                  return (
+                    <div key={typeConfig.key} className="js-supporting-group">
+                      <div className="js-supporting-group-head">
+                        <strong>{typeConfig.label}</strong>
+                        <button
+                          type="button"
+                          className="js-text-btn"
+                          onClick={() => openSupportingUpload(typeConfig.key)}
+                        >
+                          {docs.length && typeConfig.key !== "others" ? "Replace" : "Upload"}
+                        </button>
+                      </div>
+                      {docs.length ? (
+                        docs.map((doc) => (
+                          <div key={doc.id} className="js-panel-row js-panel-row-compact">
+                            <div className="js-panel-icon">📄</div>
+                            <div>
+                              <strong>{doc.originalName || "Supporting document"}</strong>
+                              <div className="js-panel-subtext">
+                                {doc.uploadedAt
+                                  ? `Uploaded ${new Date(doc.uploadedAt).toLocaleDateString(undefined, { month: "short", day: "numeric", year: "numeric" })}`
+                                  : "Uploaded"}
+                              </div>
+                              <div className="js-panel-actions">
+                                <button type="button" className="js-text-btn danger" onClick={() => setConfirmDeleteSupportingId(doc.id)}>
+                                  Remove
+                                </button>
+                              </div>
+                            </div>
+                          </div>
+                        ))
+                      ) : (
+                        <div className="js-panel-subtext">No {typeConfig.label.toLowerCase()} uploaded.</div>
+                      )}
+                    </div>
+                  )
+                })}
+                {supportingStatus && <span className="js-resume-status">{supportingStatus}</span>}
               </div>
             </section>
 
@@ -748,8 +919,8 @@ function ProfilePage({
                 <h2>{displayName.toUpperCase()}</h2>
                 <p className="profile-role">{roleLabel}</p>
                 <div className="profile-location">
-                  <span className="profile-location-label">Location:</span>
-                  <span>{location}</span>
+                  <span className="profile-location-label">Address:</span>
+                  <span>{address || "-"}</span>
                 </div>
               </div>
             </div>
@@ -824,8 +995,8 @@ function ProfilePage({
                     <input className="input" value={formState.status} onChange={(e) => setFormState((prev) => ({ ...prev, status: e.target.value }))} />
                   </div>
                   <div className="field-group">
-                    <label>Location</label>
-                    <input className="input" value={formState.location} onChange={(e) => setFormState((prev) => ({ ...prev, location: e.target.value }))} />
+                    <label>Address</label>
+                    <input className="input" value={formState.address} onChange={(e) => setFormState((prev) => ({ ...prev, address: e.target.value }))} />
                   </div>
                 </div>
                 <div className="field-group">
@@ -951,6 +1122,40 @@ function ProfilePage({
                   setConfirmDeleteExperienceId(null)
                   if (idToDelete != null) {
                     await performDeleteExperience(idToDelete)
+                  }
+                }}
+              >
+                Delete
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {confirmDeleteSupportingId != null && (
+        <div
+          className="modal-overlay"
+          onClick={(e) => {
+            if (e.target === e.currentTarget) {
+              setConfirmDeleteSupportingId(null)
+            }
+          }}
+        >
+          <div className="modal-card">
+            <h3>Delete Supporting Document</h3>
+            <p>Are you sure you want to delete this supporting document? This action cannot be undone.</p>
+            <div className="modal-actions">
+              <button type="button" className="btn btn-secondary" onClick={() => setConfirmDeleteSupportingId(null)}>
+                Cancel
+              </button>
+              <button
+                type="button"
+                className="btn btn-danger"
+                onClick={() => {
+                  const idToDelete = confirmDeleteSupportingId
+                  setConfirmDeleteSupportingId(null)
+                  if (idToDelete != null) {
+                    handleSupportingDelete(idToDelete)
                   }
                 }}
               >

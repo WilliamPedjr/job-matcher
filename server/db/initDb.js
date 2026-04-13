@@ -17,6 +17,7 @@ const initDb = async (pool, seedJobs = []) => {
     CREATE TABLE IF NOT EXISTS upload_supporting_files (
       id INT AUTO_INCREMENT PRIMARY KEY,
       upload_id INT NOT NULL,
+      doc_type VARCHAR(50) NOT NULL DEFAULT 'other',
       original_name VARCHAR(255) NOT NULL,
       saved_name VARCHAR(255) NOT NULL,
       file_path VARCHAR(500) NOT NULL,
@@ -28,6 +29,14 @@ const initDb = async (pool, seedJobs = []) => {
   `);
 
   // Backward-compatible schema updates for existing tables.
+  try {
+    await pool.query("ALTER TABLE upload_supporting_files ADD COLUMN doc_type VARCHAR(50) NOT NULL DEFAULT 'other' AFTER upload_id");
+  } catch (error) {
+    if (error.code !== "ER_DUP_FIELDNAME") {
+      throw error;
+    }
+  }
+
   try {
     await pool.query("ALTER TABLE uploads ADD COLUMN name VARCHAR(255) NULL AFTER id");
   } catch (error) {
@@ -152,6 +161,23 @@ const initDb = async (pool, seedJobs = []) => {
   `);
 
   await pool.query(`
+    CREATE TABLE IF NOT EXISTS job_skill_catalog (
+      id INT AUTO_INCREMENT PRIMARY KEY,
+      job_id INT NOT NULL,
+      skill VARCHAR(255) NOT NULL,
+      UNIQUE KEY unique_job_skill (job_id, skill),
+      FOREIGN KEY (job_id) REFERENCES jobs(id) ON DELETE CASCADE
+    )
+  `);
+
+  await pool.query(`
+    CREATE TABLE IF NOT EXISTS global_skill_catalog (
+      id INT AUTO_INCREMENT PRIMARY KEY,
+      skill VARCHAR(255) NOT NULL UNIQUE
+    )
+  `);
+
+  await pool.query(`
     CREATE TABLE IF NOT EXISTS job_seekers (
       id INT AUTO_INCREMENT PRIMARY KEY,
       full_name VARCHAR(255) NOT NULL,
@@ -172,6 +198,21 @@ const initDb = async (pool, seedJobs = []) => {
       resume_data LONGBLOB NULL,
       resume_updated_at TIMESTAMP NULL,
       created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+    )
+  `);
+
+  await pool.query(`
+    CREATE TABLE IF NOT EXISTS job_seeker_supporting_files (
+      id INT AUTO_INCREMENT PRIMARY KEY,
+      job_seeker_id INT NOT NULL,
+      doc_type VARCHAR(50) NOT NULL DEFAULT 'other',
+      original_name VARCHAR(255) NOT NULL,
+      saved_name VARCHAR(255) NOT NULL,
+      file_path VARCHAR(500) NOT NULL,
+      mime_type VARCHAR(100),
+      size_bytes BIGINT,
+      uploaded_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+      FOREIGN KEY (job_seeker_id) REFERENCES job_seekers(id) ON DELETE CASCADE
     )
   `);
 

@@ -18,6 +18,8 @@ dotenv.config();
 const app = express();
 const PORT = process.env.PORT || 5000;
 const jobsSeedPath = path.join(__dirname, "jobs.json");
+const skillsCatalogPath = path.join(__dirname, "skills.json");
+const MIN_MATCH_SCORE = 50;
 
 app.use(cors());
 app.use(express.json());
@@ -71,7 +73,20 @@ const resumeUpload = multer({
   limits: { fileSize: 6 * 1024 * 1024 }
 });
 
+const supportingUpload = multer({
+  storage,
+  limits: { fileSize: 6 * 1024 * 1024 }
+}).fields([
+  { name: "supportingFiles", maxCount: 10 }
+]);
+
 const resumeMimeTypes = new Set([
+  "application/pdf",
+  "image/png",
+  "image/jpeg"
+]);
+
+const supportingMimeTypes = new Set([
   "application/pdf",
   "image/png",
   "image/jpeg"
@@ -142,6 +157,46 @@ const readJobsSeed = () => {
 
 const normalizeJobTitleKey = (value) =>
   String(value || "").trim().toLowerCase();
+
+const readSkillsCatalog = () => {
+  try {
+    const raw = fs.readFileSync(skillsCatalogPath, "utf-8");
+    const parsed = JSON.parse(raw);
+    const jobs = parsed?.jobs && typeof parsed.jobs === "object" ? parsed.jobs : {};
+    return jobs;
+  } catch (error) {
+    console.error("Read skills catalog error:", error);
+    return {};
+  }
+};
+
+const parseSkills = (value) =>
+  String(value || "")
+    .split(/[,;\n|]/)
+    .map((item) => item.trim())
+    .filter(Boolean);
+
+const syncJobSkillCatalog = async (jobId, requiredSkills) => {
+  const skills = Array.from(new Set(parseSkills(requiredSkills)));
+  await pool.execute("DELETE FROM job_skill_catalog WHERE job_id = ?", [jobId]);
+  if (!skills.length) return;
+  const rows = skills.map((skill) => [jobId, skill]);
+  await pool.query(
+    "INSERT INTO job_skill_catalog (job_id, skill) VALUES ?",
+    [rows]
+  );
+  await upsertGlobalSkills(skills);
+};
+
+const upsertGlobalSkills = async (skills = []) => {
+  const unique = Array.from(new Set(skills.map((skill) => String(skill || "").trim()).filter(Boolean)));
+  if (!unique.length) return;
+  const rows = unique.map((skill) => [skill]);
+  await pool.query(
+    "INSERT IGNORE INTO global_skill_catalog (skill) VALUES ?",
+    [rows]
+  );
+};
 
 const toSeedJob = (seed) => ({
   id: null,
@@ -248,25 +303,71 @@ const getJobsFromDb = async () => {
 };
 
 
-const extractSupportingTextFromFiles = async (files = []) => {
-  const chunks = [];
-  for (const file of files) {
-    const mimeType = file?.mimetype;
-    const filePath = file?.path;
-    if (!filePath || !mimeType) continue;
-    try {
-      if (mimeType === "application/pdf") {
-        const text = await extractTextFromPdf(filePath);
-        if (text) chunks.push(text);
-      } else if (mimeType.startsWith("image/")) {
-        const text = await extractTextFromImage(filePath);
-        if (text) chunks.push(text);
-      }
-    } catch (error) {
-      console.warn("Supporting doc extract failed:", filePath, error.message || error);
+const extractTextForFile = async (file) => {
+  const mimeType = file?.mimetype;
+  const filePath = file?.path;
+  if (!filePath || !mimeType) return "";
+  try {
+    if (mimeType === "application/pdf") {
+      return (await extractTextFromPdf(filePath)) || "";
+    }
+    if (mimeType.startsWith("image/")) {
+      return (await extractTextFromImage(filePath)) || "";
+    }
+  } catch (error) {
+    console.warn("Supporting doc extract failed:", filePath, error.message || error);
+  }
+  return "";
+};
+
+const getSupportingDocKeywords = (type) => {
+  const normalized = String(type || "").trim().toLowerCase();
+  if (normalized === "certificate") {
+    return ["certificate", "certification", "certified", "license", "licence"];
+  }
+  if (normalized === "portfolio") {
+    return ["portfolio", "project", "work samples", "case study", "showcase"];
+  }
+  if (normalized === "recommendation" || normalized === "application-letter") {
+    return ["application letter", "cover letter", "recommendation", "reference", "endorsement"];
+  }
+  if (normalized === "transcript") {
+    return ["transcript", "grade", "gpa", "records", "academic"];
+  }
+  return [];
+};
+
+const normalizeSupportingType = (type) => {
+  const normalized = String(type || "").trim().toLowerCase();
+  if (normalized === "certificate") return "certificate";
+  if (normalized === "portfolio") return "portfolio";
+  if (normalized === "recommendation" || normalized === "application-letter") return "recommendation";
+  if (normalized === "transcript") return "transcript";
+  if (normalized === "other" || normalized === "others") return "others";
+  return "others";
+};
+
+const validateSupportingFiles = async (files = [], types = []) => {
+  const invalid = [];
+  const texts = [];
+
+  for (let i = 0; i < files.length; i += 1) {
+    const file = files[i];
+    const type = types[i] || "other";
+    const keywords = getSupportingDocKeywords(type);
+    const text = await extractTextForFile(file);
+    if (text) texts.push(text);
+
+    if (!keywords.length) continue;
+
+    const haystack = `${file?.originalname || ""}\n${text}`.toLowerCase();
+    const matched = keywords.some((word) => haystack.includes(word));
+    if (!matched) {
+      invalid.push({ type, name: file?.originalname || "document" });
     }
   }
-  return chunks.join("\n");
+
+  return { invalid, supportingText: texts.join("\n") };
 };
 
 const analyzeResumeData = async (filePath, mimeType, appliedJobTitle = "", supportingText = "") => {
@@ -348,6 +449,47 @@ const analyzeResumeData = async (filePath, mimeType, appliedJobTitle = "", suppo
     matchedSkills,
     missingSkills
   };
+};
+
+const resolveAndValidatePath = (targetPath, rootDir) => {
+  if (!targetPath) return null;
+  const resolvedTarget = path.resolve(targetPath);
+  const resolvedRoot = path.resolve(rootDir);
+  if (!resolvedTarget.startsWith(resolvedRoot)) return null;
+  return resolvedTarget;
+};
+
+const safeDeleteFile = async (targetPath, rootDir) => {
+  const resolvedTarget = resolveAndValidatePath(targetPath, rootDir);
+  if (!resolvedTarget) return;
+  try {
+    await fs.promises.unlink(resolvedTarget);
+  } catch (error) {
+    if (error.code !== "ENOENT") {
+      console.error("File delete error:", error);
+    }
+  }
+};
+
+const listJobSeekerSupportingFiles = async (seekerId) => {
+  const [rows] = await pool.execute(
+    `
+      SELECT id, doc_type, original_name, saved_name, file_path, mime_type, size_bytes, uploaded_at
+      FROM job_seeker_supporting_files
+      WHERE job_seeker_id = ?
+      ORDER BY uploaded_at DESC
+    `,
+    [seekerId]
+  );
+  return rows.map((row) => ({
+    id: row.id,
+    type: normalizeSupportingType(row.doc_type),
+    originalName: row.original_name,
+    savedName: row.saved_name,
+    mimeType: row.mime_type,
+    sizeBytes: row.size_bytes,
+    uploadedAt: row.uploaded_at
+  }));
 };
 
 // Health route
@@ -758,6 +900,7 @@ app.get("/job-seekers/:id", async (req, res) => {
       email: seeker.email,
       phone: seeker.phone,
       status: seeker.status,
+      address: seeker.location,
       location: seeker.location,
       aboutText: seeker.about_text,
       linkedInUrl: seeker.linkedin_url,
@@ -783,6 +926,7 @@ app.put("/job-seekers/:id", async (req, res) => {
       email = "",
       phone = "",
       status = "",
+      address = "",
       location = "",
       aboutText = "",
       linkedInUrl = ""
@@ -801,7 +945,7 @@ app.put("/job-seekers/:id", async (req, res) => {
         String(email || "").trim().toLowerCase(),
         String(phone || "").trim(),
         String(status || "").trim().toLowerCase(),
-        String(location || "").trim(),
+        String(address || location || "").trim(),
         String(aboutText || "").trim(),
         String(linkedInUrl || "").trim(),
         seekerId
@@ -940,6 +1084,62 @@ app.get("/job-seekers/:id/resume", async (req, res) => {
   }
 });
 
+// Job seeker resume match check against a specific job
+app.get("/job-seekers/:id/resume/match", async (req, res) => {
+  const seekerId = Number(req.params.id);
+  if (!Number.isInteger(seekerId) || seekerId <= 0) {
+    return res.status(400).json({ message: "Invalid job seeker id." });
+  }
+  const jobTitle = String(req.query?.jobTitle || "").trim();
+  if (!jobTitle) {
+    return res.status(400).json({ message: "Job title is required." });
+  }
+
+  try {
+    const [rows] = await pool.execute(
+      `
+        SELECT resume_file_path, resume_type
+        FROM job_seekers
+        WHERE id = ?
+      `,
+      [seekerId]
+    );
+    const resumeRecord = rows[0];
+    if (!resumeRecord?.resume_file_path) {
+      return res.status(404).json({ message: "Resume not found." });
+    }
+
+    const resolvedFilePath = resolveAndValidatePath(resumeRecord.resume_file_path, resumesDir);
+    if (!resolvedFilePath || !fs.existsSync(resolvedFilePath)) {
+      return res.status(404).json({ message: "Resume file is missing." });
+    }
+
+    const {
+      matchedJobTitle,
+      matchScore,
+      classification,
+      matchedSkills,
+      missingSkills
+    } = await analyzeResumeData(resolvedFilePath, resumeRecord.resume_type, jobTitle);
+
+    const numericScore = Number(matchScore || 0);
+    const qualifies = numericScore > MIN_MATCH_SCORE;
+
+    return res.json({
+      matchedJobTitle,
+      matchScore: Number.isNaN(numericScore) ? null : numericScore,
+      classification,
+      matchedSkills,
+      missingSkills,
+      minimumScore: MIN_MATCH_SCORE,
+      qualifies
+    });
+  } catch (error) {
+    console.error("Resume match check error:", error);
+    return res.status(error.statusCode || 500).json({ message: error.message || "Failed to check resume match." });
+  }
+});
+
 // Job seeker resume download
 app.get("/job-seekers/:id/resume/download", async (req, res) => {
   const seekerId = Number(req.params.id);
@@ -1033,6 +1233,220 @@ app.delete("/job-seekers/:id/resume", async (req, res) => {
   } catch (error) {
     console.error("Delete resume error:", error);
     return res.status(500).json({ message: "Failed to remove resume." });
+  }
+});
+
+// Job seeker supporting documents
+app.get("/job-seekers/:id/supporting", async (req, res) => {
+  const seekerId = Number(req.params.id);
+  if (!Number.isInteger(seekerId) || seekerId <= 0) {
+    return res.status(400).json({ message: "Invalid job seeker id." });
+  }
+
+  try {
+    const [seekerRows] = await pool.execute(
+      "SELECT id FROM job_seekers WHERE id = ? LIMIT 1",
+      [seekerId]
+    );
+    if (!seekerRows.length) {
+      return res.status(404).json({ message: "Job seeker not found." });
+    }
+
+    const files = await listJobSeekerSupportingFiles(seekerId);
+    return res.json({ files });
+  } catch (error) {
+    console.error("Fetch job seeker supporting error:", error);
+    return res.status(500).json({ message: "Failed to fetch supporting documents." });
+  }
+});
+
+app.post("/job-seekers/:id/supporting", (req, res) => {
+  supportingUpload(req, res, async (err) => {
+    if (err) {
+      if (err.code === "LIMIT_FILE_SIZE") {
+        return res.status(413).json({ message: "Supporting file is too large. Max 6MB." });
+      }
+      console.error("Supporting upload error:", err);
+      return res.status(400).json({ message: "Failed to upload supporting files." });
+    }
+
+    const seekerId = Number(req.params.id);
+    if (!Number.isInteger(seekerId) || seekerId <= 0) {
+      return res.status(400).json({ message: "Invalid job seeker id." });
+    }
+
+    const supportingFiles = Array.isArray(req.files?.supportingFiles) ? req.files.supportingFiles : [];
+    if (!supportingFiles.length) {
+      return res.status(400).json({ message: "No supporting files uploaded." });
+    }
+
+    const rawTypes = req.body?.supportingTypes;
+    let supportingTypes = Array.isArray(rawTypes) ? rawTypes : (rawTypes ? [rawTypes] : []);
+    if (supportingTypes.length === 1 && supportingFiles.length > 1) {
+      supportingTypes = supportingFiles.map(() => supportingTypes[0]);
+    }
+    while (supportingTypes.length < supportingFiles.length) {
+      supportingTypes.push("others");
+    }
+    const normalizedTypes = supportingTypes.map((type) => normalizeSupportingType(type));
+
+    const cleanupUploadedFiles = async () => {
+      await Promise.all(
+        supportingFiles.map((file) => safeDeleteFile(file?.path, supportingDir))
+      );
+    };
+
+    try {
+      const [seekerRows] = await pool.execute(
+        "SELECT id FROM job_seekers WHERE id = ? LIMIT 1",
+        [seekerId]
+      );
+      if (!seekerRows.length) {
+        await cleanupUploadedFiles();
+        return res.status(404).json({ message: "Job seeker not found." });
+      }
+
+      const hasUnsupported = supportingFiles.some((file) => !supportingMimeTypes.has(file?.mimetype));
+      if (hasUnsupported) {
+        await cleanupUploadedFiles();
+        return res.status(400).json({ message: "Unsupported file type. Upload PDF, PNG, or JPG." });
+      }
+
+      const nonOtherDuplicates = normalizedTypes
+        .filter((type) => type !== "others")
+        .some((type, index, arr) => arr.indexOf(type) !== index);
+      if (nonOtherDuplicates) {
+        await cleanupUploadedFiles();
+        return res.status(400).json({ message: "Only one file per required supporting document type is allowed." });
+      }
+
+      const { invalid } = await validateSupportingFiles(supportingFiles, normalizedTypes);
+      if (invalid.length) {
+        await cleanupUploadedFiles();
+        return res.status(400).json({
+          message: "One or more supporting documents do not match the required type.",
+          invalidSupporting: invalid
+        });
+      }
+
+      const replaceTypes = Array.from(new Set(normalizedTypes.filter((type) => type !== "others")));
+      for (const type of replaceTypes) {
+        const [existingRows] = await pool.execute(
+          `
+            SELECT id, file_path
+            FROM job_seeker_supporting_files
+            WHERE job_seeker_id = ? AND doc_type = ?
+          `,
+          [seekerId, type]
+        );
+        if (existingRows.length) {
+          await pool.execute(
+            "DELETE FROM job_seeker_supporting_files WHERE job_seeker_id = ? AND doc_type = ?",
+            [seekerId, type]
+          );
+          await Promise.all(
+            existingRows.map((row) => safeDeleteFile(row?.file_path, supportingDir))
+          );
+        }
+      }
+
+      const rows = supportingFiles.map((file, index) => ([
+        seekerId,
+        normalizedTypes[index] || "others",
+        file.originalname,
+        file.filename,
+        file.path,
+        file.mimetype,
+        file.size
+      ]));
+
+      await pool.query(
+        `
+          INSERT INTO job_seeker_supporting_files (
+            job_seeker_id, doc_type, original_name, saved_name, file_path, mime_type, size_bytes
+          )
+          VALUES ?
+        `,
+        [rows]
+      );
+
+      const files = await listJobSeekerSupportingFiles(seekerId);
+      return res.status(201).json({ message: "Supporting documents uploaded.", files });
+    } catch (error) {
+      await cleanupUploadedFiles();
+      console.error("Upload job seeker supporting error:", error);
+      return res.status(500).json({ message: "Failed to upload supporting documents." });
+    }
+  });
+});
+
+app.get("/job-seekers/:id/supporting/:supportId/download", async (req, res) => {
+  const seekerId = Number(req.params.id);
+  const supportId = Number(req.params.supportId);
+  if (!Number.isInteger(seekerId) || seekerId <= 0 || !Number.isInteger(supportId) || supportId <= 0) {
+    return res.status(400).json({ message: "Invalid parameters." });
+  }
+
+  try {
+    const [rows] = await pool.execute(
+      `
+        SELECT original_name, mime_type, file_path
+        FROM job_seeker_supporting_files
+        WHERE id = ? AND job_seeker_id = ?
+        LIMIT 1
+      `,
+      [supportId, seekerId]
+    );
+    if (!rows.length) {
+      return res.status(404).json({ message: "Supporting file not found." });
+    }
+
+    const fileRecord = rows[0];
+    const resolvedFilePath = resolveAndValidatePath(fileRecord.file_path, supportingDir);
+    if (!resolvedFilePath || !fs.existsSync(resolvedFilePath)) {
+      return res.status(404).json({ message: "Supporting file is missing." });
+    }
+
+    res.setHeader("Content-Type", fileRecord.mime_type || "application/octet-stream");
+    res.setHeader("Content-Disposition", `attachment; filename="${fileRecord.original_name || "supporting-file"}"`);
+    return res.sendFile(resolvedFilePath);
+  } catch (error) {
+    console.error("Download job seeker supporting error:", error);
+    return res.status(500).json({ message: "Failed to download supporting file." });
+  }
+});
+
+app.delete("/job-seekers/:id/supporting/:supportId", async (req, res) => {
+  const seekerId = Number(req.params.id);
+  const supportId = Number(req.params.supportId);
+  if (!Number.isInteger(seekerId) || seekerId <= 0 || !Number.isInteger(supportId) || supportId <= 0) {
+    return res.status(400).json({ message: "Invalid parameters." });
+  }
+
+  try {
+    const [rows] = await pool.execute(
+      `
+        SELECT id, file_path
+        FROM job_seeker_supporting_files
+        WHERE id = ? AND job_seeker_id = ?
+        LIMIT 1
+      `,
+      [supportId, seekerId]
+    );
+    if (!rows.length) {
+      return res.status(404).json({ message: "Supporting file not found." });
+    }
+
+    await pool.execute(
+      "DELETE FROM job_seeker_supporting_files WHERE id = ? AND job_seeker_id = ?",
+      [supportId, seekerId]
+    );
+    await safeDeleteFile(rows[0]?.file_path, supportingDir);
+    const files = await listJobSeekerSupportingFiles(seekerId);
+    return res.json({ message: "Supporting file removed.", files });
+  } catch (error) {
+    console.error("Delete job seeker supporting error:", error);
+    return res.status(500).json({ message: "Failed to remove supporting file." });
   }
 });
 
@@ -1245,6 +1659,54 @@ app.get("/jobs", async (req, res) => {
   }
 });
 
+app.get("/jobs/:id/skills", async (req, res) => {
+  const { id } = req.params;
+  try {
+    const [rows] = await pool.execute(
+      "SELECT skill FROM job_skill_catalog WHERE job_id = ? ORDER BY skill ASC",
+      [id]
+    );
+    return res.json({ skills: rows.map((row) => row.skill) });
+  } catch (error) {
+    console.error("Fetch job skills error:", error);
+    return res.status(500).json({ message: "Failed to fetch job skills." });
+  }
+});
+
+app.get("/skills", async (req, res) => {
+  try {
+    const [rows] = await pool.execute(
+      "SELECT skill FROM global_skill_catalog ORDER BY skill ASC"
+    );
+    return res.json({ skills: rows.map((row) => row.skill) });
+  } catch (error) {
+    console.error("Fetch global skills error:", error);
+    return res.status(500).json({ message: "Failed to fetch skills." });
+  }
+});
+
+app.get("/skills/catalog", (req, res) => {
+  const title = String(req.query?.title || "").trim();
+  if (!title) {
+    return res.status(400).json({ message: "Job title is required." });
+  }
+  const catalog = readSkillsCatalog();
+  const normalizedTitle = normalizeJobTitleKey(title);
+  const matchKey = Object.keys(catalog).find(
+    (key) => normalizeJobTitleKey(key) === normalizedTitle
+  );
+  let skills = matchKey ? catalog[matchKey] : [];
+  if (!skills.length && /instructor/i.test(title)) {
+    const instructorKey = Object.keys(catalog).find(
+      (key) => normalizeJobTitleKey(key) === "instructor"
+    );
+    if (instructorKey) {
+      skills = catalog[instructorKey];
+    }
+  }
+  return res.json({ skills: Array.isArray(skills) ? skills : [] });
+});
+
 app.put("/jobs/:id/status", async (req, res) => {
   const { id } = req.params;
   const status = String(req.body?.status || "").toLowerCase();
@@ -1380,6 +1842,8 @@ app.put("/jobs/:id", async (req, res) => {
       return res.status(404).json({ message: "Job post not found." });
     }
 
+    await syncJobSkillCatalog(id, normalizedRequiredSkills);
+
     const [rows] = await pool.execute(
       `
         SELECT
@@ -1491,6 +1955,7 @@ app.post("/jobs", async (req, res) => {
         normalizedSalaryMax
       ]
     );
+    await syncJobSkillCatalog(insertResult.insertId, normalizedRequiredSkills);
     const [rows] = await pool.execute(
       `
         SELECT
@@ -1559,7 +2024,25 @@ app.post("/upload", uploadFields, async (req, res) => {
 
   try {
     const { originalname, filename, path: savedPath, mimetype, size } = mainFile;
-    const supportingText = await extractSupportingTextFromFiles(supportingFiles);
+    const supportingTypesRaw = req.body?.supportingTypes;
+    const supportingTypes = Array.isArray(supportingTypesRaw)
+      ? supportingTypesRaw
+      : (supportingTypesRaw ? [supportingTypesRaw] : []);
+    const normalizedSupportingTypes = supportingTypes.map((type) => normalizeSupportingType(type));
+    while (normalizedSupportingTypes.length < supportingFiles.length) {
+      normalizedSupportingTypes.push("others");
+    }
+    const { invalid, supportingText } = await validateSupportingFiles(supportingFiles, normalizedSupportingTypes);
+    if (invalid.length) {
+      await safeDeleteFile(savedPath, uploadsDir);
+      await Promise.all(
+        supportingFiles.map((file) => safeDeleteFile(file?.path, supportingDir))
+      );
+      return res.status(400).json({
+        message: "One or more supporting documents do not match the required type.",
+        invalidSupporting: invalid
+      });
+    }
     const {
       extractedTextForStorage,
       appliedJobTitle: normalizedAppliedJobTitle,
@@ -1570,6 +2053,17 @@ app.post("/upload", uploadFields, async (req, res) => {
       matchedSkills,
       missingSkills
     } = await analyzeResumeData(savedPath, mimetype, appliedJobTitle, supportingText);
+
+    const numericScore = Number(matchScore || 0);
+    if (Number.isNaN(numericScore) || numericScore <= MIN_MATCH_SCORE) {
+      await safeDeleteFile(savedPath, uploadsDir);
+      await Promise.all(
+        supportingFiles.map((file) => safeDeleteFile(file?.path, supportingDir))
+      );
+      return res.status(400).json({
+        message: `Resume match score ${Number.isNaN(numericScore) ? "0" : numericScore.toFixed(2)}% is below the required ${MIN_MATCH_SCORE}%.`
+      });
+    }
 
     const [result] = await pool.execute(
       `
@@ -1600,8 +2094,9 @@ app.post("/upload", uploadFields, async (req, res) => {
     );
 
     if (supportingFiles.length) {
-      const supportingRows = supportingFiles.map((file) => ([
+      const supportingRows = supportingFiles.map((file, index) => ([
         result.insertId,
+        normalizedSupportingTypes[index] || "others",
         file.originalname,
         file.filename,
         file.path,
@@ -1612,7 +2107,7 @@ app.post("/upload", uploadFields, async (req, res) => {
       await pool.query(
         `
           INSERT INTO upload_supporting_files (
-            upload_id, original_name, saved_name, file_path, mime_type, size_bytes
+            upload_id, doc_type, original_name, saved_name, file_path, mime_type, size_bytes
           )
           VALUES ?
         `,
@@ -1804,7 +2299,7 @@ app.get("/uploads/:id/supporting", async (req, res) => {
   try {
     const [rows] = await pool.execute(
       `
-        SELECT id, original_name, saved_name, file_path, mime_type, size_bytes, uploaded_at
+        SELECT id, doc_type, original_name, saved_name, file_path, mime_type, size_bytes, uploaded_at
         FROM upload_supporting_files
         WHERE upload_id = ?
         ORDER BY uploaded_at DESC

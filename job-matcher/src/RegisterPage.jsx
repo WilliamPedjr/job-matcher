@@ -1,6 +1,6 @@
 import "./RegisterPage.css"
 import { useEffect, useState } from "react"
-import lnuLogo from "./assets/Logo.png"
+import lnuLogo from "./assets/image2.jpg"
 import eyeSolidIcon from "./assets/eye-solid-full.svg"
 import eyeRegularIcon from "./assets/eye-regular-full.svg"
 
@@ -54,9 +54,9 @@ function RegisterPage({
       <div className="register-layout">
         <div className="register-left">
           <img src={lnuLogo} alt="LNU RecruitIQ" className="register-logo" />
-          <h2 className="register-brand">LNU RecruitIQ</h2>
+          {/* <h2 className="register-brand">LNU RecruitIQ</h2>
           <p className="register-school">Leyte Normal University</p>
-          <p className="register-tagline">Hire smarter. Decide faster.</p>
+          <p className="register-tagline">Hire smarter. Decide faster.</p> */}
         </div>
 
         <div className="register-right">

@@ -1,7 +1,7 @@
 .job-view-page {
   max-width: 100%;
   margin: 0 auto;
-  padding: 18px 0 32px;
+  padding: 18px 0 0 0px;
   display: flex;
   flex-direction: column;
   gap: 16px;
@@ -186,7 +186,16 @@
 
 .job-view-footer {
   display: flex;
-  justify-content: flex-end;
+  flex-direction: column;
+  align-items: flex-end;
+  gap: 8px;
+}
+
+.job-view-apply-notice {
+  margin: 0;
+  font-size: 13px;
+  font-weight: 600;
+  color: #b42318;
 }
 
 @media (max-width: 900px) {
@@ -516,6 +525,11 @@
 .supporting-docs-table tbody tr[role="button"]:focus,
 .supporting-docs-table tbody tr[role="button"]:focus-within {
   background: #eef4ff;
+}
+
+.supporting-docs-table tbody tr.row-error td {
+  background: #fee2e2;
+  color: #8a1f1f;
 }
 
 .supporting-docs-empty td {
