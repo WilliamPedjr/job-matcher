@@ -2,6 +2,7 @@ import { useEffect, useRef, useState } from "react"
 import "./JobViewPage.css"
 
 function JobViewPage({ job, onBack, onApply, onRequireResume, jobSeekerProfile, jobSeekerResume, jobSeekerSupporting, jobSeekerId }) {
+  const APPLICATION_MATCH_BONUS_PERCENT = 10
   const [isApplyModalOpen, setIsApplyModalOpen] = useState(false)
   const [applicantName, setApplicantName] = useState("")
   const [applicantEmail, setApplicantEmail] = useState("")
@@ -19,6 +20,7 @@ function JobViewPage({ job, onBack, onApply, onRequireResume, jobSeekerProfile, 
   const [forcedSupportingKey, setForcedSupportingKey] = useState(null)
   const [applyNotice, setApplyNotice] = useState("")
   const [applyGateNotice, setApplyGateNotice] = useState("")
+  const [qualificationPopup, setQualificationPopup] = useState(null)
   const [isSubmitting, setIsSubmitting] = useState(false)
   const [resumeMatch, setResumeMatch] = useState({
     status: "idle",
@@ -29,6 +31,7 @@ function JobViewPage({ job, onBack, onApply, onRequireResume, jobSeekerProfile, 
   })
   const supportingInputRef = useRef(null)
   const resumeInputRef = useRef(null)
+  const lastQualificationKeyRef = useRef("")
   const [showErrors, setShowErrors] = useState(false)
   const [applyTab, setApplyTab] = useState("profile")
 
@@ -73,6 +76,14 @@ function JobViewPage({ job, onBack, onApply, onRequireResume, jobSeekerProfile, 
     }, 2400)
     return () => clearTimeout(timer)
   }, [applyGateNotice])
+
+  useEffect(() => {
+    if (!qualificationPopup) return
+    const timer = setTimeout(() => {
+      setQualificationPopup(null)
+    }, 4000)
+    return () => clearTimeout(timer)
+  }, [qualificationPopup])
 
   const supportingSteps = [
     { key: "certificate", label: "Certificate", accept: ".pdf,.png,.jpg,.jpeg", multiple: false },
@@ -244,6 +255,8 @@ function JobViewPage({ job, onBack, onApply, onRequireResume, jobSeekerProfile, 
   useEffect(() => {
     if (!job || !jobSeekerId) return
     if (!jobSeekerResume) {
+      setQualificationPopup(null)
+      lastQualificationKeyRef.current = ""
       setResumeMatch({
         status: "missing",
         score: null,
@@ -274,11 +287,16 @@ function JobViewPage({ job, onBack, onApply, onRequireResume, jobSeekerProfile, 
         }
         const payload = await response.json()
         if (!isMounted) return
+        const rawScore = Number(payload?.matchScore)
+        const minimumScore = Number(payload?.minimumScore ?? 50)
+        const normalizedMinimumScore = Number.isFinite(minimumScore) ? minimumScore : 50
+        const normalizedRawScore = Number.isFinite(rawScore) ? rawScore : 0
+        const boostedScore = Math.min(100, normalizedRawScore + APPLICATION_MATCH_BONUS_PERCENT)
         setResumeMatch({
           status: "ready",
-          score: payload?.matchScore ?? null,
-          qualifies: Boolean(payload?.qualifies),
-          minimumScore: payload?.minimumScore ?? 50,
+          score: boostedScore,
+          qualifies: boostedScore >= normalizedMinimumScore,
+          minimumScore: normalizedMinimumScore,
           message: ""
         })
       } catch (error) {
@@ -314,13 +332,43 @@ function JobViewPage({ job, onBack, onApply, onRequireResume, jobSeekerProfile, 
   const credentialsComplete = !supportingError
   const resumeMatchLoading = resumeMatch.status === "loading"
   const resumeMatchReady = resumeMatch.status === "ready"
-  const resumeMatchQualified = resumeMatchReady && resumeMatch.qualifies
+  const resumeMatchMinimumScore = Number(resumeMatch.minimumScore ?? 50)
+  const resumeMatchScore = Number(resumeMatch.score ?? 0)
+  const normalizedResumeMatchScore = Number.isFinite(resumeMatchScore) ? resumeMatchScore : 0
+  const resumeMatchQualified = resumeMatchReady && normalizedResumeMatchScore >= resumeMatchMinimumScore
   const resumeMatchError = resumeMatch.status === "error"
   const applyGateDisabled = Boolean(resumeMatchLoading || resumeMatchError)
   const skillItems = (job?.requiredSkills || "")
     .split(",")
     .map((item) => item.trim())
     .filter(Boolean)
+
+  useEffect(() => {
+    if (!job) return
+
+    let nextPopup = null
+    if (resumeMatch.status === "missing") {
+      nextPopup = {
+        type: "fail",
+        text: "No PDS/Resume uploaded. Go to your Profile and upload your PDS/Resume."
+      }
+    } else if (resumeMatchReady) {
+      nextPopup = resumeMatchQualified
+        ? { type: "success", text: "You are qualified to apply for this job." }
+        : { type: "fail", text: "You are not qualified to apply for this job." }
+    } else if (resumeMatchError) {
+      nextPopup = { type: "fail", text: resumeMatch.message || "Unable to verify resume match." }
+    }
+
+    if (!nextPopup) return
+
+    const nextKey = `${job.title}|${resumeMatch.status}|${resumeMatch.qualifies}|${nextPopup.text}`
+    if (lastQualificationKeyRef.current === nextKey) return
+
+    lastQualificationKeyRef.current = nextKey
+    setQualificationPopup(nextPopup)
+  }, [job, resumeMatch.status, resumeMatch.qualifies, resumeMatch.message, resumeMatchError, resumeMatchQualified, resumeMatchReady])
+
   if (!job) {
     return (
       <section className="job-view-page">
@@ -332,6 +380,12 @@ function JobViewPage({ job, onBack, onApply, onRequireResume, jobSeekerProfile, 
 
   return (
     <section className="job-view-page">
+      {qualificationPopup && (
+        <div className={`job-view-popup ${qualificationPopup.type}`}>
+          {qualificationPopup.text}
+        </div>
+      )}
+
       <div className="job-view-header">
         <button type="button" className="job-view-back" onClick={onBack}>←</button>
         <div className="job-view-header-text">
@@ -422,21 +476,6 @@ function JobViewPage({ job, onBack, onApply, onRequireResume, jobSeekerProfile, 
             >
               Apply
             </button>
-          )}
-          {!resumeMatchReady && !resumeMatchError && (
-            <p className="job-view-apply-notice">
-              Checking your resume match...
-            </p>
-          )}
-          {resumeMatchReady && !resumeMatchQualified && (
-            <p className="job-view-apply-notice">
-              You are not a match for this job based on your resume.
-            </p>
-          )}
-          {resumeMatchError && (
-            <p className="job-view-apply-notice">
-              {resumeMatch.message || "Unable to verify resume match."}
-            </p>
           )}
           {applyGateNotice && (
             <p className="job-view-apply-notice">
@@ -831,9 +870,7 @@ function JobViewPage({ job, onBack, onApply, onRequireResume, jobSeekerProfile, 
                     return
                   }
                   if (!resumeMatchQualified) {
-                    const score = Number(resumeMatch.score || 0)
-                    const minScore = resumeMatch.minimumScore ?? 50
-                    setApplyNotice(`Resume match score ${score.toFixed(2)}% is below the required ${minScore}%.`)
+                    setApplyNotice(`Resume match score ${normalizedResumeMatchScore.toFixed(2)}% is below the required ${resumeMatchMinimumScore}%.`)
                     return
                   }
 
@@ -857,6 +894,7 @@ function JobViewPage({ job, onBack, onApply, onRequireResume, jobSeekerProfile, 
                     }).concat(resumeFiles.slice(1).map(() => "other")),
                     address: applicantAddress,
                     appliedJobTitle: job.title,
+                    totalMatchScore: normalizedResumeMatchScore,
                   })
                   if (result?.ok) {
                     setIsApplyModalOpen(false)

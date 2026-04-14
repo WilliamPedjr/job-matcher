@@ -1992,6 +1992,45 @@ optgroup {
   width: 100%;
 }
 
+.register-eyebrow-modern {
+  margin: 0 0 10px;
+  width: fit-content;
+  padding: 6px 14px;
+  border-radius: 999px;
+  border: 1px solid #c9d8ff;
+  background: #eef3ff;
+  color: #1d3b8b;
+  font-size: var(--fs-14);
+  font-weight: 800;
+  letter-spacing: 0.4px;
+  text-transform: uppercase;
+}
+
+.register-heading-modern {
+  margin: 0;
+  max-width: 620px;
+  font-size: clamp(2rem, 4vw, 3.2rem);
+  line-height: 1.15;
+  text-align: center;
+  font-weight: 800;
+  color: #0f172a;
+  text-wrap: balance;
+}
+
+.register-heading-modern span {
+  color: #0b4fcf;
+}
+
+.register-tagline-modern {
+  margin: 12px auto 8px;
+  max-width: 620px;
+  font-size: var(--fs-16);
+  font-weight: 600;
+  line-height: 1.45;
+  text-align: center;
+  color: #334155;
+}
+
 .register-logo {
   margin-bottom: 0px;
   width: 50%;
@@ -2173,6 +2212,10 @@ optgroup {
   .register-right {
     order: 2;
   }
+
+  .register-heading-modern {
+    font-size: clamp(1.8rem, 8vw, 2.4rem);
+  }
 }
 
 @media (max-width: 640px) {
@@ -2186,5 +2229,9 @@ optgroup {
 
   .register-btn {
     width: 100%;
+  }
+
+  .register-heading-modern {
+    font-size: clamp(1.5rem, 8.5vw, 1.8rem);
   }
 }

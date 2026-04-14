@@ -1425,24 +1425,43 @@ optgroup {
   padding: 12px 18px 0 8px;
 }
 
+.login-eyebrow-modern {
+  margin: 0 auto 10px;
+  width: fit-content;
+  padding: 6px 14px;
+  border-radius: 999px;
+  border: 1px solid #c9d8ff;
+  background: #eef3ff;
+  color: #1d3b8b;
+  font-size: var(--fs-14);
+  font-weight: 800;
+  letter-spacing: 0.4px;
+  text-transform: uppercase;
+}
+
 .login-heading-modern {
-  /* margin-bottom: 100px; */
-  margin: 0;
+  margin: 0 auto;
   max-width: 620px;
-  font-size: var(--fs-28);
-  line-height: 1.25;
+  font-size: clamp(2rem, 4vw, 3.2rem);
+  line-height: 1.15;
   text-align: center;
   font-weight: 800;
+  color: #0f172a;
+  text-wrap: balance;
+}
 
+.login-heading-modern span {
+  color: #0b4fcf;
 }
 
 .login-tagline-modern {
-  /* margin-bottom: 100px; */
-  margin: 10px 0 28px;
-  font-size: var(--fs-24);
-  font-weight: 700;
+  margin: 12px auto 26px;
+  max-width: 620px;
+  font-size: var(--fs-16);
+  font-weight: 600;
+  line-height: 1.45;
   text-align: center;
-  color: #111827;
+  color: #334155;
 }
 
 .login-form-modern {
@@ -1622,8 +1641,8 @@ optgroup {
 }
 
 .login-brand-logo {
-  width: 100%;
-  height: 100%;
+  width: 50%;
+  height: 50%;
   border-radius: 8px;
   object-fit: contain;
   margin-bottom: 0px;
@@ -2257,9 +2276,13 @@ optgroup {
     padding: 10px 0 0;
   }
 
+  .login-eyebrow-modern {
+    margin: 0 0 10px;
+  }
+
   .login-heading-modern {
     max-width: none;
-    font-size: var(--fs-30);
+    font-size: clamp(1.8rem, 8vw, 2.4rem);
     text-align: left;
   }
 
@@ -2444,7 +2467,7 @@ optgroup {
   }
 
   .login-heading-modern {
-    font-size: var(--fs-24);
+    font-size: clamp(1.65rem, 8vw, 2rem);
   }
 
   .login-input-wrap-modern {
@@ -2542,7 +2565,7 @@ optgroup {
   }
 
   .login-heading-modern {
-    font-size: var(--fs-22);
+    font-size: clamp(1.5rem, 8.5vw, 1.8rem);
     line-height: 1.3;
   }
 
@@ -2561,6 +2584,10 @@ optgroup {
   .login-input-icon-modern {
     min-width: 18px;
     font-size: var(--fs-14);
+  }
+
+  .login-H {
+    color: orange !important; 
   }
 }
 

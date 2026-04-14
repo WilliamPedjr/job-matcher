@@ -1,6 +1,6 @@
 import "./RegisterPage.css"
 import { useEffect, useState } from "react"
-import lnuLogo from "./assets/image2.jpg"
+import lnuLogo from "./assets/Logo.png"
 import eyeSolidIcon from "./assets/eye-solid-full.svg"
 import eyeRegularIcon from "./assets/eye-regular-full.svg"
 
@@ -9,7 +9,7 @@ function RegisterPage({
   setFullName = () => {},
   username = "",
   setUsername = () => {},
-  phone = "",
+  phone = "", 
   setPhone = () => {},
   email = "",
   setEmail = () => {},
@@ -53,10 +53,18 @@ function RegisterPage({
 
       <div className="register-layout">
         <div className="register-left">
+          {/* <p className="register-eyebrow-modern">Smart Recruitment Portal</p> */}
+          
           <img src={lnuLogo} alt="LNU RecruitIQ" className="register-logo" />
           {/* <h2 className="register-brand">LNU RecruitIQ</h2>
           <p className="register-school">Leyte Normal University</p>
           <p className="register-tagline">Hire smarter. Decide faster.</p> */}
+          <h2 className="register-heading-modern">
+            Welcome to <span>LNU-HiRe</span>
+          </h2>
+          <p className="register-tagline-modern">
+            Create your account and start matching the right talent with the right role.
+          </p>
         </div>
 
         <div className="register-right">

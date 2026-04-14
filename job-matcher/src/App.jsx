@@ -116,6 +116,7 @@ function extractExperienceLines(text) {
 function App() {
   const ADMIN_EMAIL = "admin"
   const ADMIN_PASSWORD = "123"
+  const APPLICATION_MATCH_BONUS_PERCENT = 10
 
   // Component state
   // Holds the currently selected file from the file input.
@@ -623,7 +624,7 @@ function App() {
     }
   }
 
-  const handleLogout = () => {
+  const handleLogout = useCallback(() => {
     setIsAuthenticated(false)
     localStorage.removeItem("isAuthenticated")
     setUserRole("")
@@ -639,7 +640,18 @@ function App() {
     setJobSeekerId(null)
     setActivePage("applicants")
     setSelectedJobView(null)
-  }
+  }, [])
+
+  useEffect(() => {
+    if (!isAuthenticated) return
+    const hasMissingRole = !userRole
+    const hasMissingJobSeekerIdentity = userRole === "jobseeker" && !resolvedJobSeekerId
+    if (!hasMissingRole && !hasMissingJobSeekerIdentity) return
+
+    setLoginError("Account not found. Please log in again.")
+    setIsRegistering(false)
+    handleLogout()
+  }, [isAuthenticated, userRole, resolvedJobSeekerId, handleLogout])
 
   const fetchSupportingFilesForSummary = useCallback(async (uploadId) => {
     if (!uploadId) {
@@ -820,7 +832,18 @@ function App() {
     }
   }
 
-  const handleJobSeekerApply = async ({ name: applicantName, email: applicantEmail, phone: applicantPhone, file: resumeFile, supportingFiles = [], supportingTypes = [], appliedJobTitle }) => {
+  const handleJobSeekerApply = async ({
+    name: applicantName,
+    email: applicantEmail,
+    phone: applicantPhone,
+    file: resumeFile,
+    supportingFiles = [],
+    supportingTypes = [],
+    appliedJobTitle,
+    baseMatchScore = null,
+    totalMatchScore = null,
+    matchBonusPercentage = APPLICATION_MATCH_BONUS_PERCENT
+  }) => {
     const normalizedName = String(applicantName || "").trim()
     const normalizedEmail = String(applicantEmail || "").trim()
     const phoneDigits = String(applicantPhone || "").replace(/\D/g, "")
@@ -843,11 +866,31 @@ function App() {
       return { ok: false, message: "Please upload a resume/CV file." }
     }
 
+    const numericBonus = Number(matchBonusPercentage)
+    const safeBonus = Number.isFinite(numericBonus) ? numericBonus : APPLICATION_MATCH_BONUS_PERCENT
+    const numericBase = Number(baseMatchScore)
+    const computedTotalScore = Number.isFinite(numericBase)
+      ? Math.min(100, numericBase + safeBonus)
+      : null
+    const numericProvidedTotal = Number(totalMatchScore)
+    const finalTotalScore = Number.isFinite(numericProvidedTotal)
+      ? Math.min(100, numericProvidedTotal)
+      : computedTotalScore
+
     const formData = new FormData()
     formData.append("name", normalizedName)
     formData.append("email", normalizedEmail)
     formData.append("phone", `+63${normalizedPhone}`)
     formData.append("appliedJobTitle", normalizedJobTitle)
+    formData.append("matchBonusPercentage", String(safeBonus))
+    if (baseMatchScore != null && Number.isFinite(Number(baseMatchScore))) {
+      formData.append("baseMatchScore", String(Number(baseMatchScore)))
+    }
+    if (finalTotalScore != null) {
+      formData.append("totalMatchScore", String(finalTotalScore))
+      // Compatibility key if backend expects a generic score field.
+      formData.append("matchScore", String(finalTotalScore))
+    }
     formData.append("file", resumeFile)
     supportingFiles.forEach((file) => {
       formData.append("supportingFiles", file)

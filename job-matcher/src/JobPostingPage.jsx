@@ -3,6 +3,7 @@ import './JobPostingPage.css'
 import CustomDropdown from './CustomDropdown'
 
 function JobPostingPage({ uploads = [], isEmployer = false, isJobSeeker = false, jobSeekerId, jobSeekerResume, onViewApplicant, onDeleteApplicant, onJobsChanged, onViewJob }) {
+  const APPLICATION_MATCH_BONUS_PERCENT = 10
   const [jobs, setJobs] = useState([])
   const [templates, setTemplates] = useState([])
   const [searchTerm, setSearchTerm] = useState("")
@@ -33,6 +34,7 @@ function JobPostingPage({ uploads = [], isEmployer = false, isJobSeeker = false,
   const [createJobNotice, setCreateJobNotice] = useState("")
   const [isSearchOpen, setIsSearchOpen] = useState(false)
   const [isSkillsOpen, setIsSkillsOpen] = useState(false)
+  const [skillDraft, setSkillDraft] = useState("")
   const [confirmDeleteJobId, setConfirmDeleteJobId] = useState(null)
   const [jobMatches, setJobMatches] = useState({})
   const [jobMatchStatus, setJobMatchStatus] = useState("idle")
@@ -63,6 +65,13 @@ function JobPostingPage({ uploads = [], isEmployer = false, isJobSeeker = false,
   const showCreateJobNotice = (status, notice) => {
     setCreateJobStatus(status)
     setCreateJobNotice(notice)
+  }
+
+  const normalizeSalaryRange = (minValue, maxValue) => {
+    if (maxValue < minValue) {
+      return { salaryMin: minValue, salaryMax: minValue }
+    }
+    return { salaryMin: minValue, salaryMax: maxValue }
   }
 
   const fetchJobs = async ({ silent = false } = {}) => {
@@ -258,10 +267,16 @@ function JobPostingPage({ uploads = [], isEmployer = false, isJobSeeker = false,
               }
               const payload = await response.json()
               const score = Number(payload?.matchScore)
+              if (Number.isNaN(score)) {
+                return { key: title.toLowerCase(), score: null, qualifies: false }
+              }
+              const minimumScore = Number(payload?.minimumScore ?? 50)
+              const normalizedMinimumScore = Number.isFinite(minimumScore) ? minimumScore : 50
+              const scoreWithBonus = Math.min(100, score + APPLICATION_MATCH_BONUS_PERCENT)
               return {
                 key: title.toLowerCase(),
-                score: Number.isNaN(score) ? null : score,
-                qualifies: Boolean(payload?.qualifies)
+                score: scoreWithBonus,
+                qualifies: scoreWithBonus >= normalizedMinimumScore
               }
             } catch (error) {
               if (error?.name === "AbortError") return null
@@ -450,19 +465,39 @@ function JobPostingPage({ uploads = [], isEmployer = false, isJobSeeker = false,
   }, [educationMapping, newMinimumEducation])
 
   const filteredSkillSuggestions = useMemo(() => {
-    const raw = String(newRequiredSkills || "")
-    const parts = raw.split(",")
-    const currentToken = String(parts[parts.length - 1] || "").trim().toLowerCase()
     const existing = new Set(parseSkills(newRequiredSkills).map((item) => item.toLowerCase()))
     const templatePool = templateSkillCatalog.length ? templateSkillCatalog : templateSkills
-    const pool = (isEditingJob ? jobSkillCatalog : templatePool)
-      .filter((skill) => !existing.has(skill.toLowerCase()))
+    const contextualPool = isEditingJob ? jobSkillCatalog : templatePool
+    const pool = Array.from(new Set([...contextualPool, ...allSkillSuggestions]))
+      .filter((skill) => !existing.has(String(skill).toLowerCase()))
     if (!pool.length) return []
-    if (!currentToken) return pool
+    const query = String(skillDraft || "").trim().toLowerCase()
+    if (!query) return pool
     return pool
-      .filter((skill) => skill.toLowerCase().includes(currentToken))
+      .filter((skill) => skill.toLowerCase().includes(query))
       .slice(0)
-  }, [newRequiredSkills, isEditingJob, jobSkillCatalog, templateSkills, templateSkillCatalog])
+  }, [newRequiredSkills, isEditingJob, jobSkillCatalog, templateSkills, templateSkillCatalog, allSkillSuggestions, skillDraft])
+
+  const selectedRequiredSkills = useMemo(() => parseSkills(newRequiredSkills), [newRequiredSkills])
+
+  const addRequiredSkill = (rawSkill) => {
+    const skill = String(rawSkill || "").trim()
+    if (!skill) return
+    const current = parseSkills(newRequiredSkills)
+    const exists = current.some((item) => item.toLowerCase() === skill.toLowerCase())
+    if (exists) {
+      setSkillDraft("")
+      return
+    }
+    setNewRequiredSkills([...current, skill].join(", "))
+    setSkillDraft("")
+    setIsSkillsOpen(false)
+  }
+
+  const removeRequiredSkill = (skillToRemove) => {
+    const next = parseSkills(newRequiredSkills).filter((item) => item !== skillToRemove)
+    setNewRequiredSkills(next.join(", "))
+  }
 
   const filteredSearchSuggestions = useMemo(() => {
     const query = searchTerm.trim().toLowerCase()
@@ -613,6 +648,8 @@ function JobPostingPage({ uploads = [], isEmployer = false, isJobSeeker = false,
     setNewMinimumExperienceYears("0")
     setNewSalaryMin("")
     setNewSalaryMax("")
+    setSkillDraft("")
+    setIsSkillsOpen(false)
   }
 
   const openEditJobModal = (job) => {
@@ -629,12 +666,16 @@ function JobPostingPage({ uploads = [], isEmployer = false, isJobSeeker = false,
     setNewMinimumExperienceYears(String(job.minimumExperienceYears ?? 0))
     setNewSalaryMin(job.salaryMin != null ? String(job.salaryMin) : "")
     setNewSalaryMax(job.salaryMax != null ? String(job.salaryMax) : "")
+    setSkillDraft("")
+    setIsSkillsOpen(false)
     setIsCreateModalOpen(true)
   }
 
   const closeCreateModal = () => {
     setIsCreateModalOpen(false)
     setEditingJobId(null)
+    setSkillDraft("")
+    setIsSkillsOpen(false)
   }
 
   const salaryLabel = useMemo(() => {
@@ -685,18 +726,19 @@ function JobPostingPage({ uploads = [], isEmployer = false, isJobSeeker = false,
     }
 
     const minExp = Number(newMinimumExperienceYears)
-    const salaryMin = Number(newSalaryMin)
-    const salaryMax = Number(newSalaryMax)
+    const parsedSalaryMin = Number(newSalaryMin)
+    const parsedSalaryMax = Number(newSalaryMax)
 
     if (Number.isNaN(minExp) || minExp < 0) {
       showCreateJobNotice("fail", "Minimum experience must be a valid non-negative number.")
       return
     }
 
-    if (Number.isNaN(salaryMin) || Number.isNaN(salaryMax) || salaryMin < 0 || salaryMax < 0) {
+    if (Number.isNaN(parsedSalaryMin) || Number.isNaN(parsedSalaryMax) || parsedSalaryMin < 0 || parsedSalaryMax < 0) {
       showCreateJobNotice("fail", "Salary grade and salary amount must be valid non-negative numbers.")
       return
     }
+    const { salaryMin, salaryMax } = normalizeSalaryRange(parsedSalaryMin, parsedSalaryMax)
 
     setIsCreatingJob(true)
     setError("")
@@ -757,18 +799,19 @@ function JobPostingPage({ uploads = [], isEmployer = false, isJobSeeker = false,
     }
 
     const minExp = Number(newMinimumExperienceYears)
-    const salaryMin = Number(newSalaryMin)
-    const salaryMax = Number(newSalaryMax)
+    const parsedSalaryMin = Number(newSalaryMin)
+    const parsedSalaryMax = Number(newSalaryMax)
 
     if (Number.isNaN(minExp) || minExp < 0) {
       showCreateJobNotice("fail", "Minimum experience must be a valid non-negative number.")
       return
     }
 
-    if (Number.isNaN(salaryMin) || Number.isNaN(salaryMax) || salaryMin < 0 || salaryMax < 0) {
+    if (Number.isNaN(parsedSalaryMin) || Number.isNaN(parsedSalaryMax) || parsedSalaryMin < 0 || parsedSalaryMax < 0) {
       showCreateJobNotice("fail", "Salary grade and salary amount must be valid non-negative numbers.")
       return
     }
+    const { salaryMin, salaryMax } = normalizeSalaryRange(parsedSalaryMin, parsedSalaryMax)
 
     setIsCreatingJob(true)
     setError("")
@@ -987,20 +1030,17 @@ function JobPostingPage({ uploads = [], isEmployer = false, isJobSeeker = false,
                       return <span className="job-chip chip-warning">Upload resume to see match</span>
                     }
                     if (jobMatchStatus === "loading") {
-                      // return <span className="job-chip chip-muted">Checking match...</span>
+                      return <span className="job-chip chip-muted">Checking match...</span>
                     }
                     if (jobMatchStatus === "error") {
-                      // return <span className="job-chip chip-warning">Match unavailable</span>
+                      return <span className="job-chip chip-warning">Match unavailable</span>
                     }
                     if (!match || match.score == null) {
-                      // return <span className="job-chip chip-warning">Match unavailable</span>
+                      return <span className="job-chip chip-warning">Match unavailable</span>
                     }
                     return (
-                      // <span className={`job-chip ${match.qualifies ? "chip-good" : "chip-bad"}`}>
-                      //   Match: {match.score.toFixed(2)}%
-                      // </span>
-                      <span>
-
+                      <span className={`job-chip ${match.qualifies ? "chip-good" : "chip-bad"}`}>
+                        {match.qualifies ? "Match" : "Not match"}
                       </span>
                     )
                   })()
@@ -1172,6 +1212,11 @@ function JobPostingPage({ uploads = [], isEmployer = false, isJobSeeker = false,
               </div>
               <button type="button" className="close-x" onClick={closeCreateModal}>×</button>
             </div>
+            {createJobStatus && (
+              <div className={`create-job-notice create-job-notice-${createJobStatus === "success" ? "success" : "fail"}`}>
+                {createJobNotice || (createJobStatus === "success" ? "Success" : "Fail")}
+              </div>
+            )}
 
             <div className="create-job-layout">
               <div className="create-job-left">
@@ -1278,10 +1323,11 @@ function JobPostingPage({ uploads = [], isEmployer = false, isJobSeeker = false,
                     <div className="field-group">
                       <label>Location</label>
                       <input
-                        className="input"
+                        className="input create-job-readonly"
                         type="text"
-                        value={defaultJobLocation}
-                        disabled
+                        value={defaultJobLocation || "Leyte Normal University"}
+                        readOnly
+                        aria-readonly="true"
                       />
                     </div>
                   </div>
@@ -1332,44 +1378,88 @@ function JobPostingPage({ uploads = [], isEmployer = false, isJobSeeker = false,
                   <div className="field-group">
                     <label>Required Skills</label>
                     <div
-                      className="autocomplete"
+                      className="autocomplete create-skills-picker"
                       onClick={(e) => e.stopPropagation()}
                     >
-                      <input
-                        className="input"
-                        type="text"
-                        value={newRequiredSkills}
-                        onChange={(e) => {
-                          setNewRequiredSkills(e.target.value)
-                          setIsSkillsOpen(true)
-                        }}
-                        onFocus={() => setIsSkillsOpen(true)}
-                        onBlur={() => setTimeout(() => setIsSkillsOpen(false), 0)}
-                        placeholder="Add a skill (e.g., Python, React, Project Management)"
-                      />
-                      {isSkillsOpen && filteredSkillSuggestions.length > 0 && (
-                        <div className="autocomplete-menu">
-                          {filteredSkillSuggestions.map((skill) => (
+                      <div className="create-skills-input-row">
+                        <input
+                          className="input create-skills-input"
+                          type="text"
+                          value={skillDraft}
+                          onChange={(e) => {
+                            setSkillDraft(e.target.value)
+                          }}
+                          onFocus={() => setIsSkillsOpen(true)}
+                          onKeyDown={(e) => {
+                            if (e.key === "Enter") {
+                              e.preventDefault()
+                              addRequiredSkill(skillDraft)
+                            }
+                          }}
+                          placeholder="Type a skill and click Add"
+                        />
+                        <button
+                          type="button"
+                          className="btn create-skill-add-btn"
+                          onClick={() => setIsSkillsOpen((prev) => !prev)}
+                        >
+                          Add
+                        </button>
+                      </div>
+
+                      {isSkillsOpen && (
+                        <div className="autocomplete-menu create-skills-menu">
+                          {skillDraft.trim() && (
                             <button
-                              key={`skill-${skill}`}
                               type="button"
-                              className="autocomplete-item"
+                              className="autocomplete-item create-skill-custom"
                               onMouseDown={(e) => {
                                 e.preventDefault()
-                                const raw = String(newRequiredSkills || "")
-                                const parts = raw.split(",")
-                                const base = parts.slice(0, -1).map((item) => item.trim()).filter(Boolean)
-                                const next = [...base, skill]
-                                setNewRequiredSkills(next.join(", "))
-                                setIsSkillsOpen(false)
+                                addRequiredSkill(skillDraft)
                               }}
                             >
-                              {skill}
+                              Add "{skillDraft.trim()}"
                             </button>
-                          ))}
+                          )}
+
+                          {filteredSkillSuggestions.length > 0 ? (
+                            filteredSkillSuggestions.map((skill) => (
+                              <button
+                                key={`skill-${skill}`}
+                                type="button"
+                                className="autocomplete-item"
+                                onMouseDown={(e) => {
+                                  e.preventDefault()
+                                  addRequiredSkill(skill)
+                                }}
+                              >
+                                {skill}
+                              </button>
+                            ))
+                          ) : (
+                            <p className="create-skills-empty">No skills found.</p>
+                          )}
                         </div>
                       )}
                     </div>
+
+                    {selectedRequiredSkills.length > 0 && (
+                      <div className="create-skills-selected">
+                        {selectedRequiredSkills.map((skill) => (
+                          <span key={`selected-skill-${skill}`} className="create-skill-tag">
+                            {skill}
+                            <button
+                              type="button"
+                              className="create-skill-remove"
+                              onClick={() => removeRequiredSkill(skill)}
+                              aria-label={`Remove ${skill}`}
+                            >
+                              ×
+                            </button>
+                          </span>
+                        ))}
+                      </div>
+                    )}
                   </div>
 
                   <div className="modal-grid">

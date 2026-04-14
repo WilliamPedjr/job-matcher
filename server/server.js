@@ -4,6 +4,7 @@ const cors = require("cors");
 const dotenv = require("dotenv");
 const fs = require("fs");
 const path = require("path");
+const crypto = require("crypto");
 const multer = require("multer");
 const mysql = require("mysql2/promise");
 const matchRoute = require('./routes/match');
@@ -20,6 +21,8 @@ const PORT = process.env.PORT || 5000;
 const jobsSeedPath = path.join(__dirname, "jobs.json");
 const skillsCatalogPath = path.join(__dirname, "skills.json");
 const MIN_MATCH_SCORE = 50;
+const MAX_RESUME_ANALYSIS_CACHE_ENTRIES = 200;
+const resumeAnalysisCache = new Map();
 
 app.use(cors());
 app.use(express.json());
@@ -371,6 +374,19 @@ const validateSupportingFiles = async (files = [], types = []) => {
 };
 
 const analyzeResumeData = async (filePath, mimeType, appliedJobTitle = "", supportingText = "") => {
+  const fileStats = await fs.promises.stat(filePath);
+  const cacheKey = buildResumeAnalysisCacheKey({
+    filePath,
+    stats: fileStats,
+    mimeType,
+    appliedJobTitle,
+    supportingText
+  });
+  const cachedResult = getCachedResumeAnalysis(cacheKey);
+  if (cachedResult) {
+    return cachedResult;
+  }
+
   let extractedText = "";
 
   if (mimeType === "application/pdf") {
@@ -439,7 +455,7 @@ const analyzeResumeData = async (filePath, mimeType, appliedJobTitle = "", suppo
   const matchedSkills = allMatchedSkills.length ? allMatchedSkills.join(", ") : null;
   const missingSkills = topMissingSkills.length ? topMissingSkills.join(", ") : null;
 
-  return {
+  const result = {
     extractedTextForStorage,
     appliedJobTitle: normalizedAppliedJobTitle || matchedJobTitle || null,
     matchedJobTitle,
@@ -449,6 +465,9 @@ const analyzeResumeData = async (filePath, mimeType, appliedJobTitle = "", suppo
     matchedSkills,
     missingSkills
   };
+
+  setCachedResumeAnalysis(cacheKey, result);
+  return result;
 };
 
 const resolveAndValidatePath = (targetPath, rootDir) => {
@@ -457,6 +476,44 @@ const resolveAndValidatePath = (targetPath, rootDir) => {
   const resolvedRoot = path.resolve(rootDir);
   if (!resolvedTarget.startsWith(resolvedRoot)) return null;
   return resolvedTarget;
+};
+
+const buildResumeAnalysisCacheKey = ({ filePath, stats, mimeType, appliedJobTitle, supportingText }) => {
+  const supportHash = crypto
+    .createHash("sha1")
+    .update(String(supportingText || ""))
+    .digest("hex");
+
+  return JSON.stringify({
+    filePath: path.resolve(filePath),
+    size: stats?.size || 0,
+    mtimeMs: Number(stats?.mtimeMs || 0),
+    mimeType: String(mimeType || ""),
+    appliedJobTitle: String(appliedJobTitle || "").trim().toLowerCase(),
+    supportingTextHash: supportHash
+  });
+};
+
+const getCachedResumeAnalysis = (cacheKey) => {
+  if (!resumeAnalysisCache.has(cacheKey)) return null;
+  const cached = resumeAnalysisCache.get(cacheKey);
+  resumeAnalysisCache.delete(cacheKey);
+  resumeAnalysisCache.set(cacheKey, cached);
+  return cached;
+};
+
+const setCachedResumeAnalysis = (cacheKey, value) => {
+  if (resumeAnalysisCache.has(cacheKey)) {
+    resumeAnalysisCache.delete(cacheKey);
+  }
+  resumeAnalysisCache.set(cacheKey, value);
+
+  if (resumeAnalysisCache.size > MAX_RESUME_ANALYSIS_CACHE_ENTRIES) {
+    const oldestKey = resumeAnalysisCache.keys().next().value;
+    if (oldestKey) {
+      resumeAnalysisCache.delete(oldestKey);
+    }
+  }
 };
 
 const safeDeleteFile = async (targetPath, rootDir) => {
@@ -1999,7 +2056,13 @@ app.post("/upload", uploadFields, async (req, res) => {
     return res.status(400).json({ message: "No file uploaded." });
   }
 
-  const { name = "", email = "", phone = "", appliedJobTitle = "" } = req.body;
+  const {
+    name = "",
+    email = "",
+    phone = "",
+    appliedJobTitle = "",
+    matchBonusPercentage = "0"
+  } = req.body;
   if (!name.trim() || !email.trim() || !phone.trim() || !String(appliedJobTitle).trim()) {
     return res.status(400).json({ message: "Name, email, phone, and job post are required." });
   }
@@ -2054,7 +2117,22 @@ app.post("/upload", uploadFields, async (req, res) => {
       missingSkills
     } = await analyzeResumeData(savedPath, mimetype, appliedJobTitle, supportingText);
 
-    const numericScore = Number(matchScore || 0);
+    const rawBonus = Number(matchBonusPercentage);
+    const safeBonus = Number.isFinite(rawBonus) ? Math.max(0, rawBonus) : 0;
+    const baseScore = Number(matchScore || 0);
+    const adjustedScore = Number.isNaN(baseScore) ? null : Math.min(100, baseScore + safeBonus);
+    let adjustedClassification = classification || "Not Qualified";
+    if (adjustedScore != null) {
+      if (adjustedScore >= 80) {
+        adjustedClassification = "Highly Qualified";
+      } else if (adjustedScore >= 60) {
+        adjustedClassification = "Moderately Qualified";
+      } else {
+        adjustedClassification = "Not Qualified";
+      }
+    }
+
+    const numericScore = Number(adjustedScore || 0);
     if (Number.isNaN(numericScore) || numericScore <= MIN_MATCH_SCORE) {
       await safeDeleteFile(savedPath, uploadsDir);
       await Promise.all(
@@ -2079,9 +2157,9 @@ app.post("/upload", uploadFields, async (req, res) => {
         normalizedPhone,
         normalizedAppliedJobTitle,
         matchedJobTitle,
-        matchScore,
+        adjustedScore,
         projectScore,
-        classification,
+        adjustedClassification,
         matchedSkills,
         extractedTextForStorage,
         missingSkills,
@@ -2124,9 +2202,9 @@ app.post("/upload", uploadFields, async (req, res) => {
         phone: normalizedPhone,
         appliedJobTitle: normalizedAppliedJobTitle,
         matchedJobTitle,
-        matchScore,
+        matchScore: adjustedScore,
         projectScore,
-        classification,
+        classification: adjustedClassification,
         matchedSkills,
         extractedText: extractedTextForStorage,
         missingSkills,

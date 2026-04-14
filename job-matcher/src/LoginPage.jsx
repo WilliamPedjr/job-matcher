@@ -7,7 +7,7 @@ import eyeSolidIcon from "./assets/eye-solid-full.svg"
 import eyeRegularIcon from "./assets/eye-regular-full.svg"
 import facebookIcon from "./assets/facebook-f-brands-solid-full.svg"
 import instagramIcon from "./assets/instagram-brands-solid-full.svg"
-import loginImage from "./assets/image1.jpg"
+import loginImage from "./assets/Logo.png"
 
 function LoginPage({
   loginEmail,
@@ -93,8 +93,13 @@ function LoginPage({
 
       <section className="login-hero-modern" id="login-hero">
         <div className="login-left-modern">
-          <h1 className="login-heading-modern">Welcome to RecruitIQ</h1>
-          <p className="login-tagline-modern">Hire smarter. Decide faster.</p>
+          {/* <p className="login-eyebrow-modern">Smart Recruitment Portal</p> */}
+          <h1 className="login-heading-modern">
+            Welcome to <span>LNU-HiRe</span>
+          </h1>
+          <p className="login-tagline-modern">
+            Find the best-fit talent faster with intelligent applicant matching.
+          </p>
 
           <form
             className="login-form-modern"

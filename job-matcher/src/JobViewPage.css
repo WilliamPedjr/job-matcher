@@ -7,6 +7,31 @@
   gap: 16px;
 }
 
+.job-view-popup {
+  position: fixed;
+  top: 16px;
+  left: 50%;
+  transform: translateX(-50%);
+  z-index: 1200;
+  min-width: 220px;
+  max-width: min(360px, calc(100vw - 32px));
+  padding: 12px 16px;
+  border-radius: 10px;
+  color: #fff;
+  font-size: 14px;
+  font-weight: 700;
+  box-shadow: 0 10px 22px rgba(0, 0, 0, 0.2);
+  text-align: center;
+}
+
+.job-view-popup.success {
+  background: #1f8a44;
+}
+
+.job-view-popup.fail {
+  background: #b42318;
+}
+
 .job-view-header {
   display: grid;
   grid-template-columns: auto 1fr auto;
@@ -196,6 +221,7 @@
   font-size: 13px;
   font-weight: 600;
   color: #b42318;
+  text-align: right;
 }
 
 @media (max-width: 900px) {
