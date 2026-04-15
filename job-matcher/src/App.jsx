@@ -188,6 +188,8 @@ function App() {
   const [selectedJobView, setSelectedJobView] = useState(null)
   const [confirmDeleteId, setConfirmDeleteId] = useState(null)
   const [confirmDeleteContext, setConfirmDeleteContext] = useState("application")
+  const [deleteToast, setDeleteToast] = useState(null)
+  const deleteToastTimerRef = useRef(null)
   const [summaryItem, setSummaryItem] = useState(null)
   const [summarySupportingFiles, setSummarySupportingFiles] = useState([])
   const [summarySupportingError, setSummarySupportingError] = useState("")
@@ -206,6 +208,28 @@ function App() {
 
   const handleJobSeekerSupportingUpdate = useCallback((files) => {
     setJobSeekerSupporting(Array.isArray(files) ? files : [])
+  }, [])
+
+  const showDeleteToast = useCallback((message, type = "success", duration = 2600) => {
+    if (deleteToastTimerRef.current) {
+      window.clearTimeout(deleteToastTimerRef.current)
+      deleteToastTimerRef.current = null
+    }
+    setDeleteToast({ message, type })
+    if (duration > 0) {
+      deleteToastTimerRef.current = window.setTimeout(() => {
+        setDeleteToast(null)
+        deleteToastTimerRef.current = null
+      }, duration)
+    }
+  }, [])
+
+  useEffect(() => {
+    return () => {
+      if (deleteToastTimerRef.current) {
+        window.clearTimeout(deleteToastTimerRef.current)
+      }
+    }
   }, [])
 
   const requestResumeAttention = useCallback(() => {
@@ -937,10 +961,12 @@ function App() {
       // Update UI immediately so Jobs modal/Applicants table refresh without waiting for refetch.
       setUploads((prev) => prev.filter((item) => item.id !== id))
       setMessage("Upload record deleted.")
+      showDeleteToast("Delete successful.", "success")
       fetchUploads({ silent: true })
       return true
     } catch (error) {
       setMessage("Error deleting record.")
+      showDeleteToast("Failed to delete record.", "fail")
       return false
     }
   }
@@ -958,9 +984,11 @@ function App() {
         item.id === id ? { ...item, job_seeker_hidden: 1 } : item
       )))
       setMessage("Application hidden.")
+      showDeleteToast("Application hidden.", "success")
       return true
     } catch (error) {
       setMessage("Error hiding application.")
+      showDeleteToast("Failed to hide application.", "fail")
       return false
     }
   }
@@ -1781,14 +1809,14 @@ function App() {
 
       {confirmDeleteId != null && (
         <div
-          className="modal-overlay"
+          className="modal-overlay delete-confirm-overlay"
           onClick={(e) => {
             if (e.target === e.currentTarget) {
               setConfirmDeleteId(null)
             }
           }}
         >
-          <div className="modal-card">
+          <div className="modal-card delete-confirm-card">
             <h3>{confirmDeleteContext === "applicant" ? "Delete Applicant" : "Delete Application"}</h3>
             <p>
               {confirmDeleteContext === "applicant"
@@ -2028,6 +2056,12 @@ function App() {
       {uploadStatus && (
         <div className={`toast ${uploadStatus === "success" ? "toast-success" : "toast-fail"}`}>
           {uploadNotice || (uploadStatus === "success" ? "Success" : "Fail")}
+        </div>
+      )}
+
+      {deleteToast && (
+        <div className={`toast ${deleteToast.type === "success" ? "toast-success" : "toast-fail"}`}>
+          {deleteToast.message}
         </div>
       )}
 

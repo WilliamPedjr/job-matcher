@@ -69,6 +69,7 @@ function ProfilePage({
   const [isEditingContact, setIsEditingContact] = useState(false)
   const [resumeStatus, setResumeStatus] = useState("")
   const [supportingStatus, setSupportingStatus] = useState("")
+  const [supportingErrorToast, setSupportingErrorToast] = useState("")
   const [pendingSupportingType, setPendingSupportingType] = useState("certificate")
   const [resumeAttentionActive, setResumeAttentionActive] = useState(false)
   const resumeSectionRef = useRef(null)
@@ -123,6 +124,14 @@ function ProfilePage({
   }, [jobSeekerResume])
 
   useEffect(() => {
+    if (!supportingErrorToast) return undefined
+    const timeoutId = window.setTimeout(() => {
+      setSupportingErrorToast("")
+    }, 3000)
+    return () => window.clearTimeout(timeoutId)
+  }, [supportingErrorToast])
+
+  useEffect(() => {
     if (!isJobSeeker) return
     if (!resolvedJobSeekerId) return
     const hasEducation = Array.isArray(jobSeekerProfile?.education)
@@ -169,7 +178,6 @@ function ProfilePage({
       phone: normalizePhoneInput(phone),
       status: status || "active",
       address,
-      aboutText,
       school: "",
       program: "",
       year: "",
@@ -288,10 +296,6 @@ function ProfilePage({
       setSaveStatus("Missing job seeker id.")
       return
     }
-    const normalizedAbout = formState.aboutText?.trim()
-    const aboutToSave = editMode === "about"
-      ? (normalizedAbout || defaultAbout)
-      : (normalizedAbout || aboutText || defaultAbout)
     setSaveStatus("Saving...")
     try {
       const response = await fetch(`http://localhost:5000/job-seekers/${resolvedJobSeekerId}`, {
@@ -304,7 +308,9 @@ function ProfilePage({
           phone: formatPhoneWithPrefix(formState.phone),
           status: formState.status || "active",
           address: formState.address,
-          aboutText: aboutToSave
+          aboutText: editMode === "about"
+            ? (formState.aboutText?.trim() || defaultAbout)
+            : (aboutText || defaultAbout)
         })
       })
       if (!response.ok) {
@@ -529,16 +535,36 @@ function ProfilePage({
     supportingInputRef.current?.click()
   }
 
-  const handleSupportingUpload = (file) => {
-    if (!file) return
-    if (!resolvedJobSeekerId) {
-      setSupportingStatus("Missing job seeker id.")
+  const handleSupportingUpload = (selectedFiles) => {
+    const files = Array.from(selectedFiles || []).filter(Boolean)
+    if (!files.length) return
+
+    const uploadFiles = pendingSupportingType === "others" ? files : files.slice(0, 1)
+    if (!uploadFiles.length) return
+
+    const allowedExtensions = [".pdf", ".png", ".jpg", ".jpeg"]
+    const hasUnsupportedFile = uploadFiles.some((file) => {
+      const lowerName = String(file.name || "").toLowerCase()
+      return !allowedExtensions.some((extension) => lowerName.endsWith(extension))
+    })
+    if (hasUnsupportedFile) {
+      setSupportingStatus("")
+      setSupportingErrorToast("Wrong credential file. Upload a PDF, PNG, JPG, or JPEG document.")
       return
     }
-    setSupportingStatus("Uploading...")
+
+    if (!resolvedJobSeekerId) {
+      setSupportingStatus("")
+      setSupportingErrorToast("Missing job seeker id.")
+      return
+    }
+    setSupportingErrorToast("")
+    setSupportingStatus(`Uploading ${uploadFiles.length} file${uploadFiles.length === 1 ? "" : "s"}...`)
     const formData = new FormData()
-    formData.append("supportingFiles", file)
-    formData.append("supportingTypes", pendingSupportingType || "others")
+    uploadFiles.forEach((file) => {
+      formData.append("supportingFiles", file)
+      formData.append("supportingTypes", pendingSupportingType || "others")
+    })
 
     fetch(`http://localhost:5000/job-seekers/${resolvedJobSeekerId}/supporting`, {
       method: "POST",
@@ -553,11 +579,12 @@ function ProfilePage({
       })
       .then((payload) => {
         onJobSeekerSupportingUpdate?.(payload?.files || [])
-        setSupportingStatus("Saved.")
+        setSupportingStatus(`Saved ${uploadFiles.length} file${uploadFiles.length === 1 ? "" : "s"}.`)
         setTimeout(() => setSupportingStatus(""), 2000)
       })
       .catch((error) => {
-        setSupportingStatus(error.message || "Failed to upload supporting document.")
+        setSupportingStatus("")
+        setSupportingErrorToast(error.message || "Failed to upload supporting document.")
       })
   }
 
@@ -790,8 +817,9 @@ function ProfilePage({
                   className="hidden-file-input"
                   type="file"
                   accept=".pdf,.png,.jpg,.jpeg"
+                  multiple
                   onChange={(e) => {
-                    handleSupportingUpload(e.target.files?.[0] || null)
+                    handleSupportingUpload(e.target.files)
                     e.target.value = ""
                   }}
                 />
@@ -811,7 +839,9 @@ function ProfilePage({
                           className="js-text-btn"
                           onClick={() => openSupportingUpload(typeConfig.key)}
                         >
-                          {docs.length && typeConfig.key !== "others" ? "Replace" : "Upload"}
+                          {typeConfig.key === "others"
+                            ? (docs.length ? "Add More" : "Upload")
+                            : (docs.length ? "Replace" : "Upload")}
                         </button>
                       </div>
                       {docs.length ? (
@@ -999,10 +1029,6 @@ function ProfilePage({
                     <input className="input" value={formState.address} onChange={(e) => setFormState((prev) => ({ ...prev, address: e.target.value }))} />
                   </div>
                 </div>
-                <div className="field-group">
-                  <label>About</label>
-                  <textarea className="input" rows={4} value={formState.aboutText} onChange={(e) => setFormState((prev) => ({ ...prev, aboutText: e.target.value }))} />
-                </div>
               </div>
             )}
             {editMode === "about" && (
@@ -1164,6 +1190,10 @@ function ProfilePage({
             </div>
           </div>
         </div>
+      )}
+
+      {supportingErrorToast && (
+        <div className="toast toast-fail">{supportingErrorToast}</div>
       )}
 
 

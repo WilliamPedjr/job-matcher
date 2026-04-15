@@ -1011,11 +1011,11 @@ optgroup {
   justify-content: center;
   padding: 1rem;
   overflow-y: auto;
-  z-index: 2000;
+  z-index: 9999;
 }
 
 .modal-card {
-  z-index: 1;
+  z-index: 10000;
   width: 100%;
   max-width: 420px;
   background: #fff;
@@ -1023,6 +1023,15 @@ optgroup {
   padding: 16px;
   text-align: left;
   box-shadow: 0 10px 24px rgba(0, 0, 0, 0.2);
+}
+
+.delete-confirm-overlay {
+  z-index: 50000 !important;
+}
+
+.delete-confirm-card {
+  z-index: 50001 !important;
+  max-width: 460px;
 }
 
 .modal-card h3 {

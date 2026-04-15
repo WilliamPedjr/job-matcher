@@ -27,7 +27,6 @@ function JobPostingPage({ uploads = [], isEmployer = false, isJobSeeker = false,
   const [newMinimumExperienceYears, setNewMinimumExperienceYears] = useState("0")
   const [newSalaryMin, setNewSalaryMin] = useState("")
   const [newSalaryMax, setNewSalaryMax] = useState("")
-  const lastMonthlySalaryRef = useRef(null)
   const [isCreatingJob, setIsCreatingJob] = useState(false)
   const [isLoading, setIsLoading] = useState(false)
   const [error, setError] = useState("")
@@ -45,8 +44,14 @@ function JobPostingPage({ uploads = [], isEmployer = false, isJobSeeker = false,
   const [globalSkillStatus, setGlobalSkillStatus] = useState("idle")
   const [templateSkillCatalog, setTemplateSkillCatalog] = useState([])
   const [templateSkillStatus, setTemplateSkillStatus] = useState("idle")
+  const [jobApplicantActionsMenu, setJobApplicantActionsMenu] = useState(null)
+  const [deleteToast, setDeleteToast] = useState(null)
+  const deleteToastTimerRef = useRef(null)
   const isEditingJob = editingJobId != null
   const descriptionRef = useRef(null)
+  const jobPositionRef = useRef(null)
+  const skillsPickerRef = useRef(null)
+  const jobApplicantActionsMenuRef = useRef(null)
 
   useEffect(() => {
     if (!createJobStatus) return
@@ -58,6 +63,14 @@ function JobPostingPage({ uploads = [], isEmployer = false, isJobSeeker = false,
   }, [createJobStatus])
 
   useEffect(() => {
+    return () => {
+      if (deleteToastTimerRef.current) {
+        window.clearTimeout(deleteToastTimerRef.current)
+      }
+    }
+  }, [])
+
+  useEffect(() => {
     if (!descriptionRef.current) return
     descriptionRef.current.style.height = "auto"
     descriptionRef.current.style.height = `${descriptionRef.current.scrollHeight}px`
@@ -66,6 +79,20 @@ function JobPostingPage({ uploads = [], isEmployer = false, isJobSeeker = false,
   const showCreateJobNotice = (status, notice) => {
     setCreateJobStatus(status)
     setCreateJobNotice(notice)
+  }
+
+  const showDeleteToast = (message, type = "success", duration = 2600) => {
+    if (deleteToastTimerRef.current) {
+      window.clearTimeout(deleteToastTimerRef.current)
+      deleteToastTimerRef.current = null
+    }
+    setDeleteToast({ message, type })
+    if (duration > 0) {
+      deleteToastTimerRef.current = window.setTimeout(() => {
+        setDeleteToast(null)
+        deleteToastTimerRef.current = null
+      }, duration)
+    }
   }
 
   const normalizeSalaryRange = (minValue, maxValue) => {
@@ -122,11 +149,44 @@ function JobPostingPage({ uploads = [], isEmployer = false, isJobSeeker = false,
   }, [actionsJobId])
 
   useEffect(() => {
+    if (!jobApplicantActionsMenu) return
+    const closeMenu = (event) => {
+      if (jobApplicantActionsMenuRef.current?.contains(event.target)) return
+      setJobApplicantActionsMenu(null)
+    }
+    document.addEventListener("mousedown", closeMenu)
+    document.addEventListener("scroll", closeMenu, true)
+    window.addEventListener("resize", closeMenu)
+    return () => {
+      document.removeEventListener("mousedown", closeMenu)
+      document.removeEventListener("scroll", closeMenu, true)
+      window.removeEventListener("resize", closeMenu)
+    }
+  }, [jobApplicantActionsMenu])
+
+  useEffect(() => {
     if (!isJobPositionOpen) return
-    const onDocClick = () => setIsJobPositionOpen(false)
-    document.addEventListener("click", onDocClick)
-    return () => document.removeEventListener("click", onDocClick)
+    const onDocClick = (event) => {
+      if (!jobPositionRef.current) return
+      if (!jobPositionRef.current.contains(event.target)) {
+        setIsJobPositionOpen(false)
+      }
+    }
+    document.addEventListener("mousedown", onDocClick)
+    return () => document.removeEventListener("mousedown", onDocClick)
   }, [isJobPositionOpen])
+
+  useEffect(() => {
+    if (!isSkillsOpen) return
+    const onDocClick = (event) => {
+      if (!skillsPickerRef.current) return
+      if (!skillsPickerRef.current.contains(event.target)) {
+        setIsSkillsOpen(false)
+      }
+    }
+    document.addEventListener("mousedown", onDocClick)
+    return () => document.removeEventListener("mousedown", onDocClick)
+  }, [isSkillsOpen])
 
   useEffect(() => {
     if (isJobSeeker && isCreateModalOpen) {
@@ -629,8 +689,10 @@ function JobPostingPage({ uploads = [], isEmployer = false, isJobSeeker = false,
       setActionsJobId(null)
       await fetchJobs({ silent: true })
       await onJobsChanged?.()
+      showDeleteToast("Job post deleted.", "success")
     } catch (err) {
       setError(err.message || "Failed to delete job post.")
+      showDeleteToast(err.message || "Failed to delete job post.", "fail")
     }
   }
 
@@ -644,6 +706,15 @@ function JobPostingPage({ uploads = [], isEmployer = false, isJobSeeker = false,
     if (!deleted) return
     await fetchJobs({ silent: true })
     await onJobsChanged?.()
+  }
+
+  const openJobApplicantActionsMenu = (event, item) => {
+    const rect = event.currentTarget.getBoundingClientRect()
+    setJobApplicantActionsMenu({
+      item,
+      top: rect.bottom + 6,
+      left: Math.max(12, rect.right - 150)
+    })
   }
 
   const handleApplyJob = (job) => {
@@ -699,26 +770,6 @@ function JobPostingPage({ uploads = [], isEmployer = false, isJobSeeker = false,
       return { min: "Salary Grade", max: "Hourly Rate" }
     }
     return { min: "Salary Grade", max: "Salary per Month" }
-  }, [newJobType])
-
-  useEffect(() => {
-    const isPartTime = String(newJobType || "").toLowerCase().includes("part")
-    const salaryValue = Number(newSalaryMax)
-    if (!Number.isFinite(salaryValue) || salaryValue <= 0) return
-
-    if (isPartTime) {
-      if (lastMonthlySalaryRef.current == null) {
-        lastMonthlySalaryRef.current = salaryValue
-      }
-      const hourly = Math.round((salaryValue / 160) * 100) / 100
-      setNewSalaryMax(String(hourly))
-      return
-    }
-
-    if (lastMonthlySalaryRef.current != null) {
-      setNewSalaryMax(String(lastMonthlySalaryRef.current))
-      lastMonthlySalaryRef.current = null
-    }
   }, [newJobType])
 
   const createJobPost = async () => {
@@ -1125,13 +1176,14 @@ function JobPostingPage({ uploads = [], isEmployer = false, isJobSeeker = false,
                     </button>
                   </div>
                 </div>
-                <div className="table-wrap">
+                <div className="table-wrap job-applicants-table-wrap">
                   <table className="records-table">
                     <thead>
                       <tr>
                         <th>#</th>
                         <th>Applicant</th>
                         <th>Phone</th>
+                        <th>Job Applied</th>
                         <th>Score</th>
                         <th>Classification</th>
                         <th>Uploaded File</th>
@@ -1150,36 +1202,27 @@ function JobPostingPage({ uploads = [], isEmployer = false, isJobSeeker = false,
                             </div>
                           </td>
                           <td>{item.phone || "No phone"}</td>
+                          <td>{item.applied_job_title || item.matched_job_title || selectedJobTitle || "-"}</td>
                           <td>{item.match_score != null ? `${Number(item.match_score).toFixed(2)}%` : "-"}</td>
-                          <td>{item.classification || "-"}</td>
+                          <td>
+                            <span className={`table-classification ${(item.classification || "Not Qualified").toLowerCase().replace(/\s+/g, "-")}`}>
+                              {item.classification || "Not Qualified"}
+                            </span>
+                          </td>
                           <td>{item.original_name || "-"}</td>
-                          <td>{item.uploaded_at ? new Date(item.uploaded_at).toLocaleString() : "-"}</td>
+                          <td>{item.uploaded_at ? new Date(item.uploaded_at).toLocaleDateString(undefined, { month: "long", day: "numeric", year: "numeric" }) : "-"}</td>
                           <td className="actions-cell actions-col">
-                            <div className="job-applicant-actions">
-                              <button
-                                type="button"
-                                className="action-btn action-trigger"
-                                onClick={() => {
-                                  setSelectedJobTitle("")
-                                  onViewApplicant?.(item)
-                                }}
-                              >
-                                View
-                              </button>
-                              <a
-                                className="action-btn action-download"
-                                href={`http://localhost:5000/uploads/${item.id}/download`}
-                              >
-                                Download
-                              </a>
-                              <button
-                                type="button"
-                                className="action-btn action-delete"
-                                onClick={() => handleDeleteApplicantInJobModal(item.id)}
-                              >
-                                Delete
-                              </button>
-                            </div>
+                            <button
+                              type="button"
+                              className="action-btn action-trigger job-applicant-ellipsis"
+                              aria-label="Open applicant actions"
+                              onClick={(e) => {
+                                e.stopPropagation()
+                                openJobApplicantActionsMenu(e, item)
+                              }}
+                            >
+                              ...
+                            </button>
                           </td>
                         </tr>
                       ))}
@@ -1192,16 +1235,60 @@ function JobPostingPage({ uploads = [], isEmployer = false, isJobSeeker = false,
         </div>
       )}
 
+      {jobApplicantActionsMenu && (
+        <div
+          ref={jobApplicantActionsMenuRef}
+          className="actions-menu actions-menu-floating"
+          style={{ top: `${jobApplicantActionsMenu.top}px`, left: `${jobApplicantActionsMenu.left}px` }}
+          onClick={(e) => e.stopPropagation()}
+        >
+          <button
+            type="button"
+            className="actions-menu-item"
+            onClick={() => {
+              const target = jobApplicantActionsMenu
+              setJobApplicantActionsMenu(null)
+              if (target?.item) {
+                setSelectedJobTitle("")
+                onViewApplicant?.(target.item)
+              }
+            }}
+          >
+            View
+          </button>
+          <a
+            className="actions-menu-item"
+            href={jobApplicantActionsMenu?.item?.id ? `http://localhost:5000/uploads/${jobApplicantActionsMenu.item.id}/download` : "#"}
+            onClick={() => setJobApplicantActionsMenu(null)}
+          >
+            Download
+          </a>
+          <button
+            type="button"
+            className="actions-menu-item danger"
+            onClick={() => {
+              const target = jobApplicantActionsMenu
+              setJobApplicantActionsMenu(null)
+              if (target?.item?.id != null) {
+                handleDeleteApplicantInJobModal(target.item.id)
+              }
+            }}
+          >
+            Delete
+          </button>
+        </div>
+      )}
+
       {confirmDeleteJobId != null && (
         <div
-          className="modal-overlay"
+          className="modal-overlay delete-confirm-overlay"
           onClick={(e) => {
             if (e.target === e.currentTarget) {
               setConfirmDeleteJobId(null)
             }
           }}
         >
-          <div className="modal-card">
+          <div className="modal-card delete-confirm-card">
             <h3>Delete Job Post</h3>
             <p>Are you sure you want to delete this job post? This action cannot be undone.</p>
             <div className="modal-actions">
@@ -1257,6 +1344,7 @@ function JobPostingPage({ uploads = [], isEmployer = false, isJobSeeker = false,
                     <div className="field-group">
                       <label>Job Position</label>
                       <div
+                        ref={jobPositionRef}
                         className="autocomplete"
                         onClick={(e) => e.stopPropagation()}
                       >
@@ -1402,6 +1490,7 @@ function JobPostingPage({ uploads = [], isEmployer = false, isJobSeeker = false,
                   <div className="field-group">
                     <label>Required Skills</label>
                     <div
+                      ref={skillsPickerRef}
                       className="autocomplete create-skills-picker"
                       onClick={(e) => e.stopPropagation()}
                     >
@@ -1555,6 +1644,12 @@ function JobPostingPage({ uploads = [], isEmployer = false, isJobSeeker = false,
       {createJobStatus && (
         <div className={`toast ${createJobStatus === "success" ? "toast-success" : "toast-fail"}`}>
           {createJobNotice || (createJobStatus === "success" ? "Success" : "Fail")}
+        </div>
+      )}
+
+      {deleteToast && (
+        <div className={`toast ${deleteToast.type === "success" ? "toast-success" : "toast-fail"}`}>
+          {deleteToast.message}
         </div>
       )}
     </section>

@@ -319,7 +319,7 @@ body {
 }
 
 .autocomplete-menu {
-  margin-top: 8px;
+  margin-top: 0px;
   position: absolute;
   left: 0;
   right: 0;
@@ -702,11 +702,11 @@ optgroup {
   justify-content: center;
   padding: 1rem;
   overflow-y: auto;
-  z-index: 0;
+  z-index: 9999;
 }
 
 .modal-card {
-  z-index: 0;
+  z-index: 10000;
   width: 100%;
   max-width: 420px;
   background: #fff;
@@ -714,6 +714,15 @@ optgroup {
   padding: 16px;
   text-align: left;
   box-shadow: 0 10px 24px rgba(0, 0, 0, 0.2);
+}
+
+.delete-confirm-overlay {
+  z-index: 50000 !important;
+}
+
+.delete-confirm-card {
+  z-index: 50001 !important;
+  max-width: 460px;
 }
 
 .modal-card h3 {
@@ -1167,8 +1176,104 @@ optgroup {
 }
 
 .job-applicants-modal {
-  width: min(1200px, 96vw);
-  max-width: 1200px;
+  width: min(1500px, 98vw);
+  max-width: 1500px;
+  padding: 28px 30px 22px;
+  background: #ffffff;
+  border: 1px solid #e5eaf2;
+  border-radius: 16px;
+  box-shadow: 0 18px 36px rgba(15, 23, 42, 0.14);
+}
+
+.job-applicants-table-wrap {
+  margin-top: 22px;
+  background: #ffffff;
+  border: 1px solid #d8dee8;
+  border-radius: 8px;
+  overflow-x: hidden;
+  overflow-y: auto;
+  max-height: 60vh;
+  -webkit-overflow-scrolling: touch;
+}
+
+.job-applicants-modal .panel-meta {
+  margin-top: 18px;
+  color: #8090a3;
+}
+
+.job-applicants-modal .sort-wrap span {
+  color: #8090a3;
+  font-size: var(--fs-14);
+}
+
+.job-applicants-modal .sort-btn {
+  padding: 4px 10px;
+  border-radius: 6px;
+  border: 1px solid #d1d9e6;
+  background: #e7edf7;
+  color: #172033;
+  font-size: var(--fs-14);
+  font-weight: 700;
+}
+
+.job-applicants-modal .sort-btn.active {
+  background: #cfd9ea;
+}
+
+.job-applicants-modal .records-table {
+  width: 100%;
+  min-width: 0;
+  table-layout: auto;
+}
+
+.job-applicants-modal .records-table th,
+.job-applicants-modal .records-table td {
+  padding: 14px 12px;
+  font-size: var(--fs-14);
+  white-space: normal;
+  word-break: break-word;
+}
+
+.job-applicants-modal .records-table th {
+  color: #728194;
+  font-weight: 700;
+}
+
+.job-applicants-modal .records-table td {
+  line-height: 1.45;
+}
+
+.job-applicants-modal .applicant-cell strong {
+  font-size: var(--fs-16);
+  line-height: 1.25;
+}
+
+.job-applicants-modal .applicant-cell span {
+  color: #6d7b8a;
+  font-size: var(--fs-13);
+}
+
+.job-applicants-modal .actions-col {
+  width: 84px;
+  min-width: 84px;
+  text-align: center;
+}
+
+.job-applicants-modal .job-applicant-ellipsis {
+  width: 42px;
+  min-width: 42px;
+  height: 38px;
+  padding: 0;
+  border-radius: 8px;
+  background: #eef2f7;
+  border-color: #d0d9e5;
+  color: #263242;
+  font-size: 20px;
+  line-height: 1;
+}
+
+.job-applicants-modal .actions-menu {
+  min-width: 144px;
 }
 
 .job-applicant-actions {

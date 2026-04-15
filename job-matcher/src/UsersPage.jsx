@@ -1,11 +1,12 @@
-import { useCallback, useEffect, useState } from "react"
+import { useCallback, useEffect, useRef, useState } from "react"
 import "./UsersPage.css"
+import eyeSolidIcon from "./assets/eye-solid-full.svg"
+import eyeRegularIcon from "./assets/eye-regular-full.svg"
 
 function UsersPage() {
   const [jobSeekerUsers, setJobSeekerUsers] = useState([])
   const [employerUsers, setEmployerUsers] = useState([])
   const [isLoadingUsers, setIsLoadingUsers] = useState(false)
-  const [usersError, setUsersError] = useState("")
   const [jobSeekerSearch, setJobSeekerSearch] = useState("")
   const [employerSearch, setEmployerSearch] = useState("")
   const [userEditContext, setUserEditContext] = useState(null)
@@ -17,10 +18,10 @@ function UsersPage() {
     companyName: "",
     contactName: ""
   })
-  const [userSaveStatus, setUserSaveStatus] = useState("")
   const [confirmDeleteUser, setConfirmDeleteUser] = useState(null)
   const [employerActionsMenu, setEmployerActionsMenu] = useState(null)
   const [isEmployerModalOpen, setIsEmployerModalOpen] = useState(false)
+  const [showEmployerPassword, setShowEmployerPassword] = useState(false)
   const [employerForm, setEmployerForm] = useState({
     companyName: "",
     contactName: "",
@@ -28,11 +29,33 @@ function UsersPage() {
     phone: "",
     password: ""
   })
-  const [employerFormStatus, setEmployerFormStatus] = useState("")
+  const [toast, setToast] = useState(null)
+  const toastTimerRef = useRef(null)
+
+  const showToast = useCallback((message, type = "info", duration = 2600) => {
+    if (toastTimerRef.current) {
+      window.clearTimeout(toastTimerRef.current)
+      toastTimerRef.current = null
+    }
+    setToast({ message, type })
+    if (duration > 0) {
+      toastTimerRef.current = window.setTimeout(() => {
+        setToast(null)
+        toastTimerRef.current = null
+      }, duration)
+    }
+  }, [])
+
+  useEffect(() => {
+    return () => {
+      if (toastTimerRef.current) {
+        window.clearTimeout(toastTimerRef.current)
+      }
+    }
+  }, [])
 
   const fetchUsers = useCallback(async () => {
     setIsLoadingUsers(true)
-    setUsersError("")
     try {
       const [jobSeekerResponse, employerResponse] = await Promise.all([
         fetch("http://localhost:5000/job-seekers/all"),
@@ -51,11 +74,13 @@ function UsersPage() {
       setJobSeekerUsers(Array.isArray(jobSeekerData) ? jobSeekerData : [])
       setEmployerUsers(Array.isArray(employerData) ? employerData : [])
     } catch (error) {
-      setUsersError(error.message || "Failed to load users.")
+      showToast(error.message || "Failed to load users.", "fail")
+      setJobSeekerUsers([])
+      setEmployerUsers([])
     } finally {
       setIsLoadingUsers(false)
     }
-  }, [])
+  }, [showToast])
 
   useEffect(() => {
     fetchUsers()
@@ -146,17 +171,16 @@ function UsersPage() {
         contactName: user.contactName || ""
       })
     }
-    setUserSaveStatus("")
+    setToast(null)
   }
 
   const closeEditUser = () => {
     setUserEditContext(null)
-    setUserSaveStatus("")
   }
 
   const saveEditedUser = async () => {
     if (!userEditContext?.user?.id) return
-    setUserSaveStatus("Saving...")
+    showToast("Saving...", "info", 1800)
     try {
       if (userEditContext.type === "jobseeker") {
         const response = await fetch(`http://localhost:5000/job-seekers/${userEditContext.user.id}/admin`, {
@@ -190,12 +214,12 @@ function UsersPage() {
         }
       }
       await fetchUsers()
-      setUserSaveStatus("Saved.")
+      showToast("Personnel account updated successfully.", "success")
       setTimeout(() => {
         closeEditUser()
       }, 600)
     } catch (error) {
-      setUserSaveStatus(error.message || "Failed to save.")
+      showToast(error.message || "Failed to save.", "fail")
     }
   }
 
@@ -211,7 +235,7 @@ function UsersPage() {
       phone: "",
       password: ""
     })
-    setEmployerFormStatus("")
+    setShowEmployerPassword(false)
     setIsEmployerModalOpen(true)
   }
 
@@ -230,10 +254,10 @@ function UsersPage() {
       password: employerForm.password.trim()
     }
     if (!payload.companyName || !payload.email || !payload.password) {
-      setEmployerFormStatus("Name, username, and password are required.")
+      showToast("Name, username, and password are required.", "fail")
       return
     }
-    setEmployerFormStatus("Saving...")
+    showToast("Saving...", "info", 1800)
     try {
       const response = await fetch("http://localhost:5000/employers", {
         method: "POST",
@@ -242,13 +266,13 @@ function UsersPage() {
       })
       if (!response.ok) {
         const err = await response.json().catch(() => null)
-        throw new Error(err?.message || "Failed to add employer.")
+        throw new Error(err?.message || "Failed to add Personnel.")
       }
-      setEmployerFormStatus("Saved.")
+      showToast("Personnel account created successfully.", "success")
       setIsEmployerModalOpen(false)
       await fetchUsers()
     } catch (error) {
-      setEmployerFormStatus(error.message || "Failed to add employer.")
+      showToast(error.message || "Failed to add Personnel.", "fail")
     }
   }
 
@@ -291,10 +315,6 @@ function UsersPage() {
               {isLoadingUsers ? (
                 <tr>
                   <td colSpan={6} className="users-empty">Loading job seekers...</td>
-                </tr>
-              ) : usersError ? (
-                <tr>
-                  <td colSpan={6} className="users-empty">{usersError}</td>
                 </tr>
               ) : filteredJobSeekers.length === 0 ? (
                 <tr>
@@ -356,10 +376,6 @@ function UsersPage() {
                 <tr>
                   <td colSpan={7} className="users-empty">Loading employers...</td>
                 </tr>
-              ) : usersError ? (
-                <tr>
-                  <td colSpan={7} className="users-empty">{usersError}</td>
-                </tr>
               ) : filteredEmployers.length === 0 ? (
                 <tr>
                   <td colSpan={7} className="users-empty">No Personnel users found.</td>
@@ -403,7 +419,7 @@ function UsersPage() {
         <div className="modal-overlay" onClick={closeEditUser}>
           <div className="modal-card modal-modern js-edit-modal" onClick={(e) => e.stopPropagation()}>
             <div className="modal-header">
-              <h3>Edit {userEditContext.type === "jobseeker" ? "Job Seeker" : "Employer"}</h3>
+              <h3>Edit {userEditContext.type === "jobseeker" ? "Job Seeker" : "Personnel"}</h3>
               <button type="button" className="close-x" onClick={closeEditUser}>×</button>
             </div>
             <div className="js-edit-body">
@@ -500,7 +516,6 @@ function UsersPage() {
             <div className="modal-actions">
               <button className="btn" onClick={saveEditedUser}>Save</button>
               <button className="btn btn-secondary" onClick={closeEditUser}>Cancel</button>
-              {userSaveStatus && <span className="muted">{userSaveStatus}</span>}
             </div>
           </div>
         </div>
@@ -516,7 +531,7 @@ function UsersPage() {
           }}
         >
           <div className="modal-card">
-            <h3>Delete {confirmDeleteUser.type === "jobseeker" ? "Job Seeker" : "Employer"}</h3>
+            <h3>Delete {confirmDeleteUser.type === "jobseeker" ? "Job Seeker" : "Personnel"}</h3>
             <p>Are you sure you want to delete this user? This action cannot be undone.</p>
             <div className="modal-actions">
               <button type="button" className="btn btn-secondary" onClick={() => setConfirmDeleteUser(null)}>
@@ -548,8 +563,12 @@ function UsersPage() {
                       }
                     }
                     await fetchUsers()
+                    showToast(
+                      `${target.type === "jobseeker" ? "Job seeker" : "Personnel"} deleted successfully.`,
+                      "success"
+                    )
                   } catch (error) {
-                    setUsersError(error.message || "Failed to delete user.")
+                    showToast(error.message || "Failed to delete user.", "fail")
                   }
                 }}
               >
@@ -617,19 +636,35 @@ function UsersPage() {
               <div className="modal-grid">
                 <div className="field-group">
                   <label>Password</label>
-                  <input
-                    className="input"
-                    type="password"
-                    value={employerForm.password}
-                    onChange={(e) => setEmployerForm((prev) => ({ ...prev, password: e.target.value }))}
-                  />
+                  <div className={`password-field-row ${showEmployerPassword ? "is-visible" : ""}`}>
+                    <input
+                      className="input"
+                      type={showEmployerPassword ? "text" : "password"}
+                      value={employerForm.password}
+                      onChange={(e) => setEmployerForm((prev) => ({ ...prev, password: e.target.value }))}
+                    />
+                    <span
+                      className={`password-toggle-icon ${showEmployerPassword ? "is-active" : ""}`}
+                      role="button"
+                      tabIndex={0}
+                      aria-label={showEmployerPassword ? "Hide password" : "Show password"}
+                      onClick={() => setShowEmployerPassword((prev) => !prev)}
+                      onKeyDown={(e) => {
+                        if (e.key === "Enter" || e.key === " ") {
+                          e.preventDefault()
+                          setShowEmployerPassword((prev) => !prev)
+                        }
+                      }}
+                      >
+                        <img src={showEmployerPassword ? eyeSolidIcon : eyeRegularIcon} alt="" />
+                      </span>
+                  </div>
                 </div>
               </div>
             </div>
             <div className="modal-actions">
               <button className="btn" onClick={saveEmployer}>Save</button>
               <button className="btn btn-secondary" onClick={() => setIsEmployerModalOpen(false)}>Cancel</button>
-              {employerFormStatus && <span className="muted">{employerFormStatus}</span>}
             </div>
           </div>
         </div>
@@ -667,6 +702,12 @@ function UsersPage() {
           >
             Delete
           </button>
+        </div>
+      )}
+
+      {toast && (
+        <div className={`toast ${toast.type === "success" ? "toast-success" : toast.type === "fail" ? "toast-fail" : "toast-info"}`}>
+          {toast.message}
         </div>
       )}
 

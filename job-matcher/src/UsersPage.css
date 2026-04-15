@@ -157,3 +157,69 @@
 .js-edit-modal {
   z-index: 99;
 }
+
+.toast {
+  position: fixed;
+  top: 16px;
+  right: 16px;
+  z-index: 1200;
+  min-width: 180px;
+  max-width: min(360px, calc(100vw - 32px));
+  padding: 12px 16px;
+  border-radius: 10px;
+  color: #fff;
+  font-weight: 700;
+  box-shadow: 0 10px 22px rgba(0, 0, 0, 0.2);
+}
+
+.toast-success {
+  background: #1f8a44;
+}
+
+.toast-fail {
+  background: #b42318;
+}
+
+.toast-info {
+  background: #334155;
+}
+
+.password-field-row {
+  position: relative;
+  width: 100%;
+}
+
+.password-field-row .input {
+  margin-bottom: 0;
+  padding-right: 54px;
+}
+
+.password-toggle-icon {
+  position: absolute;
+  right: 10px;
+  top: 50%;
+  transform: translateY(-50%);
+  width: 40px;
+  height: 40px;
+  border: none;
+  border-radius: 8px;
+  background: transparent;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  cursor: pointer;
+}
+
+.password-toggle-icon img {
+  width: 18px;
+  height: 18px;
+  display: block;
+}
+
+.password-toggle-icon:hover {
+  background: transparent;
+}
+
+.password-toggle-icon.is-active {
+  background: transparent;
+}
