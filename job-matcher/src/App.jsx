@@ -1754,7 +1754,7 @@ function App() {
             >
               <img src={profileIcon} alt="Profile" className="topbar-profile-icon" />
               <span>
-                {userRole === "admin" ? "Admin" : userRole === "jobseeker" ? "Job Seeker" : "Employer"}
+                {userRole === "admin" ? "HR Personnel" : userRole === "jobseeker" ? "Job Seeker" : "HR Personnel"}
               </span>
               <span className="profile-caret">▾</span>
             </button>

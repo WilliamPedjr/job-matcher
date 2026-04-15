@@ -8,6 +8,7 @@ function JobPostingPage({ uploads = [], isEmployer = false, isJobSeeker = false,
   const [templates, setTemplates] = useState([])
   const [searchTerm, setSearchTerm] = useState("")
   const [statusFilter, setStatusFilter] = useState("all")
+  const [matchFilter, setMatchFilter] = useState("all")
   const [selectedJobTitle, setSelectedJobTitle] = useState("")
   const [modalSortConfig, setModalSortConfig] = useState({ key: "date", direction: "desc" })
   const [actionsJobId, setActionsJobId] = useState(null)
@@ -314,11 +315,19 @@ function JobPostingPage({ uploads = [], isEmployer = false, isJobSeeker = false,
       const matchesStatus = statusFilter === "all" ? true : status === statusFilter
       if (!matchesStatus) return false
 
+      if (isJobSeeker && matchFilter !== "all") {
+        const key = String(job.title || "").trim().toLowerCase()
+        const match = key ? jobMatches[key] : null
+        if (!match || match.score == null) return false
+        if (matchFilter === "match" && !match.qualifies) return false
+        if (matchFilter === "not-match" && match.qualifies) return false
+      }
+
       if (!query) return true
       const haystack = `${job.title || ""} ${job.description || ""} ${job.department || ""} ${job.location || ""}`.toLowerCase()
       return haystack.includes(query)
     })
-  }, [jobs, searchTerm, statusFilter])
+  }, [jobs, searchTerm, statusFilter, isJobSeeker, matchFilter, jobMatches])
 
   const jobCategoryGroups = useMemo(() => {
     const map = new Map()
@@ -583,6 +592,12 @@ function JobPostingPage({ uploads = [], isEmployer = false, isJobSeeker = false,
     { value: "all", label: "All Status" },
     { value: "active", label: "Active" },
     { value: "closed", label: "Closed" }
+  ]
+
+  const matchOptions = [
+    { value: "all", label: "All" },
+    { value: "match", label: "Match" },
+    { value: "not-match", label: "Not match" }
   ]
 
   const updateJobStatus = async (jobId, status) => {
@@ -914,6 +929,15 @@ function JobPostingPage({ uploads = [], isEmployer = false, isJobSeeker = false,
           onChange={setStatusFilter}
           placeholder="All Status"
         />
+        {isJobSeeker && (
+          <CustomDropdown
+            className="jobs-filter"
+            options={matchOptions}
+            value={matchFilter}
+            onChange={setMatchFilter}
+            placeholder="All Match"
+          />
+        )}
       </div>
 
       <div className="jobs-grid">

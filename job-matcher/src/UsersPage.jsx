@@ -230,7 +230,7 @@ function UsersPage() {
       password: employerForm.password.trim()
     }
     if (!payload.companyName || !payload.email || !payload.password) {
-      setEmployerFormStatus("Company name, username, and password are required.")
+      setEmployerFormStatus("Name, username, and password are required.")
       return
     }
     setEmployerFormStatus("Saving...")
@@ -325,16 +325,16 @@ function UsersPage() {
 
       <section className="users-card users-card-employers">
         <div className="users-card-head">
-          <h3>Employer Users</h3>
+          <h3>HR Personnel Users</h3>
           <div className="users-actions">
             <input
               className="users-search"
               type="text"
-              placeholder="Search employers..."
+              placeholder="Search Personnel..."
               value={employerSearch}
               onChange={(e) => setEmployerSearch(e.target.value)}
             />
-            <button type="button" className="js-outline-btn users-add-btn" onClick={openEmployerModal}>Add Employer</button>
+            <button type="button" className="js-outline-btn users-add-btn" onClick={openEmployerModal}>Add Personnel</button>
           </div>
         </div>
         <div className="table-wrap users-table-wrap users-table-inside">
@@ -343,8 +343,8 @@ function UsersPage() {
             <thead>
               <tr>
                 <th>#</th>
-                <th>Company</th>
-                <th>Contact</th>
+                <th>Name</th>
+                <th>Position</th>
                 <th>Phone</th>
                 <th>Username</th>
                 <th>Created</th>
@@ -362,7 +362,7 @@ function UsersPage() {
                 </tr>
               ) : filteredEmployers.length === 0 ? (
                 <tr>
-                  <td colSpan={7} className="users-empty">No employer users found.</td>
+                  <td colSpan={7} className="users-empty">No Personnel users found.</td>
                 </tr>
               ) : (
                 filteredEmployers.map((user, index) => (
@@ -564,23 +564,25 @@ function UsersPage() {
         <div className="modal-overlay" onClick={() => setIsEmployerModalOpen(false)}>
           <div className="modal-card modal-modern js-edit-modal" onClick={(e) => e.stopPropagation()}>
             <div className="modal-header">
-              <h3>Add Employer</h3>
+              <h3>Add HR Personnel</h3>
               <button type="button" className="close-x" onClick={() => setIsEmployerModalOpen(false)}>×</button>
             </div>
             <div className="js-edit-body">
               <div className="modal-grid">
                 <div className="field-group">
-                  <label>Company Name</label>
+                  <label>Name</label>
                   <input
+                    placeholder="eg. John"
                     className="input"
                     value={employerForm.companyName}
                     onChange={(e) => setEmployerForm((prev) => ({ ...prev, companyName: e.target.value }))}
                   />
                 </div>
                 <div className="field-group">
-                  <label>Contact Name</label>
+                  <label>Position</label>
                   <input
                     className="input"
+                    placeholder="eg. Administrative Officer ..."
                     value={employerForm.contactName}
                     onChange={(e) => setEmployerForm((prev) => ({ ...prev, contactName: e.target.value }))}
                   />
