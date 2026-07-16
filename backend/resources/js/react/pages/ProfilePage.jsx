@@ -3,6 +3,21 @@ import { useEffect, useRef, useState } from "react"
 import "../styles/ProfilePage.css"
 import profileIcon from "../assets/circle-user-solid-full.svg"
 
+const readJsonResponse = async (response) => {
+  const contentType = response.headers.get("content-type") || ""
+  if (contentType.includes("application/json")) {
+    return response.json()
+  }
+
+  const text = await response.text().catch(() => "")
+  const looksLikeHtml = /^\s*</.test(text)
+  throw new Error(
+    looksLikeHtml
+      ? "The API returned an HTML page instead of JSON. Check that Laravel is running and open the app through http://127.0.0.1:8000 or use the Vite API proxy."
+      : "The API returned an invalid response."
+  )
+}
+
 function ProfilePage({
   userRole,
   loginEmail,
@@ -646,10 +661,10 @@ function ProfilePage({
     })
       .then(async (response) => {
         if (!response.ok) {
-          const payload = await response.json().catch(() => null)
+          const payload = await readJsonResponse(response).catch(() => null)
           throw new Error(payload?.message || "Failed to upload supporting document.")
         }
-        return response.json()
+        return readJsonResponse(response)
       })
       .then(() => {
         return refreshSupportingFiles().then(() => {
