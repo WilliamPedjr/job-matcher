@@ -17,6 +17,9 @@ Route::get('/', function () {
 });
 
 Route::post('/auth/verify-recaptcha', [AuthController::class, 'verifyRecaptcha']);
+Route::post('/staff/register', [AuthController::class, 'staffRegister']);
+Route::post('/staff/login', [AuthController::class, 'staffLogin']);
+Route::get('/staff/me', [AuthController::class, 'staffMe']);
 
 Route::post('/job-seekers/register', [AuthController::class, 'jobSeekerRegister']);
 Route::post('/job-seekers/login', [AuthController::class, 'jobSeekerLogin']);

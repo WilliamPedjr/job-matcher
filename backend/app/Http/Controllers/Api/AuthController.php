@@ -5,10 +5,12 @@ namespace App\Http\Controllers\Api;
 use App\Http\Controllers\Controller;
 use App\Models\Employer;
 use App\Models\JobSeeker;
+use App\Models\User;
 use App\Services\RecaptchaService;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Hash;
+use Illuminate\Validation\Rule;
 use Illuminate\Support\Str;
 
 class AuthController extends Controller
@@ -46,6 +48,76 @@ class AuthController extends Controller
         }
 
         return response()->json($this->serializeEmployer($employer));
+    }
+
+    public function staffRegister(Request $request): JsonResponse
+    {
+        $data = $request->validate([
+            'name' => ['required', 'string', 'max:255'],
+            'email' => ['required', 'email', 'max:255', 'unique:users,email'],
+            'password' => ['required', 'string', 'min:8', 'max:72', 'confirmed'],
+            'role' => ['nullable', 'string', Rule::in(['admin', 'staff', 'employer'])],
+        ]);
+
+        $user = User::query()->create([
+            'name' => trim($data['name']),
+            'email' => Str::lower(trim($data['email'])),
+            'password' => Hash::make($data['password']),
+            'role' => $data['role'] ?? 'staff',
+        ]);
+
+        return response()->json([
+            'message' => 'Personnel registered successfully.',
+            'user' => $this->serializeStaff($user),
+        ], 201);
+    }
+
+    public function staffLogin(Request $request): JsonResponse
+    {
+        $data = $request->validate([
+            'email' => ['required', 'string'],
+            'password' => ['required', 'string'],
+        ]);
+
+        $identifier = Str::lower(trim($data['email']));
+
+        $user = User::query()
+            ->whereRaw('LOWER(email) = ?', [$identifier])
+            ->first();
+
+        if ($user && Hash::check($data['password'], (string) $user->password)) {
+            return response()->json($this->serializeStaff($user));
+        }
+
+        $employer = Employer::query()
+            ->whereRaw('LOWER(email) = ?', [$identifier])
+            ->orWhereRaw('LOWER(username) = ?', [$identifier])
+            ->orWhereRaw('LOWER(company_name) = ?', [$identifier])
+            ->first();
+
+        if ($employer && $this->passwordMatchesAndUpgrades($data['password'], $employer)) {
+            return response()->json([
+                ...$this->serializeEmployer($employer),
+                'role' => 'employer',
+            ]);
+        }
+
+        return response()->json(['message' => 'Invalid email or password.'], 401);
+    }
+
+    public function staffMe(Request $request): JsonResponse
+    {
+        $id = (int) $request->query('id', 0);
+        if ($id <= 0) {
+            return response()->json(['message' => 'Missing personnel id.'], 422);
+        }
+
+        $user = User::query()->find($id);
+        if (!$user) {
+            return response()->json(['message' => 'Personnel not found.'], 404);
+        }
+
+        return response()->json($this->serializeStaff($user));
     }
 
     public function jobSeekerRegister(Request $request): JsonResponse
@@ -108,6 +180,16 @@ class AuthController extends Controller
             'email' => $employer->email,
             'username' => $employer->username,
             'phone' => $employer->phone,
+        ];
+    }
+
+    private function serializeStaff(User $user): array
+    {
+        return [
+            'id' => $user->id,
+            'name' => $user->name,
+            'email' => $user->email,
+            'role' => Str::lower(trim((string) ($user->role ?? 'staff'))) ?: 'staff',
         ];
     }
 

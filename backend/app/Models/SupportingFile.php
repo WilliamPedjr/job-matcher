@@ -20,6 +20,7 @@ class SupportingFile extends Model
         'saved_name',
         'file_path',
         'mime_type',
+        'extracted_text',
         'size_bytes',
         'uploaded_at',
     ];

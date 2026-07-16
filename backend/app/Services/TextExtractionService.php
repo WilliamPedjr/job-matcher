@@ -57,6 +57,9 @@ class TextExtractionService
             return '';
         }
 
+        $xml = preg_replace('/<\/w:p>/i', "\n", $xml) ?: $xml;
+        $xml = preg_replace('/<w:(?:br|tab)[^>]*\/>/i', ' ', $xml) ?: $xml;
+        $xml = preg_replace('/<\/w:tr>/i', "\n", $xml) ?: $xml;
         $text = strip_tags($xml);
         return $this->cleanupExtractedText(html_entity_decode($text, ENT_QUOTES | ENT_XML1, 'UTF-8'));
     }

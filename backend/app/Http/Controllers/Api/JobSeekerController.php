@@ -117,7 +117,7 @@ class JobSeekerController extends Controller
                 Storage::disk('local')->path($stored['path']),
                 $stored['mime_type'],
                 '',
-                ''
+                $this->extractExistingSupportingText($jobSeeker->id)
             );
         } catch (\RuntimeException $exception) {
             $analysis = [
@@ -133,6 +133,8 @@ class JobSeekerController extends Controller
                 'education_text' => '',
                 'experience_text' => '',
                 'resume_text' => '',
+                'summary_text' => '',
+                'resume_summary' => [],
             ];
         }
 
@@ -171,9 +173,12 @@ class JobSeekerController extends Controller
             'matched_skills' => $analysis['matched_skills'],
             'missing_skills' => $analysis['missing_skills'],
             'education_text' => $analysis['education_text'],
+            'experience_text' => $analysis['experience_text'],
             'extracted_text' => $analysis['resume_text'],
             'education_json' => $educationLines,
             'experience_json' => $experienceLines,
+            'summary_text' => $analysis['summary_text'] ?? '',
+            'resume_summary' => $analysis['resume_summary'] ?? [],
             'job_seeker_hidden' => false,
             'job_seeker_hidden_at' => null,
             'size_bytes' => $stored['size_bytes'],
@@ -226,7 +231,7 @@ class JobSeekerController extends Controller
             Storage::disk('local')->path($resume->file_path),
             $resume->mime_type,
             $jobTitle,
-            ''
+            $this->extractExistingSupportingText($jobSeeker->id)
         );
 
         return response()->json([
@@ -259,11 +264,11 @@ class JobSeekerController extends Controller
             }
 
             $analysis = $this->resumeAnalysisService->analyzeFile(
-                Storage::disk('local')->path($resume->file_path),
-                $resume->mime_type,
-                $title,
-                ''
-            );
+                    Storage::disk('local')->path($resume->file_path),
+                    $resume->mime_type,
+                    $title,
+                    $this->extractExistingSupportingText($jobSeeker->id)
+                );
 
             $matches[] = [
                 'key' => Str::lower($title),
@@ -340,6 +345,7 @@ class JobSeekerController extends Controller
                 'saved_name' => $stored['saved_name'],
                 'file_path' => $stored['path'],
                 'mime_type' => $stored['mime_type'],
+                'extracted_text' => $text,
                 'size_bytes' => $stored['size_bytes'],
                 'uploaded_at' => now(),
             ]);
@@ -511,8 +517,11 @@ class JobSeekerController extends Controller
             'missing_skills' => $resume->missing_skills,
             'education_text' => $resume->education_text,
             'education_json' => $resume->education_json,
+            'experience_text' => $resume->experience_text,
             'extracted_text' => $resume->extracted_text,
             'experience_json' => $resume->experience_json,
+            'summary_text' => $resume->summary_text,
+            'resume_summary' => $resume->resume_summary ?? [],
             'uploaded_at' => $uploadedAt,
             'updatedAt' => $uploadedAt,
             'updated_at' => $uploadedAt,
@@ -536,6 +545,7 @@ class JobSeekerController extends Controller
                 'file_path' => $file->file_path,
                 'mime_type' => $file->mime_type,
                 'mimeType' => $file->mime_type,
+                'extracted_text' => $file->extracted_text,
                 'size_bytes' => $file->size_bytes,
                 'uploaded_at' => $file->uploaded_at,
                 'download_url' => url("/api/job-seekers/{$file->job_seeker_id}/supporting/{$file->id}/download"),
@@ -579,6 +589,39 @@ class JobSeekerController extends Controller
             'title' => $experience->position,
             'year' => trim(implode(' - ', array_filter([$experience->start_date, $experience->end_date]))),
         ];
+    }
+
+    private function extractExistingSupportingText(int $jobSeekerId): string
+    {
+        $texts = [];
+        $files = SupportingFile::query()
+            ->where('job_seeker_id', $jobSeekerId)
+            ->orderByDesc('id')
+            ->get();
+
+        foreach ($files as $file) {
+            if (trim((string) $file->extracted_text) !== '') {
+                $texts[] = $file->extracted_text;
+                continue;
+            }
+
+            if (!$file->file_path || !Storage::disk('local')->exists($file->file_path)) {
+                continue;
+            }
+
+            try {
+                $text = $this->textExtractionService->extract(Storage::disk('local')->path($file->file_path), $file->mime_type);
+            } catch (\RuntimeException $exception) {
+                $text = '';
+            }
+
+            if (trim($text) !== '') {
+                $file->fill(['extracted_text' => $text])->save();
+                $texts[] = $text;
+            }
+        }
+
+        return trim(implode("\n", $texts));
     }
 
     private function storeFile(UploadedFile $file, string $directory): array

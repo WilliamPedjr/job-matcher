@@ -50,12 +50,13 @@ class UploadController extends Controller
         /** @var UploadedFile $file */
         $file = $data['file'];
         $stored = $this->storeFile($file, 'uploads/resumes');
+        $supportingText = $this->extractSupportingTextFromRequest($request);
         try {
             $analysis = $this->resumeAnalysisService->analyzeFile(
                 Storage::disk('local')->path($stored['path']),
                 $stored['mime_type'],
                 (string) ($data['appliedJobTitle'] ?? ''),
-                ''
+                $supportingText
             );
         } catch (\RuntimeException $exception) {
             $analysis = [
@@ -71,6 +72,8 @@ class UploadController extends Controller
                 'education_text' => '',
                 'experience_text' => '',
                 'resume_text' => '',
+                'summary_text' => '',
+                'resume_summary' => [],
             ];
         }
 
@@ -109,6 +112,8 @@ class UploadController extends Controller
             'education_text' => $analysis['education_text'],
             'experience_text' => $analysis['experience_text'],
             'extracted_text' => $analysis['resume_text'],
+            'summary_text' => $analysis['summary_text'] ?? '',
+            'resume_summary' => $analysis['resume_summary'] ?? [],
             'experience_json' => array_values(array_filter(array_map(
                 'trim',
                 preg_split("/\n+/", (string) ($analysis['experience_text'] ?? '')) ?: []
@@ -159,6 +164,7 @@ class UploadController extends Controller
                 'saved_name' => $storedSupporting['saved_name'],
                 'file_path' => $storedSupporting['path'],
                 'mime_type' => $storedSupporting['mime_type'],
+                'extracted_text' => $text,
                 'size_bytes' => $storedSupporting['size_bytes'],
                 'uploaded_at' => now(),
             ]);
@@ -192,7 +198,7 @@ class UploadController extends Controller
                 Storage::disk('local')->path($stored['path']),
                 $stored['mime_type'],
                 (string) ($upload->applied_job_title ?? ''),
-                ''
+                $this->extractExistingSupportingText($upload)
             );
         } catch (\RuntimeException $exception) {
             $analysis = [
@@ -208,6 +214,8 @@ class UploadController extends Controller
                 'education_text' => '',
                 'experience_text' => '',
                 'resume_text' => '',
+                'summary_text' => '',
+                'resume_summary' => [],
             ];
         }
 
@@ -225,6 +233,8 @@ class UploadController extends Controller
             'education_text' => $analysis['education_text'],
             'experience_text' => $analysis['experience_text'],
             'extracted_text' => $analysis['resume_text'],
+            'summary_text' => $analysis['summary_text'] ?? '',
+            'resume_summary' => $analysis['resume_summary'] ?? [],
             'experience_json' => array_values(array_filter(array_map(
                 'trim',
                 preg_split("/\n+/", (string) ($analysis['experience_text'] ?? '')) ?: []
@@ -336,6 +346,8 @@ class UploadController extends Controller
             ))),
             'experience_text' => $upload->experience_text,
             'extracted_text' => $upload->extracted_text,
+            'summary_text' => $upload->summary_text,
+            'resume_summary' => $upload->resume_summary ?? [],
             'experience_json' => $upload->experience_json,
             'job_seeker_hidden' => $upload->job_seeker_hidden,
             'job_seeker_hidden_at' => $upload->job_seeker_hidden_at,
@@ -365,9 +377,72 @@ class UploadController extends Controller
             'savedName' => $file->saved_name,
             'mime_type' => $file->mime_type,
             'mimeType' => $file->mime_type,
+            'extracted_text' => $file->extracted_text,
             'size_bytes' => $file->size_bytes,
             'uploaded_at' => $file->uploaded_at,
             'download_url' => url("/api/uploads/{$routeUploadId}/supporting/{$file->id}/download"),
         ];
+    }
+
+    private function extractSupportingTextFromRequest(Request $request): string
+    {
+        $supportingFiles = $request->file('supportingFiles', []);
+        if (!is_array($supportingFiles)) {
+            $supportingFiles = [$supportingFiles];
+        }
+
+        $texts = [];
+        foreach ($supportingFiles as $supportingFile) {
+            if (!$supportingFile instanceof UploadedFile) {
+                continue;
+            }
+
+            try {
+                $text = $this->textExtractionService->extract(
+                    $supportingFile->getRealPath(),
+                    $supportingFile->getClientMimeType() ?: $supportingFile->getMimeType()
+                );
+            } catch (\RuntimeException $exception) {
+                $text = '';
+            }
+
+            if (trim($text) !== '') {
+                $texts[] = $text;
+            }
+        }
+
+        return trim(implode("\n", $texts));
+    }
+
+    private function extractExistingSupportingText(Upload $upload): string
+    {
+        $files = $upload->relationLoaded('supportingFiles')
+            ? $upload->supportingFiles
+            : $upload->supportingFiles()->get();
+
+        $texts = [];
+        foreach ($files as $file) {
+            if (trim((string) $file->extracted_text) !== '') {
+                $texts[] = $file->extracted_text;
+                continue;
+            }
+
+            if (!$file->file_path || !Storage::disk('local')->exists($file->file_path)) {
+                continue;
+            }
+
+            try {
+                $text = $this->textExtractionService->extract(Storage::disk('local')->path($file->file_path), $file->mime_type);
+            } catch (\RuntimeException $exception) {
+                $text = '';
+            }
+
+            if (trim($text) !== '') {
+                $file->fill(['extracted_text' => $text])->save();
+                $texts[] = $text;
+            }
+        }
+
+        return trim(implode("\n", $texts));
     }
 }

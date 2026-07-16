@@ -5,17 +5,23 @@ namespace Database\Seeders;
 use App\Models\GlobalSkillCatalog;
 use App\Models\Job;
 use App\Models\JobSkillCatalog;
+use App\Models\JobTemplate;
 use Illuminate\Database\Seeder;
 use Illuminate\Support\Facades\File;
+use Illuminate\Support\Facades\Schema;
 
 class ReferenceDataSeeder extends Seeder
 {
     public function run(): void
     {
-        $repoRoot = dirname(base_path());
-        $serverDir = $repoRoot . DIRECTORY_SEPARATOR . 'server';
-        $jobsPath = $serverDir . DIRECTORY_SEPARATOR . 'jobs.json';
-        $skillsPath = $serverDir . DIRECTORY_SEPARATOR . 'skills.json';
+        $localSeedDir = database_path('seeders' . DIRECTORY_SEPARATOR . 'data');
+        $legacyServerDir = dirname(base_path()) . DIRECTORY_SEPARATOR . 'server';
+        $jobsPath = File::exists($localSeedDir . DIRECTORY_SEPARATOR . 'jobs.json')
+            ? $localSeedDir . DIRECTORY_SEPARATOR . 'jobs.json'
+            : $legacyServerDir . DIRECTORY_SEPARATOR . 'jobs.json';
+        $skillsPath = File::exists($localSeedDir . DIRECTORY_SEPARATOR . 'skills.json')
+            ? $localSeedDir . DIRECTORY_SEPARATOR . 'skills.json'
+            : $legacyServerDir . DIRECTORY_SEPARATOR . 'skills.json';
 
         if (File::exists($jobsPath)) {
             $jobs = json_decode(File::get($jobsPath), true) ?: [];
@@ -41,6 +47,23 @@ class ReferenceDataSeeder extends Seeder
                         'salary_max' => $seed['salaryMax'] ?? null,
                     ]
                 );
+
+                if (Schema::hasTable('job_templates')) {
+                    JobTemplate::query()->updateOrCreate(
+                        ['title' => trim((string) ($seed['title'] ?? ''))],
+                        [
+                            'description' => trim((string) ($seed['description'] ?? '')),
+                            'department' => $seed['department'] ?? 'Information Technology',
+                            'location' => $seed['location'] ?? 'Leyte Normal University',
+                            'type' => $seed['type'] ?? 'Full-time',
+                            'required_skills' => $seed['requiredSkills'] ?? '',
+                            'minimum_education' => $seed['minimumEducation'] ?? '',
+                            'minimum_experience_years' => (int) ($seed['minimumExperienceYears'] ?? 0),
+                            'salary_min' => $seed['salaryMin'] ?? null,
+                            'salary_max' => $seed['salaryMax'] ?? null,
+                        ]
+                    );
+                }
 
                 $skills = preg_split('/[,;\n|]+/', (string) ($seed['requiredSkills'] ?? '')) ?: [];
                 foreach (array_values(array_filter(array_map('trim', $skills))) as $skill) {

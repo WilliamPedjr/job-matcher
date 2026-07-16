@@ -58,6 +58,15 @@ class ResumeAnalysisService
         $educationScore = $this->calculateEducationScore($educationLines, $minimumEducation);
         $experienceScore = $this->calculateExperienceScore($experienceLines, $minimumExperienceYears);
         $overall = round(($skillsScore * 0.55) + ($experienceScore * 0.2) + ($educationScore * 0.15) + ($projectScore * 0.1), 2);
+        $summary = $this->buildResumeSummary(
+            $extractedText,
+            $matchedSkills,
+            $missingSkills,
+            $educationLines,
+            $experienceLines,
+            $projectScore,
+            $overall
+        );
 
         return [
             'classification' => $overall >= 80 ? 'Highly Qualified' : ($overall >= 60 ? 'Moderately Qualified' : 'Not Qualified'),
@@ -71,7 +80,9 @@ class ResumeAnalysisService
             'education_text' => implode("\n", $educationLines),
             'experience_text' => implode("\n", $experienceLines),
             'resume_text' => $resumeText,
-            'preview_text' => Str::limit($resumeText, 1000, ''),
+            'preview_text' => Str::limit($summary['summary_text'] !== '' ? $summary['summary_text'] : $resumeText, 1000, ''),
+            'summary_text' => $summary['summary_text'],
+            'resume_summary' => $summary,
             'matched_job_title' => $job?->title ?: ($appliedJobTitle !== '' ? $appliedJobTitle : null),
         ];
     }
@@ -193,6 +204,187 @@ class ResumeAnalysisService
         }
 
         return round(min($matches / max(count($keywords), 1), 1) * 100, 2);
+    }
+
+    private function buildResumeSummary(
+        string $sourceText,
+        array $matchedSkills,
+        array $missingSkills,
+        array $educationLines,
+        array $experienceLines,
+        float $projectScore,
+        float $overallScore
+    ): array {
+        $profileLines = $this->extractProfileLines($sourceText);
+        $projectLines = $this->extractProjectLines($sourceText);
+        $skillHighlights = array_slice(array_values($matchedSkills), 0, 10);
+        $missingHighlights = array_slice(array_values($missingSkills), 0, 8);
+        $experienceHighlights = array_slice($experienceLines, 0, 4);
+        $educationHighlights = array_slice($educationLines, 0, 3);
+        $projectHighlights = array_slice($projectLines, 0, 4);
+
+        $parts = [];
+        if ($profileLines) {
+            $parts[] = implode(' ', array_slice($profileLines, 0, 2));
+        }
+        if ($skillHighlights) {
+            $parts[] = 'Key skills: ' . implode(', ', $skillHighlights) . '.';
+        }
+        if ($experienceHighlights) {
+            $parts[] = 'Experience: ' . implode(' | ', $experienceHighlights) . '.';
+        }
+        if ($educationHighlights) {
+            $parts[] = 'Education: ' . implode(' | ', $educationHighlights) . '.';
+        }
+        if ($projectHighlights) {
+            $parts[] = 'Project evidence: ' . implode(' | ', $projectHighlights) . '.';
+        } elseif ($projectScore > 0) {
+            $parts[] = 'Project evidence found through action-oriented resume statements.';
+        }
+        if ($missingHighlights) {
+            $parts[] = 'Potential gaps against the target role: ' . implode(', ', $missingHighlights) . '.';
+        }
+
+        $summaryText = trim(preg_replace('/\s+/u', ' ', implode(' ', $parts)));
+
+        return [
+            'summary_text' => $summaryText,
+            'profile' => $profileLines,
+            'skills' => $skillHighlights,
+            'experience' => $experienceHighlights,
+            'education' => $educationHighlights,
+            'projects' => $projectHighlights,
+            'gaps' => $missingHighlights,
+            'confidence' => $this->summarizationConfidence($summaryText, $matchedSkills, $educationLines, $experienceLines, $overallScore),
+        ];
+    }
+
+    private function summarizationConfidence(
+        string $summaryText,
+        array $matchedSkills,
+        array $educationLines,
+        array $experienceLines,
+        float $overallScore
+    ): string {
+        $signals = 0;
+        $signals += $summaryText !== '' ? 1 : 0;
+        $signals += count($matchedSkills) >= 3 ? 1 : 0;
+        $signals += $educationLines ? 1 : 0;
+        $signals += $experienceLines ? 1 : 0;
+        $signals += $overallScore > 0 ? 1 : 0;
+
+        return $signals >= 4 ? 'high' : ($signals >= 2 ? 'medium' : 'low');
+    }
+
+    private function extractProfileLines(string $text): array
+    {
+        $sectionBlock = $this->extractSectionBlock($text, [
+            'summary',
+            'professional summary',
+            'profile',
+            'career profile',
+            'objective',
+            'career objective',
+            'about me',
+        ], [
+            'skills',
+            'skill',
+            'work experience',
+            'professional experience',
+            'employment',
+            'employment history',
+            'work history',
+            'education',
+            'projects',
+            'project',
+            'certifications',
+            'certification',
+            'references',
+            'reference',
+        ]);
+
+        if ($sectionBlock === '') {
+            return [];
+        }
+
+        $lines = array_values(array_filter(array_map(
+            fn ($line) => trim(preg_replace('/\s+/u', ' ', (string) $line)),
+            preg_split("/\n+/", str_replace("\r", "\n", $sectionBlock)) ?: []
+        )));
+
+        $headerPattern = '/^(summary|professional\s+summary|profile|career\s+profile|objective|career\s+objective|about\s+me)\s*:?\s*$/i';
+        $results = [];
+        foreach ($lines as $line) {
+            $line = trim((string) preg_replace('/^(summary|professional\s+summary|profile|career\s+profile|objective|career\s+objective|about\s+me)\s*:?\s*/i', '', $line));
+            if ($line === '' || preg_match($headerPattern, $line)) {
+                continue;
+            }
+            if (mb_strlen($line) < 20) {
+                continue;
+            }
+            $results[] = Str::limit($line, 220, '');
+            if (count($results) >= 3) {
+                break;
+            }
+        }
+
+        return $results;
+    }
+
+    private function extractProjectLines(string $text): array
+    {
+        $sectionBlock = $this->extractSectionBlock($text, [
+            'projects',
+            'project',
+            'portfolio',
+            'selected projects',
+            'academic projects',
+        ], [
+            'work experience',
+            'professional experience',
+            'employment',
+            'employment history',
+            'work history',
+            'education',
+            'skills',
+            'skill',
+            'certifications',
+            'certification',
+            'summary',
+            'profile',
+            'references',
+            'reference',
+        ]);
+
+        $normalized = str_replace("\r", "\n", $sectionBlock !== '' ? $sectionBlock : $text);
+        $lines = array_values(array_filter(array_map(
+            fn ($line) => trim(preg_replace('/\s+/u', ' ', (string) $line)),
+            preg_split("/\n+/", $normalized) ?: []
+        )));
+
+        $projectSignal = '/\b(?:project|developed|built|implemented|deployed|optimized|integrated|designed|created|automated|launched|github|portfolio)\b/i';
+        $headerPattern = '/^(projects?|portfolio|selected\s+projects|academic\s+projects)\s*:?\s*$/i';
+        $results = [];
+        $seen = [];
+        foreach ($lines as $line) {
+            $line = trim((string) preg_replace('/^(projects?|portfolio|selected\s+projects|academic\s+projects)\s*:?\s*/i', '', $line));
+            if (preg_match($headerPattern, $line) || !preg_match($projectSignal, $line)) {
+                continue;
+            }
+
+            $entry = trim((string) Str::limit($line, 220, ''));
+            $key = Str::lower($entry);
+            if (isset($seen[$key])) {
+                continue;
+            }
+            $seen[$key] = true;
+            $results[] = $entry;
+            if (count($results) >= 6) {
+                break;
+            }
+        }
+
+        return $results;
     }
 
     private function calculateEducationScore(array $educationLines, string $minimumEducation): float
@@ -363,6 +555,114 @@ class ResumeAnalysisService
         return false;
     }
 
+    private function cleanResumeSnippet(string $value): string
+    {
+        $value = str_replace(["\r", "\t"], ' ', $value);
+        $value = preg_replace('/\s+/u', ' ', $value);
+        $value = preg_replace('/\s+([,.;:])/u', '$1', (string) $value);
+        $value = preg_replace('/^[\s\-|:;,.]+|[\s\-|:;,.]+$/u', '', (string) $value);
+
+        return trim((string) $value);
+    }
+
+    private function cleanDanglingWords(string $value): string
+    {
+        return trim((string) preg_replace('/(?:,?\s+(?:and|or|with|using|including|such as|for|to|of|in|at|by))\s*$/i', '', $value));
+    }
+
+    private function cleanEducationEntry(string $value): string
+    {
+        $value = $this->cleanResumeSnippet($value);
+        $value = preg_replace('/^(?:education|educational\s+background|academic\s+background|academic\s+history|qualifications?|studies?|study|schooling|training)\s*:?\s*/i', '', $value);
+        $value = preg_replace('/\b(?:work\s+experience|professional\s+experience|employment|skills?|projects?|certifications?|summary|profile|references|contact|address|phone|email)\b.*$/i', '', (string) $value);
+        $value = preg_replace('/\bEDUCATION\b/i', '', (string) $value);
+        $value = preg_replace('/\(?\bfield\s+not\s+specified\b\)?/i', '', (string) $value);
+        $value = preg_replace('/^(secondary|elementary)\s+(.+\b(?:school|high\s+school|elementary)\b)$/i', '$2 - $1', (string) $value);
+
+        return $this->cleanDanglingWords($this->cleanResumeSnippet((string) $value));
+    }
+
+    private function splitEducationEntry(string $entry): array
+    {
+        $entry = $this->cleanEducationEntry($entry);
+        if ($entry === '') {
+            return [];
+        }
+
+        $institutionPattern = '/\b(?:(?!(?:Bachelor|Master|Doctor|Degree|Field|Secondary|Elementary|Diploma|Certificate)\b)(?:[A-Z][A-Za-z.&\']+|of|the|and)\s+){0,7}(?:University|College|Institute|Academy|(?:National\s+)?High\s+School|Elementary(?:\s+School)?|School)\b/';
+        preg_match_all($institutionPattern, $entry, $matches, PREG_OFFSET_CAPTURE);
+        $institutions = $matches[0] ?? [];
+
+        if (count($institutions) <= 1) {
+            return [$entry];
+        }
+
+        $parts = [];
+        for ($i = 0; $i < count($institutions); $i++) {
+            $start = (int) $institutions[$i][1];
+            $end = isset($institutions[$i + 1])
+                ? (int) $institutions[$i + 1][1]
+                : strlen($entry);
+
+            $part = $this->cleanEducationEntry(substr($entry, $start, $end - $start));
+            if ($part !== '') {
+                $parts[] = $part;
+            }
+        }
+
+        return $parts ?: [$entry];
+    }
+
+    private function addUniqueEntries(array &$results, array &$seen, array $entries, int $limit): void
+    {
+        foreach ($entries as $entry) {
+            $entry = $this->cleanResumeSnippet($entry);
+            if ($entry === '') {
+                continue;
+            }
+
+            $key = Str::lower($entry);
+            if (isset($seen[$key])) {
+                continue;
+            }
+
+            $seen[$key] = true;
+            $results[] = $entry;
+            if (count($results) >= $limit) {
+                return;
+            }
+        }
+    }
+
+    private function cleanExperienceEntry(string $value): string
+    {
+        $value = $this->cleanResumeSnippet($value);
+        $value = preg_replace('/^(?:work\s+experience|professional\s+experience|employment|employment\s+history|work\s+history|experience)\s*:?\s*/i', '', $value);
+        $value = preg_replace('/\b(?:education|educational\s+background|academic\s+background|skills?|projects?|certifications?|references)\b.*$/i', '', (string) $value);
+
+        return $this->cleanDanglingWords($this->cleanResumeSnippet((string) $value));
+    }
+
+    private function splitExperienceEntry(string $entry): array
+    {
+        $entry = $this->cleanExperienceEntry($entry);
+        if ($entry === '') {
+            return [];
+        }
+
+        $parts = preg_split('/\s+-\s+|(?<=\.)\s+(?=[A-Z])/', $entry) ?: [];
+        $cleaned = [];
+        foreach ($parts as $part) {
+            $part = $this->cleanExperienceEntry($part);
+            if ($part === '' || mb_strlen($part) < 8) {
+                continue;
+            }
+            $cleaned[] = Str::limit($part, 220, '');
+        }
+
+        return $cleaned ?: [$entry];
+    }
+
     private function extractEducationLines(string $text): array
     {
         $sectionBlock = $this->extractSectionBlock($text, [
@@ -486,13 +786,7 @@ class ResumeAnalysisService
 
             $entry = trim(preg_replace('/\s+/u', ' ', $entry));
             $entry = preg_replace('/\b(?:work\s+experience|professional\s+experience|employment|skills?|projects?|certifications?|summary|profile|references|contact|address|phone|email).*$/i', '', $entry);
-            $entry = trim((string) $entry, " \t\n\r\0\x0B-|");
-
-            $normalizedEntry = Str::lower($entry);
-            if (!isset($seen[$normalizedEntry])) {
-                $seen[$normalizedEntry] = true;
-                $results[] = $entry;
-            }
+            $this->addUniqueEntries($results, $seen, $this->splitEducationEntry((string) $entry), 6);
 
             if (count($results) >= 6) {
                 break;
@@ -537,12 +831,7 @@ class ResumeAnalysisService
                 }
                 $entry = trim(preg_replace('/\s+/u', ' ', $entry));
                 $entry = preg_replace('/\b(?:work\s+experience|professional\s+experience|employment|skills?|projects?|certifications?|summary|profile|references|contact|address|phone|email).*$/i', '', $entry);
-                $entry = trim((string) $entry, " \t\n\r\0\x0B-|");
-                $normalizedEntry = Str::lower($entry);
-                if (!isset($seen[$normalizedEntry])) {
-                    $seen[$normalizedEntry] = true;
-                    $results[] = $entry;
-                }
+                $this->addUniqueEntries($results, $seen, $this->splitEducationEntry((string) $entry), 6);
 
                 if (count($results) >= 6) {
                     break;
@@ -559,15 +848,24 @@ class ResumeAnalysisService
         if (!empty($sectionMatches[0])) {
             $fallback = array_values(array_filter(array_map('trim', $sectionMatches[0])));
             if ($fallback) {
-                return array_slice(array_map(
-                    fn ($line) => trim(preg_replace('/\s+/u', ' ', (string) $line)),
-                    array_slice($fallback, 0, 6)
-                ), 0, 6);
+                $cleanedFallback = [];
+                $fallbackSeen = [];
+                foreach (array_slice($fallback, 0, 6) as $line) {
+                    $this->addUniqueEntries($cleanedFallback, $fallbackSeen, $this->splitEducationEntry((string) $line), 6);
+                }
+
+                return $cleanedFallback;
             }
         }
 
         preg_match_all('/(?:university|college|institute|academy|school|high school|elementary|ph\.?d\.?|doctor(?:ate)?|master(?:\'s)?|mba|m\.?s\.?|msc|m\.?a\.?|bachelor(?:\'s)?|b\.?s\.?|b\.?a\.?|associate(?:\'s)?|diploma|certificate|course|major|program|stud(?:y|ies|ied|ying))[^\|]{0,100}/i', $compact, $matches);
-        return array_slice(array_values(array_filter(array_map('trim', $matches[0] ?? []))), 0, 6);
+        $fallbackResults = [];
+        $fallbackSeen = [];
+        foreach (array_values(array_filter(array_map('trim', $matches[0] ?? []))) as $line) {
+            $this->addUniqueEntries($fallbackResults, $fallbackSeen, $this->splitEducationEntry((string) $line), 6);
+        }
+
+        return $fallbackResults;
     }
 
     private function extractExperienceLines(string $text): array
@@ -607,16 +905,21 @@ class ResumeAnalysisService
         )));
 
         $results = [];
+        $seen = [];
         foreach ($lines as $line) {
             if (preg_match('/\b(?:jan|feb|mar|apr|may|jun|jul|aug|sep|sept|oct|nov|dec)[a-z]*\s+\d{4}\s*(?:-|to|–)\s*(?:present|current|now|(?:jan|feb|mar|apr|may|jun|jul|aug|sep|sept|oct|nov|dec)[a-z]*\s+\d{4}|\d{4})\b/i', $line)
                 || preg_match('/\b(?:engineer|developer|analyst|manager|lead|specialist|consultant|intern|assistant|architect|administrator|officer|designer)\b/i', $line)
                 || preg_match('/\b(?:at|with)\s+[A-Z][A-Za-z0-9&.,\- ]{1,80}\b/', $line)
             ) {
-                $results[] = $line;
+                $this->addUniqueEntries($results, $seen, $this->splitExperienceEntry((string) $line), 8);
+            }
+
+            if (count($results) >= 8) {
+                break;
             }
         }
 
-        return array_slice(array_values(array_unique($results)), 0, 8);
+        return array_slice($results, 0, 8);
     }
 
     private function normalizeWhitespace(string $text): string

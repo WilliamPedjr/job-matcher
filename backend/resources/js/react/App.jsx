@@ -1,18 +1,18 @@
 import React from 'react'
 // React imports
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
-import './AppLayout.css'
-import LandingPage from './LandingPage'
-import LoginPage from './LoginPage'
-import ApplicantViewPage from './ApplicantViewPage'
-import JobPostingPage from './JobPostingPage'
-import DashboardPage from './DashboardPage'
-import JobSeekerDashboard from './JobSeekerDashboard'
-import JobViewPage from './JobViewPage'
-import ProfilePage from './ProfilePage'
-import UsersPage from './UsersPage'
-import RegisterPage from './RegisterPage'
-import CustomDropdown from './CustomDropdown'
+import './layouts/AppLayout.css'
+import LandingPage from './pages/LandingPage'
+import LoginPage from './pages/LoginPage'
+import ApplicantViewPage from './pages/ApplicantViewPage'
+import JobPostingPage from './pages/JobPostingPage'
+import DashboardPage from './pages/DashboardPage'
+import JobSeekerDashboard from './pages/JobSeekerDashboard'
+import JobViewPage from './pages/JobViewPage'
+import ProfilePage from './pages/ProfilePage'
+import UsersPage from './pages/UsersPage'
+import RegisterPage from './pages/RegisterPage'
+import CustomDropdown from './components/CustomDropdown'
 import profileIcon from './assets/circle-user-solid-full.svg'
 import bellIcon from './assets/bell-solid-full.svg'
 import brandLogo from './assets/Logo.png'
@@ -650,29 +650,21 @@ function App() {
     try {
       const normalizedMode = loginMode === "jobseeker" ? "jobseeker" : "staff"
       const isJobSeekerLogin = normalizedMode === "jobseeker"
-      const response = await fetch(isJobSeekerLogin ? "/api/job-seekers/login" : "/login", {
+      const response = await fetch(isJobSeekerLogin ? "/api/job-seekers/login" : "/api/staff/login", {
         method: "POST",
-        headers: isJobSeekerLogin
-          ? {
-              "Content-Type": "application/json",
-              "Accept": "application/json",
-            }
-          : {
-              "Content-Type": "application/x-www-form-urlencoded",
-              "Accept": "application/json",
-              "X-Requested-With": "XMLHttpRequest",
-              "X-CSRF-TOKEN": getCsrfToken(),
-            },
-        credentials: isJobSeekerLogin ? "same-origin" : "same-origin",
+        headers: {
+          "Content-Type": "application/json",
+          "Accept": "application/json",
+        },
+        credentials: "same-origin",
         body: isJobSeekerLogin
           ? JSON.stringify({
               identifier: loginEmail.trim(),
               password: loginPassword,
             })
-          : new URLSearchParams({
+          : JSON.stringify({
               email: loginEmail.trim(),
               password: loginPassword,
-              remember: rememberMe ? "on" : "",
             }),
       })
       if (!response.ok) {
@@ -697,17 +689,7 @@ function App() {
       }
 
       setLoginPassword("")
-      const meResponse = await fetch("/me", {
-        headers: {
-          Accept: "application/json",
-        },
-        credentials: "include",
-      })
-      if (!meResponse.ok) {
-        throw new Error("Login succeeded, but we could not load your account.")
-      }
-      const mePayload = await meResponse.json()
-      applyAuthenticatedSession(mePayload)
+      applyAuthenticatedSession(payload)
     } catch (err) {
       setLoginError(err.message || "Invalid email or password.")
     }
@@ -725,20 +707,18 @@ function App() {
     }
     setRegisterError("")
     try {
-      const response = await fetch("/register", {
+      const response = await fetch("/api/job-seekers/register", {
         method: "POST",
         headers: {
-          "Content-Type": "application/x-www-form-urlencoded",
+          "Content-Type": "application/json",
           "Accept": "application/json",
-          "X-Requested-With": "XMLHttpRequest",
-          "X-CSRF-TOKEN": getCsrfToken(),
         },
-        credentials: "include",
-        body: new URLSearchParams({
-          name: registerFullName.trim(),
+        credentials: "same-origin",
+        body: JSON.stringify({
+          fullName: registerFullName.trim(),
           email: registerEmail.trim(),
           password: registerPassword,
-          password_confirmation: registerConfirmPassword,
+          confirmPassword: registerConfirmPassword,
         }),
       })
       if (!response.ok) {
@@ -754,17 +734,15 @@ function App() {
       setRegisterPassword("")
       setRegisterConfirmPassword("")
       setRegisterNotice("")
-      const meResponse = await fetch("/me", {
-        headers: {
-          Accept: "application/json",
-        },
-        credentials: "same-origin",
-      })
-      if (!meResponse.ok) {
+      const payload = await response.json().catch(() => null)
+      const userPayload = payload?.jobSeeker ?? payload
+      if (!userPayload?.id) {
         throw new Error("Registration succeeded, but we could not load your account.")
       }
-      const mePayload = await meResponse.json()
-      applyAuthenticatedSession(mePayload)
+      applyAuthenticatedSession({
+        ...userPayload,
+        role: "jobseeker",
+      })
     } catch (err) {
       setRegisterNotice("")
       setRegisterError(err.message || "Registration failed.")
@@ -772,16 +750,6 @@ function App() {
   }
 
   const handleLogout = useCallback(() => {
-    const csrfToken = getCsrfToken()
-    fetch("/logout", {
-      method: "POST",
-      headers: {
-        "Accept": "application/json",
-        "X-Requested-With": "XMLHttpRequest",
-        "X-CSRF-TOKEN": csrfToken,
-      },
-      credentials: "include",
-    }).catch(() => {})
     setIsAuthenticated(false)
     localStorage.removeItem("isAuthenticated")
     setUserRole("")
