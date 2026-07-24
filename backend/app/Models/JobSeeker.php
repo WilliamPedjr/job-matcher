@@ -14,6 +14,9 @@ class JobSeeker extends Model
         'email',
         'username',
         'phone',
+        'status',
+        'address',
+        'about_text',
         'password',
     ];
 

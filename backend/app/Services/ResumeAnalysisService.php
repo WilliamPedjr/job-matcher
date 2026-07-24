@@ -636,11 +636,38 @@ class ResumeAnalysisService
 
     private function cleanExperienceEntry(string $value): string
     {
+        $value = str_replace(["\u{2022}", "\u{25CF}", "\u{25AA}", "\u{2013}", "\u{2014}"], [' - ', ' - ', ' - ', '-', '-'], $value);
         $value = $this->cleanResumeSnippet($value);
         $value = preg_replace('/^(?:work\s+experience|professional\s+experience|employment|employment\s+history|work\s+history|experience)\s*:?\s*/i', '', $value);
-        $value = preg_replace('/\b(?:education|educational\s+background|academic\s+background|skills?|projects?|certifications?|references)\b.*$/i', '', (string) $value);
+        $value = preg_replace('/\b(?:work\s+experience|professional\s+experience|employment\s+history|work\s+history)\b\s*:?\s*/i', '', (string) $value);
+        $value = preg_replace('/\b(?:education|educational\s+background|academic\s+background|skills?|projects?|certifications?|certification|references?|contact|personal\s+information)\b.*$/i', '', (string) $value);
+        $value = preg_replace('/\s*[-|]\s*$/', '', (string) $value);
+        $value = preg_replace('/\b(\d+)\s+years?\s+experience\b/i', '$1 years experience', (string) $value);
+        $value = preg_replace(
+            '/^([A-Z][A-Za-z\/+.#\s-]{2,80}?)\s+((?:[A-Z]{2,}|[A-Z][A-Za-z]+)(?:\s+(?:Industry|Department|Division|Office|Unit|Services?|Technologies|Solutions|Company|Corporation|Inc\.?))?)\s+(\d+\s+years?\s+experience)$/i',
+            '$1 - $2 - $3',
+            (string) $value
+        );
 
         return $this->cleanDanglingWords($this->cleanResumeSnippet((string) $value));
+    }
+
+    private function isUsefulExperienceEntry(string $entry): bool
+    {
+        $entry = trim($entry);
+        if ($entry === '' || mb_strlen($entry) < 8) {
+            return false;
+        }
+
+        if (preg_match('/^(?:work\s+experience|professional\s+experience|employment|experience)$/i', $entry)) {
+            return false;
+        }
+
+        if (preg_match('/\b(?:email|phone|address|birth|civil status|nationality|references available)\b/i', $entry)) {
+            return false;
+        }
+
+        return preg_match('/\b(?:engineer|developer|analyst|manager|lead|specialist|consultant|intern|assistant|architect|administrator|officer|designer|coordinator|supervisor|teacher|instructor|clerk|staff|experience|years?|present|current|designed|developed|translated|ensured|managed|created|built|implemented|optimized|integrated|collaborated|maintained|supported|handled|prepared|assisted|led|trained|tested|deployed)\b/i', $entry) === 1;
     }
 
     private function splitExperienceEntry(string $entry): array
@@ -650,17 +677,77 @@ class ResumeAnalysisService
             return [];
         }
 
-        $parts = preg_split('/\s+-\s+|(?<=\.)\s+(?=[A-Z])/', $entry) ?: [];
+        if (preg_match('/\b\d+\s+years?\s+experience\b/i', $entry) && preg_match('/\b(?:engineer|developer|analyst|manager|lead|specialist|consultant|intern|assistant|architect|administrator|officer|designer|coordinator|supervisor|teacher|instructor|clerk|staff)\b/i', $entry)) {
+            return [$entry];
+        }
+
+        $entry = preg_replace('/\s+(?=-\s+[A-Z])/', ' ', (string) $entry);
+        $parts = preg_split('/(?:\s+-\s+|;\s+|(?<=\.)\s+(?=[A-Z]))/', (string) $entry) ?: [];
         $cleaned = [];
         foreach ($parts as $part) {
             $part = $this->cleanExperienceEntry($part);
-            if ($part === '' || mb_strlen($part) < 8) {
+            if (!$this->isUsefulExperienceEntry($part)) {
                 continue;
             }
             $cleaned[] = Str::limit($part, 220, '');
         }
 
         return $cleaned ?: [$entry];
+    }
+
+    private function extractResumeSectionLines(string $text, array $startHeaders, array $stopHeaders): array
+    {
+        $lines = array_values(array_filter(array_map(
+            fn ($line) => trim(preg_replace('/\s+/u', ' ', (string) $line)),
+            preg_split("/\r\n|\r|\n/", str_replace("\t", ' ', $text)) ?: []
+        )));
+
+        if (!$lines) {
+            return [];
+        }
+
+        $startPattern = '/^(?:' . implode('|', array_map(fn ($header) => preg_quote($header, '/'), $startHeaders)) . ')\s*:?\s*$/i';
+        $inlineStartPattern = '/\b(?:' . implode('|', array_map(fn ($header) => preg_quote($header, '/'), $startHeaders)) . ')\b\s*:?\s*/i';
+        $stopPattern = '/^(?:' . implode('|', array_map(fn ($header) => preg_quote($header, '/'), $stopHeaders)) . ')\s*:?\s*$/i';
+        $inlineStopPattern = '/\b(?:' . implode('|', array_map(fn ($header) => preg_quote($header, '/'), $stopHeaders)) . ')\b\s*:?\s*/i';
+
+        $section = [];
+        $capturing = false;
+        foreach ($lines as $line) {
+            if (preg_match($startPattern, $line)) {
+                $capturing = true;
+                continue;
+            }
+
+            if (!$capturing && preg_match($inlineStartPattern, $line)) {
+                $capturing = true;
+                $line = trim((string) preg_replace($inlineStartPattern, '', $line, 1));
+                if ($line === '') {
+                    continue;
+                }
+            }
+
+            if (!$capturing) {
+                continue;
+            }
+
+            if (preg_match($stopPattern, $line)) {
+                break;
+            }
+
+            if (preg_match($inlineStopPattern, $line, $match, PREG_OFFSET_CAPTURE)) {
+                $line = trim(substr($line, 0, (int) $match[0][1]));
+                if ($line === '') {
+                    break;
+                }
+                $section[] = $line;
+                break;
+            }
+
+            $section[] = $line;
+        }
+
+        return $section;
     }
 
     private function extractEducationLines(string $text): array
@@ -870,13 +957,15 @@ class ResumeAnalysisService
 
     private function extractExperienceLines(string $text): array
     {
-        $sectionBlock = $this->extractSectionBlock($text, [
+        $startHeaders = [
             'work experience',
             'professional experience',
             'employment',
             'employment history',
             'work history',
-        ], [
+            'experience',
+        ];
+        $stopHeaders = [
             'education',
             'educational background',
             'academic background',
@@ -896,27 +985,42 @@ class ResumeAnalysisService
             'profile',
             'references',
             'reference',
-        ]);
+            'contact',
+            'personal information',
+        ];
 
-        $normalized = str_replace("\r", "\n", $sectionBlock !== '' ? $sectionBlock : $text);
+        $sectionLines = $this->extractResumeSectionLines($text, $startHeaders, $stopHeaders);
+        $sectionBlock = $sectionLines
+            ? implode("\n", $sectionLines)
+            : $this->extractSectionBlock($text, $startHeaders, $stopHeaders);
+
+        $normalized = str_replace(
+            ["\r", "\t", "\u{2022}", "\u{25CF}", "\u{25AA}", "\u{2013}", "\u{2014}"],
+            ["\n", ' ', "\n- ", "\n- ", "\n- ", '-', '-'],
+            $sectionBlock !== '' ? $sectionBlock : $text
+        );
+        $normalized = preg_replace('/\s+-\s+(?=[A-Z])/', "\n- ", (string) $normalized);
+        $normalized = preg_replace('/(?<!^)\b(?:work\s+experience|professional\s+experience|employment\s+history|work\s+history)\b\s*:?\s*/i', "\n", (string) $normalized);
+
         $lines = array_values(array_filter(array_map(
-            'trim',
-            preg_split("/\n+/", $normalized) ?: []
+            fn ($line) => $this->cleanExperienceEntry((string) $line),
+            preg_split("/\n+/", (string) $normalized) ?: []
         )));
 
         $results = [];
         $seen = [];
         foreach ($lines as $line) {
-            if (preg_match('/\b(?:jan|feb|mar|apr|may|jun|jul|aug|sep|sept|oct|nov|dec)[a-z]*\s+\d{4}\s*(?:-|to|–)\s*(?:present|current|now|(?:jan|feb|mar|apr|may|jun|jul|aug|sep|sept|oct|nov|dec)[a-z]*\s+\d{4}|\d{4})\b/i', $line)
-                || preg_match('/\b(?:engineer|developer|analyst|manager|lead|specialist|consultant|intern|assistant|architect|administrator|officer|designer)\b/i', $line)
-                || preg_match('/\b(?:at|with)\s+[A-Z][A-Za-z0-9&.,\- ]{1,80}\b/', $line)
-            ) {
+            if ($this->isUsefulExperienceEntry($line)) {
                 $this->addUniqueEntries($results, $seen, $this->splitExperienceEntry((string) $line), 8);
             }
 
             if (count($results) >= 8) {
                 break;
             }
+        }
+
+        if (!$results && $sectionBlock !== '') {
+            $this->addUniqueEntries($results, $seen, $this->splitExperienceEntry($sectionBlock), 8);
         }
 
         return array_slice($results, 0, 8);

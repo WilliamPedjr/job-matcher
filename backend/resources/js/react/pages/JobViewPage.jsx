@@ -447,12 +447,24 @@ function JobViewPage({ job, onBack, onApply, onRequireResume, jobSeekerProfile, 
             <strong>{job.department || "-"}</strong>
           </div>
           <div className="job-view-info-item">
+            <span>Item No.</span>
+            <strong>{job.itemNo || job.item_no || "-"}</strong>
+          </div>
+          <div className="job-view-info-item">
             <span>Location</span>
             <strong>{job.location || "-"}</strong>
           </div>
           <div className="job-view-info-item">
             <span>Employment Type</span>
             <strong>{job.type || "-"}</strong>
+          </div>
+          <div className="job-view-info-item">
+            <span>Deadline</span>
+            <strong>{job.deadline ? new Date(job.deadline).toLocaleDateString(undefined, { month: "long", day: "numeric", year: "numeric" }) : "-"}</strong>
+          </div>
+          <div className="job-view-info-item">
+            <span>Eligibility</span>
+            <strong>{job.eligibility || "-"}</strong>
           </div>
           <div className="job-view-info-item">
             <span>Minimum Education</span>
@@ -483,7 +495,7 @@ function JobViewPage({ job, onBack, onApply, onRequireResume, jobSeekerProfile, 
         </div>
       </div>
 
-      {String(job.status || "active").toLowerCase() !== "closed" && (
+      {String(job.status || "active").toLowerCase() === "active" && (
         <div className="job-view-footer">
           {resumeMatchReady && resumeMatchQualified && (
             <button

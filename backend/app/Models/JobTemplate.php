@@ -11,12 +11,19 @@ class JobTemplate extends Model
 
     protected $table = 'job_templates';
 
+    protected $casts = [
+        'deadline' => 'date',
+    ];
+
     protected $fillable = [
         'title',
         'description',
         'department',
+        'item_no',
         'location',
         'type',
+        'deadline',
+        'eligibility',
         'required_skills',
         'minimum_education',
         'minimum_experience_years',

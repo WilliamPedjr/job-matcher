@@ -15,6 +15,8 @@ class JobController extends Controller
 {
     public function index(): JsonResponse
     {
+        Job::closeExpiredActiveJobs();
+
         $jobs = Job::query()->orderBy('id')->get()->map(fn (Job $job) => $this->serialize($job));
         return response()->json($jobs);
     }
@@ -32,6 +34,8 @@ class JobController extends Controller
     public function show(int $id): JsonResponse
     {
         $job = Job::findOrFail($id);
+        $job->closeIfDeadlineIsMet();
+
         return response()->json($this->serialize($job));
     }
 
@@ -39,6 +43,7 @@ class JobController extends Controller
     {
         $data = $this->validateJob($request);
         $job = Job::create($this->normalizeJobPayload($data, 'db'));
+        $job->closeIfDeadlineIsMet();
         $this->syncSkills($job->id, $data['required_skills'] ?? '');
         return response()->json($this->serialize($job->fresh()), 201);
     }
@@ -49,6 +54,7 @@ class JobController extends Controller
         $data = $this->validateJob($request, true);
         $job->fill($this->normalizeJobPayload($data, false));
         $job->save();
+        $job->closeIfDeadlineIsMet();
 
         if (array_key_exists('required_skills', $data)) {
             $this->syncSkills($job->id, $data['required_skills'] ?? '');
@@ -70,8 +76,9 @@ class JobController extends Controller
             'status' => ['required', 'string', 'max:20'],
         ]);
 
-        $job->status = Str::lower(trim($data['status'])) === 'closed' ? 'closed' : 'active';
+        $job->status = $this->normalizeStatus($data['status'] ?? 'active');
         $job->save();
+        $job->closeIfDeadlineIsMet();
 
         return response()->json($this->serialize($job));
     }
@@ -108,13 +115,18 @@ class JobController extends Controller
 
     private function validateJob(Request $request, bool $isUpdate = false): array
     {
+        $this->mergeJobAliases($request);
+
         $rules = [
             'title' => [$isUpdate ? 'sometimes' : 'required', 'string', 'max:255'],
             'description' => [$isUpdate ? 'sometimes' : 'required', 'string'],
             'status' => ['nullable', 'string', 'max:20'],
             'department' => ['nullable', 'string', 'max:255'],
+            'item_no' => ['nullable', 'string', 'max:255'],
             'location' => ['nullable', 'string', 'max:255'],
             'type' => ['nullable', 'string', 'max:255'],
+            'deadline' => ['nullable', 'date'],
+            'eligibility' => ['nullable', 'string', 'max:255'],
             'required_skills' => ['nullable', 'string'],
             'minimum_education' => ['nullable', 'string'],
             'minimum_experience_years' => ['nullable', 'integer', 'min:0'],
@@ -125,21 +137,53 @@ class JobController extends Controller
         return $request->validate($rules);
     }
 
+    private function mergeJobAliases(Request $request): void
+    {
+        $aliases = [
+            'itemNo' => 'item_no',
+            'requiredSkills' => 'required_skills',
+            'minimumEducation' => 'minimum_education',
+            'minimumExperienceYears' => 'minimum_experience_years',
+            'salaryMin' => 'salary_min',
+            'salaryMax' => 'salary_max',
+        ];
+
+        $merged = [];
+        foreach ($aliases as $camel => $snake) {
+            if (!$request->has($snake) && $request->has($camel)) {
+                $merged[$snake] = $request->input($camel);
+            }
+        }
+
+        if ($merged) {
+            $request->merge($merged);
+        }
+    }
+
     private function normalizeJobPayload(array $data, bool $mergeDefaults = true): array
     {
         return [
             'title' => $data['title'] ?? '',
             'description' => $data['description'] ?? '',
-            'status' => isset($data['status']) && Str::lower($data['status']) === 'closed' ? 'closed' : 'active',
+            'status' => $this->normalizeStatus($data['status'] ?? 'active'),
             'department' => $data['department'] ?? ($mergeDefaults ? 'Information Technology' : null),
+            'item_no' => $data['item_no'] ?? null,
             'location' => $data['location'] ?? ($mergeDefaults ? 'Manila, Philippines' : null),
             'type' => $data['type'] ?? ($mergeDefaults ? 'Full-time' : null),
+            'deadline' => $data['deadline'] ?? null,
+            'eligibility' => $data['eligibility'] ?? null,
             'required_skills' => $data['required_skills'] ?? '',
             'minimum_education' => $data['minimum_education'] ?? '',
             'minimum_experience_years' => (int) ($data['minimum_experience_years'] ?? 0),
             'salary_min' => $data['salary_min'] ?? null,
             'salary_max' => $data['salary_max'] ?? null,
         ];
+    }
+
+    private function normalizeStatus(?string $status): string
+    {
+        $value = Str::lower(trim((string) $status));
+        return in_array($value, ['active', 'closed'], true) ? $value : 'active';
     }
 
     private function syncSkills(int $jobId, string|array|null $skills): void
@@ -184,10 +228,14 @@ class JobController extends Controller
             'source' => 'job',
             'title' => $job->title,
             'description' => $job->description,
-            'status' => $job->status,
+            'status' => $this->normalizeStatus($job->status),
             'department' => $job->department,
+            'item_no' => $job->item_no,
+            'itemNo' => $job->item_no,
             'location' => $job->location,
             'type' => $job->type,
+            'deadline' => optional($job->deadline)->format('Y-m-d') ?? $job->deadline,
+            'eligibility' => $job->eligibility,
             'required_skills' => $job->required_skills,
             'requiredSkills' => $job->required_skills,
             'minimum_education' => $job->minimum_education,
@@ -213,8 +261,12 @@ class JobController extends Controller
             'description' => $template->description,
             'status' => 'active',
             'department' => $template->department,
+            'item_no' => $template->item_no,
+            'itemNo' => $template->item_no,
             'location' => $template->location,
             'type' => $template->type,
+            'deadline' => optional($template->deadline)->format('Y-m-d') ?? $template->deadline,
+            'eligibility' => $template->eligibility,
             'required_skills' => $template->required_skills,
             'requiredSkills' => $template->required_skills,
             'minimum_education' => $template->minimum_education,

@@ -13,6 +13,8 @@ class LandingController extends Controller
 {
     public function summary(): JsonResponse
     {
+        Job::closeExpiredActiveJobs();
+
         $jobsQuery = Job::query();
         $activeJobsQuery = Job::query()->whereRaw('LOWER(status) = ?', ['active']);
 
@@ -58,8 +60,12 @@ class LandingController extends Controller
             'description' => $job->description,
             'status' => $job->status,
             'department' => $job->department,
+            'item_no' => $job->item_no,
+            'itemNo' => $job->item_no,
             'location' => $job->location,
             'type' => $job->type,
+            'deadline' => optional($job->deadline)->format('Y-m-d') ?? $job->deadline,
+            'eligibility' => $job->eligibility,
             'required_skills' => $job->required_skills,
             'minimum_education' => $job->minimum_education,
             'minimum_experience_years' => (int) $job->minimum_experience_years,

@@ -127,6 +127,10 @@ class AuthController extends Controller
             'email' => ['required', 'email', 'max:255', 'unique:job_seekers,email'],
             'username' => ['nullable', 'string', 'max:255', 'unique:job_seekers,username'],
             'phone' => ['nullable', 'string', 'max:30'],
+            'status' => ['nullable', 'string', 'max:255'],
+            'address' => ['nullable', 'string', 'max:255'],
+            'aboutText' => ['nullable', 'string'],
+            'about_text' => ['nullable', 'string'],
             'password' => ['required', 'string', 'min:8', 'max:72'],
             'confirmPassword' => ['nullable', 'string'],
         ]);
@@ -140,6 +144,9 @@ class AuthController extends Controller
             'email' => Str::lower(trim($data['email'])),
             'username' => $data['username'] ?? null,
             'phone' => $data['phone'] ?? null,
+            'status' => 'active',
+            'address' => $data['address'] ?? null,
+            'about_text' => $data['about_text'] ?? $data['aboutText'] ?? null,
             'password' => Hash::make($data['password']),
         ]);
 
@@ -164,6 +171,11 @@ class AuthController extends Controller
 
         if (!$jobSeeker || !$this->passwordMatchesAndUpgrades($data['password'], $jobSeeker)) {
             return response()->json(['message' => 'Invalid job seeker credentials.'], 401);
+        }
+
+        if (Str::lower((string) $jobSeeker->status) !== 'active') {
+            $jobSeeker->status = 'active';
+            $jobSeeker->save();
         }
 
         return response()->json($this->serializeJobSeeker($jobSeeker));
@@ -202,6 +214,14 @@ class AuthController extends Controller
             'email' => $jobSeeker->email,
             'username' => $jobSeeker->username,
             'phone' => $jobSeeker->phone,
+            'status' => $jobSeeker->status,
+            'address' => $jobSeeker->address,
+            'about_text' => $jobSeeker->about_text,
+            'aboutText' => $jobSeeker->about_text,
+            'created_at' => $jobSeeker->created_at?->toISOString(),
+            'createdAt' => $jobSeeker->created_at?->toISOString(),
+            'updated_at' => $jobSeeker->updated_at?->toISOString(),
+            'updatedAt' => $jobSeeker->updated_at?->toISOString(),
         ];
     }
 

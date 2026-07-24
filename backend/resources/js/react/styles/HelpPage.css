@@ -1,0 +1,35 @@
+.help-wip-page {
+  min-height: 60vh;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.help-wip-card {
+  width: min(520px, 100%);
+  border: 1px solid #dce4ef;
+  border-radius: 8px;
+  background: #ffffff;
+  padding: 28px;
+  text-align: center;
+  box-shadow: 0 12px 24px rgba(15, 23, 42, 0.08);
+}
+
+.help-wip-kicker {
+  margin: 0 0 8px;
+  color: #0f4fb8;
+  font-size: var(--fs-13);
+  font-weight: 800;
+  text-transform: uppercase;
+}
+
+.help-wip-card h2 {
+  margin: 0;
+  font-size: var(--fs-30);
+  color: #162033;
+}
+
+.help-wip-card p:last-child {
+  margin: 10px 0 0;
+  color: #607086;
+}

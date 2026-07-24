@@ -36,10 +36,15 @@ class ReferenceDataSeeder extends Seeder
                     [
                         'title' => trim((string) ($seed['title'] ?? '')),
                         'description' => trim((string) ($seed['description'] ?? '')),
-                        'status' => strtolower((string) ($seed['status'] ?? 'active')) === 'closed' ? 'closed' : 'active',
+                        'status' => in_array(strtolower((string) ($seed['status'] ?? 'active')), ['active', 'closed'], true)
+                            ? strtolower((string) ($seed['status'] ?? 'active'))
+                            : 'active',
                         'department' => $seed['department'] ?? 'Information Technology',
+                        'item_no' => $seed['itemNo'] ?? $seed['item_no'] ?? null,
                         'location' => $seed['location'] ?? 'Manila, Philippines',
                         'type' => $seed['type'] ?? 'Full-time',
+                        'deadline' => $seed['deadline'] ?? null,
+                        'eligibility' => $seed['eligibility'] ?? null,
                         'required_skills' => $seed['requiredSkills'] ?? '',
                         'minimum_education' => $seed['minimumEducation'] ?? '',
                         'minimum_experience_years' => (int) ($seed['minimumExperienceYears'] ?? 0),
@@ -54,8 +59,11 @@ class ReferenceDataSeeder extends Seeder
                         [
                             'description' => trim((string) ($seed['description'] ?? '')),
                             'department' => $seed['department'] ?? 'Information Technology',
+                            'item_no' => $seed['itemNo'] ?? $seed['item_no'] ?? null,
                             'location' => $seed['location'] ?? 'Leyte Normal University',
                             'type' => $seed['type'] ?? 'Full-time',
+                            'deadline' => $seed['deadline'] ?? null,
+                            'eligibility' => $seed['eligibility'] ?? null,
                             'required_skills' => $seed['requiredSkills'] ?? '',
                             'minimum_education' => $seed['minimumEducation'] ?? '',
                             'minimum_experience_years' => (int) ($seed['minimumExperienceYears'] ?? 0),

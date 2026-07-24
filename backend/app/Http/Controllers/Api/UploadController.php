@@ -3,6 +3,7 @@
 namespace App\Http\Controllers\Api;
 
 use App\Http\Controllers\Controller;
+use App\Models\Job;
 use App\Models\JobSeeker;
 use App\Models\SupportingFile;
 use App\Models\Upload;
@@ -49,6 +50,22 @@ class UploadController extends Controller
 
         /** @var UploadedFile $file */
         $file = $data['file'];
+
+        Job::closeExpiredActiveJobs();
+        $appliedJobTitle = trim((string) ($data['appliedJobTitle'] ?? ''));
+        if ($appliedJobTitle !== '') {
+            $appliedJob = Job::query()
+                ->whereRaw('LOWER(title) = ?', [Str::lower($appliedJobTitle)])
+                ->orderByDesc('id')
+                ->first();
+
+            if ($appliedJob && Str::lower((string) $appliedJob->status) !== 'active') {
+                return response()->json([
+                    'message' => 'This job posting is already closed.',
+                ], 422);
+            }
+        }
+
         $stored = $this->storeFile($file, 'uploads/resumes');
         $supportingText = $this->extractSupportingTextFromRequest($request);
         try {

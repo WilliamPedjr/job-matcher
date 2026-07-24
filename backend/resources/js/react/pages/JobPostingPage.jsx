@@ -5,6 +5,7 @@ import CustomDropdown from '../components/CustomDropdown'
 
 function JobPostingPage({ uploads = [], isEmployer = false, isJobSeeker = false, jobSeekerId, jobSeekerResume, onViewApplicant, onDeleteApplicant, onJobsChanged, onViewJob }) {
   const APPLICATION_MATCH_BONUS_PERCENT = 10
+  const JOB_FORM_DRAFT_KEY = "lnu-hire-job-form-draft"
   const [jobs, setJobs] = useState([])
   const [templates, setTemplates] = useState([])
   const [searchTerm, setSearchTerm] = useState("")
@@ -18,11 +19,15 @@ function JobPostingPage({ uploads = [], isEmployer = false, isJobSeeker = false,
   const [newJobTitle, setNewJobTitle] = useState("")
   const [newJobDescription, setNewJobDescription] = useState("")
   const [newJobDepartment, setNewJobDepartment] = useState("")
+  const [newJobItemNo, setNewJobItemNo] = useState("")
+  const [newJobLocation, setNewJobLocation] = useState("Leyte Normal University")
   const [isJobPositionOpen, setIsJobPositionOpen] = useState(false)
   const [expandedDepartments, setExpandedDepartments] = useState({})
   const defaultJobLocation = "Leyte Normal University"
   const [newJobType, setNewJobType] = useState("Full-time")
   const [newJobStatus, setNewJobStatus] = useState("active")
+  const [newJobDeadline, setNewJobDeadline] = useState("")
+  const [newJobEligibility, setNewJobEligibility] = useState("Open to all qualified applicants")
   const [newRequiredSkills, setNewRequiredSkills] = useState("")
   const [newMinimumEducation, setNewMinimumEducation] = useState("Bachelor's Degree")
   const [newMinimumExperienceYears, setNewMinimumExperienceYears] = useState("0")
@@ -37,6 +42,8 @@ function JobPostingPage({ uploads = [], isEmployer = false, isJobSeeker = false,
   const [isSkillsOpen, setIsSkillsOpen] = useState(false)
   const [skillDraft, setSkillDraft] = useState("")
   const [confirmDeleteJobId, setConfirmDeleteJobId] = useState(null)
+  const [hasSavedJobDraft, setHasSavedJobDraft] = useState(false)
+  const [isUsingSavedJobDraft, setIsUsingSavedJobDraft] = useState(false)
   const [jobMatches, setJobMatches] = useState({})
   const [jobMatchStatus, setJobMatchStatus] = useState("idle")
   const [jobSkillCatalog, setJobSkillCatalog] = useState([])
@@ -53,6 +60,7 @@ function JobPostingPage({ uploads = [], isEmployer = false, isJobSeeker = false,
   const jobPositionRef = useRef(null)
   const skillsPickerRef = useRef(null)
   const jobApplicantActionsMenuRef = useRef(null)
+  const skipTemplateApplyRef = useRef(false)
 
   useEffect(() => {
     if (!createJobStatus) return
@@ -68,6 +76,14 @@ function JobPostingPage({ uploads = [], isEmployer = false, isJobSeeker = false,
       if (deleteToastTimerRef.current) {
         window.clearTimeout(deleteToastTimerRef.current)
       }
+    }
+  }, [])
+
+  useEffect(() => {
+    try {
+      setHasSavedJobDraft(Boolean(window.localStorage.getItem(JOB_FORM_DRAFT_KEY)))
+    } catch {
+      setHasSavedJobDraft(false)
     }
   }, [])
 
@@ -389,7 +405,7 @@ function JobPostingPage({ uploads = [], isEmployer = false, isJobSeeker = false,
       }
 
       if (!query) return true
-      const haystack = `${job.title || ""} ${job.description || ""} ${job.department || ""} ${job.location || ""}`.toLowerCase()
+      const haystack = `${job.title || ""} ${job.description || ""} ${job.department || ""} ${job.itemNo || job.item_no || ""} ${job.location || ""} ${job.deadline || ""} ${job.eligibility || ""}`.toLowerCase()
       return haystack.includes(query)
     })
   }, [jobs, searchTerm, statusFilter, isJobSeeker, matchFilter, jobMatches])
@@ -437,6 +453,7 @@ function JobPostingPage({ uploads = [], isEmployer = false, isJobSeeker = false,
     const tokens = [
       ...jobs.map((job) => String(job.title || "").trim()),
       ...jobs.map((job) => String(job.department || "").trim()),
+      ...jobs.map((job) => String(job.itemNo || job.item_no || "").trim()),
       ...jobs.map((job) => String(job.location || "").trim())
     ].filter(Boolean)
     return Array.from(new Set(tokens))
@@ -611,7 +628,11 @@ function JobPostingPage({ uploads = [], isEmployer = false, isJobSeeker = false,
     if (!selected) return
     setNewJobDescription(selected.description || "")
     setNewJobDepartment(selected.department || "")
+    setNewJobItemNo(selected.itemNo || selected.item_no || "")
+    setNewJobLocation(selected.location || defaultJobLocation)
     setNewJobType(selected.type || "Full-time")
+    setNewJobDeadline(selected.deadline || "")
+    setNewJobEligibility(selected.eligibility || "Open to all qualified applicants")
     setNewRequiredSkills(selected.requiredSkills || "")
     setNewMinimumEducation(selected.minimumEducation || "")
     setNewMinimumExperienceYears(String(selected.minimumExperienceYears ?? 0))
@@ -623,7 +644,11 @@ function JobPostingPage({ uploads = [], isEmployer = false, isJobSeeker = false,
     if (!record) return
     setNewJobDescription(record.description || "")
     setNewJobDepartment(record.department || "")
+    setNewJobItemNo(record.itemNo || record.item_no || "")
+    setNewJobLocation(record.location || defaultJobLocation)
     setNewJobType(record.type || "Full-time")
+    setNewJobDeadline(record.deadline || "")
+    setNewJobEligibility(record.eligibility || "Open to all qualified applicants")
     setNewRequiredSkills(record.requiredSkills || "")
     setNewMinimumEducation(record.minimumEducation || "")
     setNewMinimumExperienceYears(String(record.minimumExperienceYears ?? 0))
@@ -635,6 +660,10 @@ function JobPostingPage({ uploads = [], isEmployer = false, isJobSeeker = false,
     const key = newJobTitle.trim().toLowerCase()
     if (!key) return
     if (isEditingJob) return
+    if (skipTemplateApplyRef.current) {
+      skipTemplateApplyRef.current = false
+      return
+    }
     const matched = templateByTitle.get(key)
     if (!matched) return
     if (matched.source === "template") {
@@ -687,6 +716,18 @@ function JobPostingPage({ uploads = [], isEmployer = false, isJobSeeker = false,
     { value: "all", label: "All" },
     { value: "match", label: "Match" },
     { value: "not-match", label: "Not match" }
+  ]
+
+  const eligibilityOptions = [
+    { value: "Open to all qualified applicants", label: "Open to all qualified applicants" },
+    { value: "Internal applicants only", label: "Internal applicants only" },
+    { value: "External applicants only", label: "External applicants only" },
+    { value: "Licensed applicants only", label: "Licensed applicants only" }
+  ]
+
+  const jobStatusOptions = [
+    { value: "active", label: "Active" },
+    { value: "closed", label: "Closed" }
   ]
 
   const updateJobStatus = async (jobId, status) => {
@@ -755,9 +796,13 @@ function JobPostingPage({ uploads = [], isEmployer = false, isJobSeeker = false,
     setNewJobTitle("")
     setNewJobDescription("")
     setNewJobDepartment("")
+    setNewJobItemNo("")
+    setNewJobLocation(defaultJobLocation)
     setExpandedDepartments({})
     setNewJobType("Full-time")
     setNewJobStatus("active")
+    setNewJobDeadline("")
+    setNewJobEligibility("Open to all qualified applicants")
     setNewRequiredSkills("")
     setNewMinimumEducation("")
     setNewMinimumExperienceYears("0")
@@ -767,15 +812,132 @@ function JobPostingPage({ uploads = [], isEmployer = false, isJobSeeker = false,
     setIsSkillsOpen(false)
   }
 
+  const getJobFormDraftPayload = () => ({
+    title: newJobTitle,
+    description: newJobDescription,
+    department: newJobDepartment,
+    itemNo: newJobItemNo,
+    location: newJobLocation,
+    type: newJobType,
+    status: newJobStatus,
+    deadline: newJobDeadline,
+    eligibility: newJobEligibility,
+    requiredSkills: newRequiredSkills,
+    minimumEducation: newMinimumEducation,
+    minimumExperienceYears: newMinimumExperienceYears,
+    salaryMin: newSalaryMin,
+    salaryMax: newSalaryMax,
+    savedAt: new Date().toISOString()
+  })
+
+  const jobFormHasDraftData = (draft = getJobFormDraftPayload()) => {
+    return [
+      draft.title,
+      draft.description,
+      draft.department,
+      draft.itemNo,
+      draft.deadline,
+      draft.requiredSkills,
+      draft.minimumEducation,
+      draft.minimumExperienceYears !== "0" ? draft.minimumExperienceYears : "",
+      draft.salaryMin,
+      draft.salaryMax
+    ].some((value) => String(value ?? "").trim())
+  }
+
+  const saveJobFormDraft = () => {
+    if (isEditingJob) return
+    const draft = getJobFormDraftPayload()
+    try {
+      if (jobFormHasDraftData(draft)) {
+        window.localStorage.setItem(JOB_FORM_DRAFT_KEY, JSON.stringify(draft))
+        setHasSavedJobDraft(true)
+        return
+      }
+      window.localStorage.removeItem(JOB_FORM_DRAFT_KEY)
+      setHasSavedJobDraft(false)
+      setIsUsingSavedJobDraft(false)
+    } catch {
+      // Local storage can be unavailable in private browser modes.
+    }
+  }
+
+  const clearSavedJobDraft = () => {
+    try {
+      window.localStorage.removeItem(JOB_FORM_DRAFT_KEY)
+    } catch {
+      // Local storage can be unavailable in private browser modes.
+    }
+    setHasSavedJobDraft(false)
+    setIsUsingSavedJobDraft(false)
+  }
+
+  const applyJobFormDraft = (draft) => {
+    skipTemplateApplyRef.current = Boolean(String(draft?.title || "").trim())
+    setNewJobTitle(draft?.title || "")
+    setNewJobDescription(draft?.description || "")
+    setNewJobDepartment(draft?.department || "")
+    setNewJobItemNo(draft?.itemNo || "")
+    setNewJobLocation(draft?.location || defaultJobLocation)
+    setExpandedDepartments({})
+    setNewJobType(draft?.type || "Full-time")
+    setNewJobStatus(draft?.status === "closed" ? "closed" : "active")
+    setNewJobDeadline(draft?.deadline || "")
+    setNewJobEligibility(draft?.eligibility || "Open to all qualified applicants")
+    setNewRequiredSkills(draft?.requiredSkills || "")
+    setNewMinimumEducation(draft?.minimumEducation || "")
+    setNewMinimumExperienceYears(String(draft?.minimumExperienceYears ?? 0))
+    setNewSalaryMin(draft?.salaryMin != null ? String(draft.salaryMin) : "")
+    setNewSalaryMax(draft?.salaryMax != null ? String(draft.salaryMax) : "")
+    setSkillDraft("")
+    setIsSkillsOpen(false)
+  }
+
+  const loadSavedJobDraft = () => {
+    try {
+      const rawDraft = window.localStorage.getItem(JOB_FORM_DRAFT_KEY)
+      if (!rawDraft) return false
+      applyJobFormDraft(JSON.parse(rawDraft))
+      setHasSavedJobDraft(true)
+      setIsUsingSavedJobDraft(true)
+      return true
+    } catch {
+      clearSavedJobDraft()
+      return false
+    }
+  }
+
+  const startNewJobForm = () => {
+    clearSavedJobDraft()
+    resetJobForm()
+    setEditingJobId(null)
+    setIsCreateModalOpen(true)
+  }
+
+  const openCreateJobModal = () => {
+    if (isJobSeeker) return
+    setEditingJobId(null)
+    const didLoadDraft = loadSavedJobDraft()
+    if (!didLoadDraft) {
+      resetJobForm()
+    }
+    setIsCreateModalOpen(true)
+  }
+
   const openEditJobModal = (job) => {
     if (!job?.id) return
+    setIsUsingSavedJobDraft(false)
     setEditingJobId(job.id)
     setNewJobTitle(job.title || "")
     setNewJobDescription(job.description || "")
     setNewJobDepartment(job.department || "")
+    setNewJobItemNo(job.itemNo || job.item_no || "")
+    setNewJobLocation(job.location || defaultJobLocation)
     setExpandedDepartments({})
     setNewJobType(job.type || "Full-time")
     setNewJobStatus(job.status || "active")
+    setNewJobDeadline(job.deadline || "")
+    setNewJobEligibility(job.eligibility || "Open to all qualified applicants")
     setNewRequiredSkills(job.requiredSkills || "")
     setNewMinimumEducation(job.minimumEducation || "")
     setNewMinimumExperienceYears(String(job.minimumExperienceYears ?? 0))
@@ -786,9 +948,13 @@ function JobPostingPage({ uploads = [], isEmployer = false, isJobSeeker = false,
     setIsCreateModalOpen(true)
   }
 
-  const closeCreateModal = () => {
+  const closeCreateModal = ({ saveDraft = true } = {}) => {
+    if (saveDraft) {
+      saveJobFormDraft()
+    }
     setIsCreateModalOpen(false)
     setEditingJobId(null)
+    setIsUsingSavedJobDraft(false)
     setSkillDraft("")
     setIsSkillsOpen(false)
   }
@@ -806,8 +972,12 @@ function JobPostingPage({ uploads = [], isEmployer = false, isJobSeeker = false,
       !newJobTitle.trim() ||
       !newJobDescription.trim() ||
       !newJobDepartment.trim() ||
+      !newJobItemNo.trim() ||
+      !newJobLocation.trim() ||
       !newJobType.trim() ||
       !newJobStatus.trim() ||
+      !newJobDeadline.trim() ||
+      !newJobEligibility.trim() ||
       !newRequiredSkills.trim() ||
       !newMinimumEducation.trim() ||
       newMinimumExperienceYears === "" ||
@@ -820,7 +990,7 @@ function JobPostingPage({ uploads = [], isEmployer = false, isJobSeeker = false,
       return
     }
 
-    const minExp = Number(newMinimumExperienceYears)
+    const minExp = newMinimumExperienceYears === "" ? 0 : Number(newMinimumExperienceYears)
     const parsedSalaryMin = Number(newSalaryMin)
     const parsedSalaryMax = Number(newSalaryMax)
 
@@ -829,7 +999,7 @@ function JobPostingPage({ uploads = [], isEmployer = false, isJobSeeker = false,
       return
     }
 
-    if (Number.isNaN(parsedSalaryMin) || Number.isNaN(parsedSalaryMax) || parsedSalaryMin < 0 || parsedSalaryMax < 0) {
+    if (Number.isNaN(parsedSalaryMin) || parsedSalaryMin < 0 || Number.isNaN(parsedSalaryMax) || parsedSalaryMax < 0) {
       showCreateJobNotice("fail", "Salary grade and salary amount must be valid non-negative numbers.")
       return
     }
@@ -845,9 +1015,12 @@ function JobPostingPage({ uploads = [], isEmployer = false, isJobSeeker = false,
           title: newJobTitle.trim(),
           description: newJobDescription.trim(),
           department: newJobDepartment.trim(),
-          location: defaultJobLocation,
+          itemNo: newJobItemNo.trim(),
+          location: newJobLocation.trim(),
           type: newJobType.trim(),
           status: newJobStatus,
+          deadline: newJobDeadline || null,
+          eligibility: newJobEligibility,
           requiredSkills: newRequiredSkills.trim(),
           minimumEducation: newMinimumEducation,
           minimumExperienceYears: minExp,
@@ -861,7 +1034,8 @@ function JobPostingPage({ uploads = [], isEmployer = false, isJobSeeker = false,
         throw new Error(payload?.message || "Failed to create job post.")
       }
 
-      closeCreateModal()
+      clearSavedJobDraft()
+      closeCreateModal({ saveDraft: false })
       resetJobForm()
       showCreateJobNotice("success", "Job post created successfully.")
       await fetchJobs()
@@ -879,8 +1053,12 @@ function JobPostingPage({ uploads = [], isEmployer = false, isJobSeeker = false,
       !newJobTitle.trim() ||
       !newJobDescription.trim() ||
       !newJobDepartment.trim() ||
+      !newJobItemNo.trim() ||
+      !newJobLocation.trim() ||
       !newJobType.trim() ||
       !newJobStatus.trim() ||
+      !newJobDeadline.trim() ||
+      !newJobEligibility.trim() ||
       !newRequiredSkills.trim() ||
       !newMinimumEducation.trim() ||
       newMinimumExperienceYears === "" ||
@@ -893,7 +1071,7 @@ function JobPostingPage({ uploads = [], isEmployer = false, isJobSeeker = false,
       return
     }
 
-    const minExp = Number(newMinimumExperienceYears)
+    const minExp = newMinimumExperienceYears === "" ? 0 : Number(newMinimumExperienceYears)
     const parsedSalaryMin = Number(newSalaryMin)
     const parsedSalaryMax = Number(newSalaryMax)
 
@@ -902,7 +1080,7 @@ function JobPostingPage({ uploads = [], isEmployer = false, isJobSeeker = false,
       return
     }
 
-    if (Number.isNaN(parsedSalaryMin) || Number.isNaN(parsedSalaryMax) || parsedSalaryMin < 0 || parsedSalaryMax < 0) {
+    if (Number.isNaN(parsedSalaryMin) || parsedSalaryMin < 0 || Number.isNaN(parsedSalaryMax) || parsedSalaryMax < 0) {
       showCreateJobNotice("fail", "Salary grade and salary amount must be valid non-negative numbers.")
       return
     }
@@ -918,9 +1096,12 @@ function JobPostingPage({ uploads = [], isEmployer = false, isJobSeeker = false,
           title: newJobTitle.trim(),
           description: newJobDescription.trim(),
           department: newJobDepartment.trim(),
-          location: defaultJobLocation,
+          itemNo: newJobItemNo.trim(),
+          location: newJobLocation.trim(),
           type: newJobType.trim(),
           status: newJobStatus,
+          deadline: newJobDeadline || null,
+          eligibility: newJobEligibility,
           requiredSkills: newRequiredSkills.trim(),
           minimumEducation: newMinimumEducation,
           minimumExperienceYears: minExp,
@@ -934,7 +1115,7 @@ function JobPostingPage({ uploads = [], isEmployer = false, isJobSeeker = false,
         throw new Error(payload?.message || "Failed to update job post.")
       }
 
-      closeCreateModal()
+      closeCreateModal({ saveDraft: false })
       resetJobForm()
       showCreateJobNotice("success", "Job post updated successfully.")
       await fetchJobs()
@@ -958,11 +1139,7 @@ function JobPostingPage({ uploads = [], isEmployer = false, isJobSeeker = false,
           <button
             type="button"
             className="btn jobs-create-btn"
-            onClick={() => {
-              if (isJobSeeker) return
-              setEditingJobId(null)
-              setIsCreateModalOpen(true)
-            }}
+            onClick={openCreateJobModal}
           >
             + Create Job
           </button>
@@ -1131,8 +1308,11 @@ function JobPostingPage({ uploads = [], isEmployer = false, isJobSeeker = false,
               </div>
 
               <div className="job-card-chips">
+                {job.itemNo || job.item_no ? <span className="job-chip">Item {job.itemNo || job.item_no}</span> : null}
                 <span className="job-chip">{job.location || "-"}</span>
                 <span className="job-chip chip-outline">{job.type || "-"}</span>
+                {job.deadline ? <span className="job-chip chip-outline">Deadline {new Date(job.deadline).toLocaleDateString(undefined, { month: "short", day: "numeric", year: "numeric" })}</span> : null}
+                {job.eligibility ? <span className="job-chip chip-outline">{job.eligibility}</span> : null}
                 {job.source === "template" && <span className="job-chip chip-muted">template</span>}
                 {isJobSeeker && (
                   (() => {
@@ -1385,9 +1565,22 @@ function JobPostingPage({ uploads = [], isEmployer = false, isJobSeeker = false,
             <div className="modal-header create-job-header">
               <div>
                 <h3>{isEditingJob ? "Edit Job Details" : "Job Details"}</h3>
-                <p className="create-job-subtitle">Basic information about the position</p>
+                <p className="create-job-subtitle">
+                  {isUsingSavedJobDraft ? "Continuing your saved draft" : "Basic information about the position"}
+                </p>
               </div>
-              <button type="button" className="close-x" onClick={closeCreateModal}>×</button>
+              <div className="create-job-header-actions">
+                {!isEditingJob && hasSavedJobDraft && (
+                  <button
+                    type="button"
+                    className="create-job-new-btn"
+                    onClick={startNewJobForm}
+                  >
+                    New Job
+                  </button>
+                )}
+                <button type="button" className="close-x" onClick={closeCreateModal}>×</button>
+              </div>
             </div>
             {createJobStatus && (
               <div className={`create-job-notice create-job-notice-${createJobStatus === "success" ? "success" : "fail"}`}>
@@ -1408,7 +1601,7 @@ function JobPostingPage({ uploads = [], isEmployer = false, isJobSeeker = false,
 
                   <div className="modal-grid">
                     <div className="field-group">
-                      <label>Job Position</label>
+                      <label>Job Title</label>
                       <div
                         ref={jobPositionRef}
                         className="autocomplete"
@@ -1424,7 +1617,7 @@ function JobPostingPage({ uploads = [], isEmployer = false, isJobSeeker = false,
                               setIsJobPositionOpen(true)
                             }}
                             onFocus={() => setIsJobPositionOpen(true)}
-                            placeholder="Select or type job position"
+                            placeholder="Select or type job title"
                           />
                           <span className="dropdown-caret">▾</span>
                         </div>
@@ -1476,7 +1669,30 @@ function JobPostingPage({ uploads = [], isEmployer = false, isJobSeeker = false,
                         className="input"
                         type="text"
                         value={newJobDepartment}
-                        disabled
+                        onChange={(e) => setNewJobDepartment(e.target.value)}
+                      />
+                    </div>
+                  </div>
+
+                  <div className="modal-grid">
+                    <div className="field-group">
+                      <label>Item No.</label>
+                      <input
+                        className="input"
+                        type="text"
+                        value={newJobItemNo}
+                        onChange={(e) => setNewJobItemNo(e.target.value)}
+                      />
+                    </div>
+
+                    <div className="field-group">
+                      <label>Location</label>
+                      <input
+                        className="input create-job-readonly"
+                        type="text"
+                        value={newJobLocation}
+                        readOnly
+                        aria-readonly="true"
                       />
                     </div>
                   </div>
@@ -1499,29 +1715,38 @@ function JobPostingPage({ uploads = [], isEmployer = false, isJobSeeker = false,
                     </div>
 
                     <div className="field-group">
-                      <label>Location</label>
+                      <label>Deadline</label>
                       <input
-                        className="input create-job-readonly"
-                        type="text"
-                        value={defaultJobLocation || "Leyte Normal University"}
-                        readOnly
-                        aria-readonly="true"
+                        className="input"
+                        type="date"
+                        value={newJobDeadline}
+                        onChange={(e) => setNewJobDeadline(e.target.value)}
                       />
                     </div>
                   </div>
 
-                  <div className="field-group create-job-status-wrap">
-                    <label>Status</label>
-                    <CustomDropdown
-                      className="input-dropdown create-job-status"
-                      options={[
-                        { value: "active", label: "Active" },
-                        { value: "closed", label: "Closed" }
-                      ]}
-                      value={newJobStatus}
-                      onChange={setNewJobStatus}
-                      placeholder="Active"
-                    />
+                  <div className="modal-grid">
+                    <div className="field-group create-job-status-wrap">
+                      <label>Status</label>
+                      <CustomDropdown
+                        className="input-dropdown create-job-status"
+                        options={jobStatusOptions}
+                        value={newJobStatus}
+                        onChange={setNewJobStatus}
+                        placeholder="Active"
+                      />
+                    </div>
+
+                    <div className="field-group">
+                      <label>Eligibility</label>
+                      <CustomDropdown
+                        className="input-dropdown"
+                        options={eligibilityOptions}
+                        value={newJobEligibility}
+                        onChange={setNewJobEligibility}
+                        placeholder="Select eligibility"
+                      />
+                    </div>
                   </div>
                 </section>
 

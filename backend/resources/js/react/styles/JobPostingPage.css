@@ -1303,6 +1303,26 @@ optgroup {
   margin: -6px -6px 18px;
 }
 
+.create-job-header-actions {
+  display: inline-flex;
+  align-items: center;
+  gap: 10px;
+}
+
+.create-job-new-btn {
+  border: 1px solid rgba(255, 255, 255, 0.45);
+  background: rgba(255, 255, 255, 0.12);
+  color: #ffffff;
+  border-radius: 8px;
+  padding: 8px 12px;
+  font-weight: 800;
+  cursor: pointer;
+}
+
+.create-job-new-btn:hover {
+  background: rgba(255, 255, 255, 0.2);
+}
+
 .create-job-header h3 {
   color: #ffffff;
 }
@@ -1740,7 +1760,10 @@ optgroup {
 .job-chip.chip-outline {
   background: #f8fbff;
   border: 1px solid #c7d2fe;
+  border-radius: 999px;
   color: #1e3a8a;
+  padding: 8px 14px;
+  font-weight: 800;
 }
 
 .job-chip.chip-muted {
@@ -1781,7 +1804,7 @@ optgroup {
   gap: 8px;
   padding: 14px 16px;
   border-radius: 16px;
-  background: linear-gradient(180deg, #f8fbff 0%, #eef4ff 100%);
+  background: #eef4ff;
   border: 1px solid #d9e4ff;
 }
 

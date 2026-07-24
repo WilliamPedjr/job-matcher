@@ -12,10 +12,13 @@ import JobViewPage from './pages/JobViewPage'
 import ProfilePage from './pages/ProfilePage'
 import UsersPage from './pages/UsersPage'
 import RegisterPage from './pages/RegisterPage'
+import RatingsPage from './pages/RatingsPage'
+import HelpPage from './pages/HelpPage'
 import CustomDropdown from './components/CustomDropdown'
 import profileIcon from './assets/circle-user-solid-full.svg'
 import bellIcon from './assets/bell-solid-full.svg'
 import brandLogo from './assets/Logo.png'
+import './layouts/SidebarLayout.css'
 import html2canvas from "html2canvas"
 
 function parseSkills(skillsText) {
@@ -607,7 +610,7 @@ function App() {
 
   useEffect(() => {
     if (!isAuthenticated) return
-    if (userRole === "jobseeker" && activePage !== "jobs" && activePage !== "profile" && activePage !== "dashboard" && activePage !== "job-view") {
+    if (userRole === "jobseeker" && activePage !== "jobs" && activePage !== "profile" && activePage !== "dashboard" && activePage !== "job-view" && activePage !== "help") {
       setActivePage("jobs")
     }
   }, [activePage, isAuthenticated, userRole])
@@ -673,6 +676,7 @@ function App() {
           payload?.errors?.identifier?.[0] ||
           payload?.errors?.email?.[0] ||
           payload?.errors?.password?.[0]
+        setLoginPassword("")
         throw new Error(payload?.message || firstError || "Invalid email or password.")
       }
       const payload = await response.json().catch(() => null)
@@ -1580,6 +1584,12 @@ function App() {
         />
       )
     }
+    if (activePage === "ratings" && !isJobSeeker) {
+      return <RatingsPage />
+    }
+    if (activePage === "help") {
+      return <HelpPage />
+    }
     if (isLoadingUploads && !isJobSeeker) {
       return <p>Loading uploads...</p>
     }
@@ -1671,36 +1681,94 @@ function App() {
             className={`topnav-link ${activePage === "dashboard" ? "active" : ""}`}
             onClick={() => handleTopNav("dashboard")}
           >
-            Dashboard
+            <span className="topnav-icon topnav-icon-dashboard" aria-hidden="true" />
+            <span>Dashboard</span>
           </button>
           <button
             type="button"
             className={`topnav-link ${activePage === "jobs" ? "active" : ""}`}
             onClick={() => handleTopNav("jobs")}
           >
-            Jobs
+            <span className="topnav-icon topnav-icon-jobs" aria-hidden="true" />
+            <span>Jobs</span>
           </button>
           {!isJobSeeker && (
             <button
               type="button"
               className={`topnav-link ${activePage === "applicants" ? "active" : ""}`}
-              onClick={() => handleTopNav("applicants")}
+              onClick={() => {
+                setShowTopApplicants(false)
+                handleTopNav("applicants")
+              }}
             >
-              Applicant
+              <span className="topnav-icon topnav-icon-applicants" aria-hidden="true" />
+              <span>Applicants</span>
             </button>
           )}
-          {(isAdmin || isEmployer) && (
+          {!isJobSeeker && (
+            <button
+              type="button"
+              className={`topnav-link ${activePage === "ratings" ? "active" : ""}`}
+              onClick={() => handleTopNav("ratings")}
+            >
+              <span className="topnav-icon topnav-icon-ratings" aria-hidden="true" />
+              <span>Ratings / Evaluation</span>
+            </button>
+          )}
+          <button
+            type="button"
+            className={`topnav-link ${activePage === "profile" ? "active" : ""}`}
+            onClick={() => handleTopNav("profile")}
+          >
+            <span className="topnav-icon topnav-icon-profile" aria-hidden="true" />
+            <span>Profile</span>
+          </button>
+          <span className="topnav-section-label">Additional Settings</span>
+          {isAdmin && (
             <button
               type="button"
               className={`topnav-link ${activePage === "users" ? "active" : ""}`}
               onClick={() => handleTopNav("users")}
             >
-              Users
+              <span className="topnav-icon topnav-icon-users" aria-hidden="true" />
+              <span>Users</span>
             </button>
           )}
+          {isEmployer && (
+            <button
+              type="button"
+              className={`topnav-link ${activePage === "users" ? "active" : ""}`}
+              onClick={() => handleTopNav("users")}
+            >
+              <span className="topnav-icon topnav-icon-settings" aria-hidden="true" />
+              <span>Account Settings</span>
+            </button>
+          )}
+          <button
+            type="button"
+            className={`topnav-link ${activePage === "help" ? "active" : ""}`}
+            onClick={() => handleTopNav("help")}
+          >
+            <span className="topnav-icon topnav-icon-help" aria-hidden="true" />
+            <span>Help</span>
+          </button>
+          <div className="notifications-menu sidebar-notifications" onClick={(e) => e.stopPropagation()}>
+            <button
+              type="button"
+              className={`topnav-link sidebar-notification-link ${hasUnreadNotifications ? "has-unread" : ""}`}
+              title="Notifications"
+              onClick={(e) => {
+                e.stopPropagation()
+                setIsNotificationsOpen((prev) => !prev)
+              }}
+            >
+              <span className="topnav-icon topnav-icon-notifications" aria-hidden="true" />
+              <span>Notifications</span>
+            </button>
+          </div>
         </nav>
         <div className="topbar-right">
-          <div className="notifications-menu" onClick={(e) => e.stopPropagation()}>
+          <div className="notifications-menu topbar-notifications" onClick={(e) => e.stopPropagation()}>
             <button
               type="button"
               className={`topbar-bell ${hasUnreadNotifications ? "has-unread" : ""}`}
@@ -1930,36 +1998,21 @@ function App() {
           <div className="profile-menu" onClick={(e) => e.stopPropagation()}>
             <button
               type="button"
-              className="topbar-profile"
-              title="Profile"
+              className="topbar-profile sidebar-logout"
+              title="Logout"
               onClick={(e) => {
                 e.stopPropagation()
-                setIsProfileMenuOpen((prev) => !prev)
+                handleLogout()
               }}
             >
-              <img src={profileIcon} alt="Profile" className="topbar-profile-icon" />
-              <span>
-                {userRole === "admin" ? "HR Personnel" : userRole === "jobseeker" ? "Job Seeker" : "HR Personnel"}
+              <span className="sidebar-logout-icon" aria-hidden="true">↗</span>
+              <span className="sidebar-logout-copy">
+                <span className="sidebar-logout-role">
+                  {userRole === "admin" ? "HR Personnel" : userRole === "jobseeker" ? "Job Seeker" : "Employer"}
+                </span>
+                <span className="sidebar-logout-label">Logout</span>
               </span>
-              <span className="profile-caret">▾</span>
             </button>
-            {isProfileMenuOpen && (
-              <div className="profile-dropdown">
-                <button
-                  type="button"
-                  className="profile-dropdown-item"
-                  onClick={() => {
-                    setActivePage("profile")
-                    setIsProfileMenuOpen(false)
-                  }}
-                >
-                  Profile
-                </button>
-                <button type="button" className="profile-dropdown-item" onClick={handleLogout}>
-                  Logout
-                </button>
-              </div>
-            )}
           </div>
         </div>
       </header>

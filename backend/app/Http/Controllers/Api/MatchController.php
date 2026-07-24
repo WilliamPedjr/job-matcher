@@ -35,6 +35,8 @@ class MatchController extends Controller
                 ''
             )['resume_text'];
 
+            Job::closeExpiredActiveJobs();
+
             $jobs = Job::query()
                 ->where('status', 'active')
                 ->orderBy('id')

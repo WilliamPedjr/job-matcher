@@ -56,23 +56,43 @@ class JobSeekerController extends Controller
         $jobSeeker = JobSeeker::findOrFail($id);
         $data = $request->validate([
             'full_name' => ['nullable', 'string', 'max:255'],
+            'fullName' => ['nullable', 'string', 'max:255'],
             'email' => ['nullable', 'email', 'max:255'],
             'username' => ['nullable', 'string', 'max:255'],
             'phone' => ['nullable', 'string', 'max:30'],
+            'status' => ['nullable', 'string', 'max:255'],
+            'address' => ['nullable', 'string', 'max:255'],
+            'about_text' => ['nullable', 'string'],
+            'aboutText' => ['nullable', 'string'],
             'password' => ['nullable', 'string', 'min:8', 'max:72'],
         ]);
 
-        if (array_key_exists('full_name', $data)) {
-            $jobSeeker->full_name = $data['full_name'];
+        if (array_key_exists('full_name', $data) || array_key_exists('fullName', $data)) {
+            $fullName = $data['full_name'] ?? $data['fullName'];
+            if ($fullName !== null && trim((string) $fullName) !== '') {
+                $jobSeeker->full_name = trim((string) $fullName);
+            }
         }
         if (array_key_exists('email', $data)) {
-            $jobSeeker->email = Str::lower(trim((string) $data['email']));
+            $email = $data['email'];
+            if ($email !== null && trim((string) $email) !== '') {
+                $jobSeeker->email = Str::lower(trim((string) $email));
+            }
         }
         if (array_key_exists('username', $data)) {
             $jobSeeker->username = $data['username'];
         }
         if (array_key_exists('phone', $data)) {
             $jobSeeker->phone = $data['phone'];
+        }
+        if (array_key_exists('status', $data)) {
+            $jobSeeker->status = $data['status'];
+        }
+        if (array_key_exists('address', $data)) {
+            $jobSeeker->address = $data['address'];
+        }
+        if (array_key_exists('about_text', $data) || array_key_exists('aboutText', $data)) {
+            $jobSeeker->about_text = $data['about_text'] ?? $data['aboutText'];
         }
         if (!empty($data['password'])) {
             $jobSeeker->password = Hash::make($data['password']);
@@ -140,6 +160,10 @@ class JobSeekerController extends Controller
 
         $existing = Upload::query()
             ->where('job_seeker_id', $jobSeeker->id)
+            ->where(function ($query) {
+                $query->whereNull('applied_job_title')
+                    ->orWhere('applied_job_title', '');
+            })
             ->orderByDesc('uploaded_at')
             ->orderByDesc('id')
             ->first();
@@ -466,6 +490,10 @@ class JobSeekerController extends Controller
     {
         return Upload::query()
             ->where('job_seeker_id', $jobSeekerId)
+            ->where(function ($query) {
+                $query->whereNull('applied_job_title')
+                    ->orWhere('applied_job_title', '');
+            })
             ->orderByDesc('uploaded_at')
             ->orderByDesc('id')
             ->first();
@@ -480,6 +508,14 @@ class JobSeekerController extends Controller
             'email' => $jobSeeker->email,
             'username' => $jobSeeker->username,
             'phone' => $jobSeeker->phone,
+            'status' => $jobSeeker->status,
+            'address' => $jobSeeker->address,
+            'about_text' => $jobSeeker->about_text,
+            'aboutText' => $jobSeeker->about_text,
+            'created_at' => $jobSeeker->created_at?->toISOString(),
+            'createdAt' => $jobSeeker->created_at?->toISOString(),
+            'updated_at' => $jobSeeker->updated_at?->toISOString(),
+            'updatedAt' => $jobSeeker->updated_at?->toISOString(),
         ];
 
         if ($includeMeta) {

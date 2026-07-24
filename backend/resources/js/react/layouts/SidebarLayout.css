@@ -1,0 +1,310 @@
+:root {
+  --sidebar-width: 265px;
+}
+
+.page {
+  padding: 28px 24px 32px calc(var(--sidebar-width) + 24px) !important;
+}
+
+.page > .topbar {
+  position: fixed !important;
+  inset: 0 auto 0 0 !important;
+  z-index: 60 !important;
+  width: var(--sidebar-width) !important;
+  height: 100vh !important;
+  margin: 0 !important;
+  padding: 18px 16px !important;
+  border-right: 1px solid #d9dee9 !important;
+  border-bottom: none !important;
+  background:
+    radial-gradient(circle at 0 0, rgba(58, 142, 255, 0.12), transparent 28%),
+    linear-gradient(180deg, #f8f9fd 0%, #f4f6fb 48%, #eef2f8 100%) !important;
+  box-shadow: 8px 0 28px rgba(15, 23, 42, 0.06) !important;
+  display: flex !important;
+  flex-direction: column !important;
+  align-items: stretch !important;
+  justify-content: flex-start !important;
+  gap: 20px !important;
+  overflow: visible !important;
+}
+
+.page > .topbar .brand {
+  width: 100% !important;
+  margin: 0 !important;
+  padding: 0 2px !important;
+  justify-content: flex-start !important;
+}
+
+.page > .topbar .topnav {
+  position: static !important;
+  left: auto !important;
+  transform: none !important;
+  width: 100% !important;
+  display: flex !important;
+  flex-direction: column !important;
+  align-items: stretch !important;
+  justify-content: flex-start !important;
+  gap: 8px !important;
+}
+
+.page > .topbar .topnav-link {
+  width: 100% !important;
+  gap: 0 !important;
+}
+
+.page > .topbar .topnav-icon {
+  display: none !important;
+}
+
+.page > .topbar .topbar-right {
+  width: 100% !important;
+  margin: auto 0 0 !important;
+  flex-direction: column !important;
+  align-items: stretch !important;
+}
+
+.page > .topbar .sidebar-notifications {
+  display: none !important;
+}
+
+.page > .topbar .topbar-notifications {
+  position: fixed !important;
+  top: 20px !important;
+  right: 24px !important;
+  z-index: 1200 !important;
+}
+
+.page > .topbar .topbar-notifications > .topbar-bell {
+  display: inline-flex !important;
+  width: 42px !important;
+  height: 42px !important;
+  border-color: #dbe4f0 !important;
+  background: #ffffff !important;
+  box-shadow: 0 8px 22px rgba(15, 23, 42, 0.1) !important;
+}
+
+.page > .topbar .notifications-dropdown {
+  position: fixed !important;
+  top: 72px !important;
+  right: 24px !important;
+  left: auto !important;
+  bottom: auto !important;
+  width: min(680px, calc(100vw - var(--sidebar-width) - 56px)) !important;
+  z-index: 1201 !important;
+}
+
+.page > .topbar .profile-dropdown {
+  position: fixed !important;
+  left: calc(var(--sidebar-width) + 12px) !important;
+  right: auto !important;
+  top: auto !important;
+  bottom: 18px !important;
+  min-width: 180px !important;
+  z-index: 1000 !important;
+}
+
+.page > .topbar .sidebar-logout {
+  min-height: 64px !important;
+  border: 1px solid #e3e7ef !important;
+  background: rgba(255, 255, 255, 0.82) !important;
+  color: #172033 !important;
+  gap: 0 !important;
+  transition: background-color 160ms ease, border-color 160ms ease, color 160ms ease, transform 160ms ease, box-shadow 160ms ease !important;
+}
+
+.page > .topbar .sidebar-logout-icon {
+  display: none !important;
+}
+
+.modal-overlay {
+  position: fixed !important;
+  inset: 0 !important;
+  z-index: 50000 !important;
+}
+
+.modal-card {
+  position: relative !important;
+  z-index: 50001 !important;
+}
+
+.page > .topbar .sidebar-logout:hover,
+.page > .topbar .sidebar-logout:focus-visible {
+  border-color: #fecaca !important;
+  background: #fff1f2 !important;
+  color: #b91c1c !important;
+  box-shadow: 0 8px 22px rgba(185, 28, 28, 0.12) !important;
+  transform: translateY(-1px);
+  outline: none !important;
+}
+
+.sidebar-logout-icon {
+  width: 32px;
+  height: 32px;
+  flex: 0 0 32px;
+  border-radius: 50%;
+  background: #f1f5f9;
+  color: #334155;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 18px;
+  font-weight: 800;
+  line-height: 1;
+  transform: rotate(45deg);
+}
+
+.page > .topbar .sidebar-logout:hover .sidebar-logout-icon,
+.page > .topbar .sidebar-logout:focus-visible .sidebar-logout-icon {
+  background: #fee2e2;
+  color: #b91c1c;
+}
+
+.sidebar-logout-copy {
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 3px;
+  line-height: 1.1;
+}
+
+.sidebar-logout-role {
+  color: #64748b;
+  font-size: var(--fs-13);
+  font-weight: 650;
+}
+
+.sidebar-logout-label {
+  color: inherit;
+  font-size: var(--fs-15);
+  font-weight: 800;
+}
+
+@media (max-width: 900px) {
+  .page {
+    padding: 150px 12px 24px !important;
+    overflow-x: hidden !important;
+  }
+
+  .page > .topbar {
+    inset: 0 0 auto 0 !important;
+    width: 100% !important;
+    height: auto !important;
+    max-height: none !important;
+    min-height: 56px !important;
+    padding: 14px 16px 12px !important;
+    border-right: none !important;
+    border-bottom: 1px solid #d7dbe4 !important;
+    display: grid !important;
+    grid-template-columns: minmax(0, 1fr) auto !important;
+    align-items: center !important;
+    gap: 12px !important;
+    overflow: visible !important;
+  }
+
+  .page > .topbar .brand {
+    grid-column: 1 !important;
+    min-width: 0 !important;
+    padding-right: 68px !important;
+  }
+
+  .page > .topbar .brand img {
+    width: 42px !important;
+    height: 42px !important;
+  }
+
+  .page > .topbar .topnav {
+    grid-column: 1 / -1 !important;
+    flex-direction: row !important;
+    flex-wrap: nowrap !important;
+    gap: 8px !important;
+    overflow-x: auto !important;
+    overscroll-behavior-x: contain !important;
+    padding: 2px 0 4px !important;
+    scrollbar-width: none !important;
+  }
+
+  .page > .topbar .topnav::-webkit-scrollbar {
+    display: none !important;
+  }
+
+  .page > .topbar .topnav-link {
+    width: auto !important;
+    min-height: 38px !important;
+    flex: 0 0 auto !important;
+    padding: 8px 10px !important;
+    white-space: nowrap !important;
+    border-radius: 8px !important;
+  }
+
+  .page > .topbar .topbar-right {
+    grid-column: 2 !important;
+    grid-row: 1 !important;
+    position: fixed !important;
+    top: 20px !important;
+    right: 16px !important;
+    width: auto !important;
+    margin: 0 !important;
+    flex-direction: column !important;
+    justify-content: flex-end !important;
+    align-items: flex-end !important;
+    gap: 6px !important;
+  }
+
+  .page > .topbar .topbar-notifications {
+    position: static !important;
+    top: auto !important;
+    right: auto !important;
+  }
+
+  .page > .topbar .topbar-notifications > .topbar-bell {
+    width: 42px !important;
+    height: 42px !important;
+  }
+
+  .page > .topbar .profile-menu {
+    width: auto !important;
+    order: 2 !important;
+  }
+
+  .page > .topbar .topbar-notifications {
+    order: 1 !important;
+  }
+
+  .page > .topbar .sidebar-logout {
+    min-height: 38px !important;
+    width: auto !important;
+    min-width: 78px !important;
+    padding: 8px 10px !important;
+    border-radius: 8px !important;
+    box-shadow: none !important;
+    justify-content: center !important;
+  }
+
+  .sidebar-logout-copy {
+    gap: 0 !important;
+  }
+
+  .sidebar-logout-role {
+    display: none !important;
+  }
+
+  .sidebar-logout-label {
+    font-size: var(--fs-14) !important;
+  }
+
+  .page > .topbar .notifications-dropdown {
+    left: 12px !important;
+    right: 12px !important;
+    top: 68px !important;
+    width: auto !important;
+  }
+
+  .page > .topbar .profile-dropdown {
+    position: absolute !important;
+    left: auto !important;
+    right: 0 !important;
+    top: calc(100% + 6px) !important;
+    bottom: auto !important;
+  }
+}

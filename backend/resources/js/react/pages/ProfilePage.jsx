@@ -69,6 +69,7 @@ function ProfilePage({
   const [pendingSupportingType, setPendingSupportingType] = useState("certificate")
   const [resumeAttentionActive, setResumeAttentionActive] = useState(false)
   const resumeSectionRef = useRef(null)
+  const resumeInputRef = useRef(null)
   const supportingInputRef = useRef(null)
   const [confirmDeleteEducationId, setConfirmDeleteEducationId] = useState(null)
   const [confirmDeleteExperienceId, setConfirmDeleteExperienceId] = useState(null)
@@ -150,7 +151,6 @@ function ProfilePage({
     : "-"
   const address = isJobSeeker ? (normalizedJobSeekerProfile?.address || normalizedJobSeekerProfile?.location || "") : ""
   const aboutText = isJobSeeker ? (normalizedJobSeekerProfile?.aboutText || "") : ""
-  const defaultAbout = `${email} · ${phone} · ${status} · Joined ${createdAt}`
   const education = isJobSeeker ? (normalizedJobSeekerProfile?.education || []) : []
   const experience = isJobSeeker ? (normalizedJobSeekerProfile?.experience || []) : []
   const resumeUpdatedAt = jobSeekerResume?.updatedAt
@@ -166,7 +166,15 @@ function ProfilePage({
     return withoutLocalPrefix.slice(0, 10)
   }
 
-  const formatPhoneWithPrefix = (value) => `+63${normalizePhoneInput(value)}`
+  const formatPhoneWithPrefix = (value) => {
+    const normalized = normalizePhoneInput(value)
+    return normalized ? `+63${normalized}` : ""
+  }
+
+  const formatPhoneInputValue = (value) => {
+    const normalized = normalizePhoneInput(value)
+    return normalized ? `+63${normalized}` : "+63"
+  }
 
   const resolvedJobSeekerId = jobSeekerId || normalizedJobSeekerProfile?.id || null
 
@@ -234,11 +242,10 @@ function ProfilePage({
   const openEditProfile = () => {
     setFormState({
       fullName: displayName === "Job Seeker" ? "" : displayName,
-      username,
+      username: normalizedJobSeekerProfile?.username || "",
       email,
-      phone: normalizePhoneInput(phone),
-      status: status || "active",
-      address,
+      phone: normalizePhoneInput(normalizedJobSeekerProfile?.phone || ""),
+      address: normalizedJobSeekerProfile?.address || "",
       school: "",
       program: "",
       year: "",
@@ -283,7 +290,6 @@ function ProfilePage({
           username: formState.username || username,
           email: contactForm.email || email,
           phone: formatPhoneWithPrefix(contactForm.phone || phone),
-          status: status || "active",
           address,
           aboutText,
           linkedInUrl: contactForm.linkedInUrl
@@ -367,15 +373,14 @@ function ProfilePage({
         method: "PUT",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
-          fullName: formState.fullName,
-          username: formState.username,
-          email: formState.email,
-          phone: formatPhoneWithPrefix(formState.phone),
-          status: formState.status || "active",
-          address: formState.address,
+          fullName: editMode === "profile" ? formState.fullName : displayName,
+          username: editMode === "profile" ? formState.username : (normalizedJobSeekerProfile?.username || ""),
+          email: editMode === "profile" ? formState.email : email,
+          phone: editMode === "profile" ? formatPhoneWithPrefix(formState.phone) : (normalizedJobSeekerProfile?.phone || ""),
+          address: editMode === "profile" ? formState.address : (normalizedJobSeekerProfile?.address || ""),
           aboutText: editMode === "about"
-            ? (formState.aboutText?.trim() || defaultAbout)
-            : (aboutText || defaultAbout)
+            ? (formState.aboutText || "")
+            : aboutText
         })
       })
       if (!response.ok) {
@@ -568,6 +573,9 @@ function ProfilePage({
     if (!file) return
     if (!resolvedJobSeekerId) {
       setResumeStatus("Missing job seeker id.")
+      if (resumeInputRef.current) {
+        resumeInputRef.current.value = ""
+      }
       return
     }
     setResumeStatus("Uploading...")
@@ -591,6 +599,11 @@ function ProfilePage({
       })
       .catch((error) => {
         setResumeStatus(error.message || "Failed to upload resume.")
+      })
+      .finally(() => {
+        if (resumeInputRef.current) {
+          resumeInputRef.current.value = ""
+        }
       })
   }
 
@@ -717,7 +730,6 @@ function ProfilePage({
               <div className="js-profile-main">
                 <h2>{displayName.toUpperCase()}</h2>
                 <div className="js-profile-meta">
-                  <span>{address || "-"}</span>
                   <span className="js-contact-anchor">
                     <button type="button" className="js-profile-link" onClick={openContactInfo}>
                       Contact Info
@@ -795,7 +807,7 @@ function ProfilePage({
                                   className="input"
                                   type="text"
                                   inputMode="numeric"
-                                  value={formatPhoneWithPrefix(contactForm.phone)}
+                                  value={formatPhoneInputValue(contactForm.phone)}
                                   onChange={(e) => setContactForm((prev) => ({ ...prev, phone: normalizePhoneInput(e.target.value) }))}
                                 />
                               </div>
@@ -811,10 +823,26 @@ function ProfilePage({
                     )}
                   </span>
                 </div>
-                <button type="button" className="js-profile-btn">Resources</button>
+                <div className="js-profile-quick-details">
+                  <div>
+                    <span>Email</span>
+                    <strong>{email}</strong>
+                  </div>
+                  <div>
+                    <span>Phone</span>
+                    <strong>{phone}</strong>
+                  </div>
+                  <div>
+                    <span>Address</span>
+                    <strong>{address || "-"}</strong>
+                  </div>
+                  <div>
+                    <span>Created</span>
+                    <strong>{createdAt}</strong>
+                  </div>
+                </div>
               </div>
               <button type="button" className="js-profile-edit" title="Edit" onClick={openEditProfile}>✎</button>
-              <button type="button" className="js-profile-camera" title="Change photo">📷</button>
             </div>
           </div>
 
@@ -831,13 +859,12 @@ function ProfilePage({
                 <h3>About</h3>
                 <button type="button" className="js-icon-btn" title="Edit" onClick={openEditAbout}>✎</button>
               </div>
-              <p className="js-panel-text">
-                {defaultAbout}
-              </p>
-              {aboutText && (
+              {aboutText ? (
                 <p className="js-panel-text">
                   {aboutText}
                 </p>
+              ) : (
+                <p className="js-panel-text muted">No about information added.</p>
               )}
             </section>
 
@@ -851,11 +878,17 @@ function ProfilePage({
               <div className={`js-resume-body ${resumeAttentionActive && !jobSeekerResume ? "attention" : ""}`}>
                 <input
                   id="job-seeker-resume"
+                  ref={resumeInputRef}
                   className="hidden-file-input"
                   type="file"
                   accept=".pdf,.png,.jpg,.jpeg"
                   onChange={(e) => handleResumeUpload(e.target.files?.[0] || null)}
                 />
+                <div className={`js-panel-subtext ${jobSeekerResume ? "js-supporting-ready" : "js-supporting-missing"}`}>
+                  {jobSeekerResume
+                    ? "Resume/CV is uploaded and ready to use for applications."
+                    : "Upload Resume/CV before applying to jobs."}
+                </div>
                 {jobSeekerResume ? (
                   <>
                     <div className="js-panel-row">
@@ -1110,16 +1143,12 @@ function ProfilePage({
                     <input
                       className="input"
                       inputMode="numeric"
-                      value={formatPhoneWithPrefix(formState.phone)}
+                      value={formatPhoneInputValue(formState.phone)}
                       onChange={(e) => setFormState((prev) => ({ ...prev, phone: normalizePhoneInput(e.target.value) }))}
                     />
                   </div>
                 </div>
                 <div className="modal-grid">
-                  <div className="field-group">
-                    <label>Status</label>
-                    <input className="input" value={formState.status} onChange={(e) => setFormState((prev) => ({ ...prev, status: e.target.value }))} />
-                  </div>
                   <div className="field-group">
                     <label>Address</label>
                     <input className="input" value={formState.address} onChange={(e) => setFormState((prev) => ({ ...prev, address: e.target.value }))} />

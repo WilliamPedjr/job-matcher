@@ -161,12 +161,14 @@ function LoginPage({
             </div>
           </form>
 
-          <p className="login-register-modern">
-            {isJobSeekerMode ? "Need a job seeker account?" : "Need an employee/admin account?"}{" "}
-            <button type="button" className="link-btn-modern" onClick={onRegister}>
-              Register
-            </button>
-          </p>
+          {isJobSeekerMode && (
+            <p className="login-register-modern">
+              Need a job seeker account?{" "}
+              <button type="button" className="link-btn-modern" onClick={onRegister}>
+                Register
+              </button>
+            </p>
+          )}
         </div>
 
         <div className="login-right-modern">
