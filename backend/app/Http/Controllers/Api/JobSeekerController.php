@@ -3,6 +3,7 @@
 namespace App\Http\Controllers\Api;
 
 use App\Http\Controllers\Controller;
+use App\Models\Archive;
 use App\Models\Education;
 use App\Models\Experience;
 use App\Models\JobSeeker;
@@ -108,9 +109,22 @@ class JobSeekerController extends Controller
         return $this->update($request, $id);
     }
 
-    public function destroy(int $id): JsonResponse
+    public function destroy(Request $request, int $id): JsonResponse
     {
-        $jobSeeker = JobSeeker::findOrFail($id);
+        $jobSeeker = JobSeeker::query()
+            ->with(['educations', 'experiences'])
+            ->findOrFail($id);
+
+        Archive::create([
+            'record_type' => 'job_seeker',
+            'record_id' => $jobSeeker->id,
+            'title' => $jobSeeker->full_name,
+            'subtitle' => $jobSeeker->email,
+            'data' => $this->serializeJobSeeker($jobSeeker, true),
+            ...Archive::actorFromRequest($request),
+            'deleted_at' => now(),
+        ]);
+
         $jobSeeker->delete();
 
         return response()->json(['message' => 'Job seeker deleted successfully.']);
@@ -225,10 +239,20 @@ class JobSeekerController extends Controller
         return Storage::disk('local')->download($resume->file_path, $resume->original_name ?: basename($resume->file_path));
     }
 
-    public function deleteResume(int $id): JsonResponse
+    public function deleteResume(Request $request, int $id): JsonResponse
     {
         $resume = $this->getResumeUpload($id);
         if ($resume) {
+            Archive::create([
+                'record_type' => 'application',
+                'record_id' => $resume->id,
+                'title' => $resume->name ?: $resume->original_name,
+                'subtitle' => $resume->applied_job_title ?: $resume->matched_job_title,
+                'data' => $this->serializeResume($resume),
+                ...Archive::actorFromRequest($request),
+                'deleted_at' => now(),
+            ]);
+
             if ($resume->file_path && Storage::disk('local')->exists($resume->file_path)) {
                 Storage::disk('local')->delete($resume->file_path);
             }

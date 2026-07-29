@@ -2,14 +2,16 @@ import React from 'react'
 import { useEffect, useMemo, useRef, useState } from 'react'
 import '../styles/JobPostingPage.css'
 import CustomDropdown from '../components/CustomDropdown'
+import { getArchiveActorHeaders } from '../utils/archiveActor'
 
-function JobPostingPage({ uploads = [], isEmployer = false, isJobSeeker = false, jobSeekerId, jobSeekerResume, onViewApplicant, onDeleteApplicant, onJobsChanged, onViewJob }) {
+function JobPostingPage({ uploads = [], isEmployer = false, isJobSeeker = false, currentUser = null, jobSeekerId, jobSeekerResume, onViewApplicant, onDeleteApplicant, onJobsChanged, onViewJob }) {
   const APPLICATION_MATCH_BONUS_PERCENT = 10
   const JOB_FORM_DRAFT_KEY = "lnu-hire-job-form-draft"
   const [jobs, setJobs] = useState([])
   const [templates, setTemplates] = useState([])
   const [searchTerm, setSearchTerm] = useState("")
   const [statusFilter, setStatusFilter] = useState("all")
+  const [jobPositionTypeFilter, setJobPositionTypeFilter] = useState("all")
   const [matchFilter, setMatchFilter] = useState("all")
   const [selectedJobTitle, setSelectedJobTitle] = useState("")
   const [modalSortConfig, setModalSortConfig] = useState({ key: "date", direction: "desc" })
@@ -19,6 +21,7 @@ function JobPostingPage({ uploads = [], isEmployer = false, isJobSeeker = false,
   const [newJobTitle, setNewJobTitle] = useState("")
   const [newJobDescription, setNewJobDescription] = useState("")
   const [newJobDepartment, setNewJobDepartment] = useState("")
+  const [newJobPositionType, setNewJobPositionType] = useState("Teaching")
   const [newJobItemNo, setNewJobItemNo] = useState("")
   const [newJobLocation, setNewJobLocation] = useState("Leyte Normal University")
   const [isJobPositionOpen, setIsJobPositionOpen] = useState(false)
@@ -396,6 +399,12 @@ function JobPostingPage({ uploads = [], isEmployer = false, isJobSeeker = false,
       const matchesStatus = statusFilter === "all" ? true : status === statusFilter
       if (!matchesStatus) return false
 
+      const jobPositionType = String(job.jobPosition || job.job_position || "").toLowerCase()
+      const matchesJobPositionType = jobPositionTypeFilter === "all"
+        ? true
+        : jobPositionType === jobPositionTypeFilter
+      if (!matchesJobPositionType) return false
+
       if (isJobSeeker && matchFilter !== "all") {
         const key = String(job.title || "").trim().toLowerCase()
         const match = key ? jobMatches[key] : null
@@ -405,10 +414,10 @@ function JobPostingPage({ uploads = [], isEmployer = false, isJobSeeker = false,
       }
 
       if (!query) return true
-      const haystack = `${job.title || ""} ${job.description || ""} ${job.department || ""} ${job.itemNo || job.item_no || ""} ${job.location || ""} ${job.deadline || ""} ${job.eligibility || ""}`.toLowerCase()
+      const haystack = `${job.title || ""} ${job.description || ""} ${job.department || ""} ${job.jobPosition || job.job_position || ""} ${job.itemNo || job.item_no || ""} ${job.location || ""} ${job.deadline || ""} ${job.eligibility || ""}`.toLowerCase()
       return haystack.includes(query)
     })
-  }, [jobs, searchTerm, statusFilter, isJobSeeker, matchFilter, jobMatches])
+  }, [jobs, searchTerm, statusFilter, jobPositionTypeFilter, isJobSeeker, matchFilter, jobMatches])
 
   const jobCategoryGroups = useMemo(() => {
     const map = new Map()
@@ -453,6 +462,7 @@ function JobPostingPage({ uploads = [], isEmployer = false, isJobSeeker = false,
     const tokens = [
       ...jobs.map((job) => String(job.title || "").trim()),
       ...jobs.map((job) => String(job.department || "").trim()),
+      ...jobs.map((job) => String(job.jobPosition || job.job_position || "").trim()),
       ...jobs.map((job) => String(job.itemNo || job.item_no || "").trim()),
       ...jobs.map((job) => String(job.location || "").trim())
     ].filter(Boolean)
@@ -628,6 +638,7 @@ function JobPostingPage({ uploads = [], isEmployer = false, isJobSeeker = false,
     if (!selected) return
     setNewJobDescription(selected.description || "")
     setNewJobDepartment(selected.department || "")
+    setNewJobPositionType(selected.jobPosition || selected.job_position || "Teaching")
     setNewJobItemNo(selected.itemNo || selected.item_no || "")
     setNewJobLocation(selected.location || defaultJobLocation)
     setNewJobType(selected.type || "Full-time")
@@ -644,6 +655,7 @@ function JobPostingPage({ uploads = [], isEmployer = false, isJobSeeker = false,
     if (!record) return
     setNewJobDescription(record.description || "")
     setNewJobDepartment(record.department || "")
+    setNewJobPositionType(record.jobPosition || record.job_position || "Teaching")
     setNewJobItemNo(record.itemNo || record.item_no || "")
     setNewJobLocation(record.location || defaultJobLocation)
     setNewJobType(record.type || "Full-time")
@@ -718,6 +730,12 @@ function JobPostingPage({ uploads = [], isEmployer = false, isJobSeeker = false,
     { value: "not-match", label: "Not match" }
   ]
 
+  const jobPositionTypeFilterOptions = [
+    { value: "all", label: "All Positions" },
+    { value: "teaching", label: "Teaching" },
+    { value: "non-teaching", label: "Non-Teaching" }
+  ]
+
   const eligibilityOptions = [
     { value: "Open to all qualified applicants", label: "Open to all qualified applicants" },
     { value: "Internal applicants only", label: "Internal applicants only" },
@@ -728,6 +746,11 @@ function JobPostingPage({ uploads = [], isEmployer = false, isJobSeeker = false,
   const jobStatusOptions = [
     { value: "active", label: "Active" },
     { value: "closed", label: "Closed" }
+  ]
+
+  const jobPositionTypeOptions = [
+    { value: "Teaching", label: "Teaching" },
+    { value: "Non-Teaching", label: "Non-Teaching" }
   ]
 
   const updateJobStatus = async (jobId, status) => {
@@ -748,10 +771,57 @@ function JobPostingPage({ uploads = [], isEmployer = false, isJobSeeker = false,
     }
   }
 
+  const duplicateJobPost = async (job) => {
+    if (!job) return
+    setActionsJobId(null)
+    const baseTitle = String(job.title || "Job Post").replace(/\s+Copy(?:\s+\d+)?$/i, "").trim() || "Job Post"
+    const existingTitles = new Set(jobs.map((item) => String(item.title || "").trim().toLowerCase()))
+    let duplicateTitle = `${baseTitle} Copy`
+    let copyNumber = 2
+    while (existingTitles.has(duplicateTitle.toLowerCase())) {
+      duplicateTitle = `${baseTitle} Copy ${copyNumber}`
+      copyNumber += 1
+    }
+
+    try {
+      const response = await fetch("http://localhost:5000/jobs", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          title: duplicateTitle,
+          description: job.description || "",
+          department: job.department || "",
+          jobPosition: job.jobPosition || job.job_position || "Teaching",
+          itemNo: "",
+          location: job.location || defaultJobLocation,
+          type: job.type || "Full-time",
+          status: "closed",
+          deadline: job.deadline || null,
+          eligibility: job.eligibility || "Open to all qualified applicants",
+          requiredSkills: job.requiredSkills || job.required_skills || "",
+          minimumEducation: job.minimumEducation || job.minimum_education || "",
+          minimumExperienceYears: job.minimumExperienceYears ?? job.minimum_experience_years ?? 0,
+          salaryMin: job.salaryMin ?? job.salary_min ?? null,
+          salaryMax: job.salaryMax ?? job.salary_max ?? null
+        })
+      })
+      const payload = await response.json().catch(() => null)
+      if (!response.ok) {
+        throw new Error(payload?.message || "Failed to duplicate job post.")
+      }
+      await fetchJobs({ silent: true })
+      await onJobsChanged?.()
+      showCreateJobNotice("success", "Job post duplicated with empty item number.")
+    } catch (err) {
+      showCreateJobNotice("fail", err.message || "Failed to duplicate job post.")
+    }
+  }
+
   const performDeleteJobPost = async (jobId) => {
     try {
       const response = await fetch(`http://localhost:5000/jobs/${jobId}`, {
-        method: "DELETE"
+        method: "DELETE",
+        headers: getArchiveActorHeaders(currentUser)
       })
       if (!response.ok) {
         throw new Error("Failed to delete job post.")
@@ -796,6 +866,7 @@ function JobPostingPage({ uploads = [], isEmployer = false, isJobSeeker = false,
     setNewJobTitle("")
     setNewJobDescription("")
     setNewJobDepartment("")
+    setNewJobPositionType("Teaching")
     setNewJobItemNo("")
     setNewJobLocation(defaultJobLocation)
     setExpandedDepartments({})
@@ -816,6 +887,7 @@ function JobPostingPage({ uploads = [], isEmployer = false, isJobSeeker = false,
     title: newJobTitle,
     description: newJobDescription,
     department: newJobDepartment,
+    jobPosition: newJobPositionType,
     itemNo: newJobItemNo,
     location: newJobLocation,
     type: newJobType,
@@ -835,6 +907,7 @@ function JobPostingPage({ uploads = [], isEmployer = false, isJobSeeker = false,
       draft.title,
       draft.description,
       draft.department,
+      draft.jobPosition,
       draft.itemNo,
       draft.deadline,
       draft.requiredSkills,
@@ -877,6 +950,7 @@ function JobPostingPage({ uploads = [], isEmployer = false, isJobSeeker = false,
     setNewJobTitle(draft?.title || "")
     setNewJobDescription(draft?.description || "")
     setNewJobDepartment(draft?.department || "")
+    setNewJobPositionType(draft?.jobPosition || "Teaching")
     setNewJobItemNo(draft?.itemNo || "")
     setNewJobLocation(draft?.location || defaultJobLocation)
     setExpandedDepartments({})
@@ -931,6 +1005,7 @@ function JobPostingPage({ uploads = [], isEmployer = false, isJobSeeker = false,
     setNewJobTitle(job.title || "")
     setNewJobDescription(job.description || "")
     setNewJobDepartment(job.department || "")
+    setNewJobPositionType(job.jobPosition || job.job_position || "Teaching")
     setNewJobItemNo(job.itemNo || job.item_no || "")
     setNewJobLocation(job.location || defaultJobLocation)
     setExpandedDepartments({})
@@ -972,6 +1047,7 @@ function JobPostingPage({ uploads = [], isEmployer = false, isJobSeeker = false,
       !newJobTitle.trim() ||
       !newJobDescription.trim() ||
       !newJobDepartment.trim() ||
+      !newJobPositionType.trim() ||
       !newJobItemNo.trim() ||
       !newJobLocation.trim() ||
       !newJobType.trim() ||
@@ -1015,6 +1091,7 @@ function JobPostingPage({ uploads = [], isEmployer = false, isJobSeeker = false,
           title: newJobTitle.trim(),
           description: newJobDescription.trim(),
           department: newJobDepartment.trim(),
+          jobPosition: newJobPositionType,
           itemNo: newJobItemNo.trim(),
           location: newJobLocation.trim(),
           type: newJobType.trim(),
@@ -1053,6 +1130,7 @@ function JobPostingPage({ uploads = [], isEmployer = false, isJobSeeker = false,
       !newJobTitle.trim() ||
       !newJobDescription.trim() ||
       !newJobDepartment.trim() ||
+      !newJobPositionType.trim() ||
       !newJobItemNo.trim() ||
       !newJobLocation.trim() ||
       !newJobType.trim() ||
@@ -1096,6 +1174,7 @@ function JobPostingPage({ uploads = [], isEmployer = false, isJobSeeker = false,
           title: newJobTitle.trim(),
           description: newJobDescription.trim(),
           department: newJobDepartment.trim(),
+          jobPosition: newJobPositionType,
           itemNo: newJobItemNo.trim(),
           location: newJobLocation.trim(),
           type: newJobType.trim(),
@@ -1185,6 +1264,13 @@ function JobPostingPage({ uploads = [], isEmployer = false, isJobSeeker = false,
           value={statusFilter}
           onChange={setStatusFilter}
           placeholder="All Status"
+        />
+        <CustomDropdown
+          className="jobs-filter"
+          options={jobPositionTypeFilterOptions}
+          value={jobPositionTypeFilter}
+          onChange={setJobPositionTypeFilter}
+          placeholder="All Positions"
         />
         {isJobSeeker && (
           <CustomDropdown
@@ -1280,6 +1366,13 @@ function JobPostingPage({ uploads = [], isEmployer = false, isJobSeeker = false,
                               <button
                                 type="button"
                                 className="actions-menu-item"
+                                onClick={() => duplicateJobPost(job)}
+                              >
+                                Duplicate Post
+                              </button>
+                              <button
+                                type="button"
+                                className="actions-menu-item"
                                 onClick={() => updateJobStatus(job.id, "active")}
                               >
                                 Set Active
@@ -1309,6 +1402,7 @@ function JobPostingPage({ uploads = [], isEmployer = false, isJobSeeker = false,
 
               <div className="job-card-chips">
                 {job.itemNo || job.item_no ? <span className="job-chip">Item {job.itemNo || job.item_no}</span> : null}
+                {job.jobPosition || job.job_position ? <span className="job-chip chip-outline">{job.jobPosition || job.job_position}</span> : null}
                 <span className="job-chip">{job.location || "-"}</span>
                 <span className="job-chip chip-outline">{job.type || "-"}</span>
                 {job.deadline ? <span className="job-chip chip-outline">Deadline {new Date(job.deadline).toLocaleDateString(undefined, { month: "short", day: "numeric", year: "numeric" })}</span> : null}
@@ -1670,6 +1764,17 @@ function JobPostingPage({ uploads = [], isEmployer = false, isJobSeeker = false,
                         type="text"
                         value={newJobDepartment}
                         onChange={(e) => setNewJobDepartment(e.target.value)}
+                      />
+                    </div>
+
+                    <div className="field-group">
+                      <label>Job Position Type</label>
+                      <CustomDropdown
+                        className="input-dropdown"
+                        options={jobPositionTypeOptions}
+                        value={newJobPositionType}
+                        onChange={setNewJobPositionType}
+                        placeholder="Teaching"
                       />
                     </div>
                   </div>

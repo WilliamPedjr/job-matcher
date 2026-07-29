@@ -3,6 +3,8 @@
 namespace App\Http\Controllers\Api;
 
 use App\Http\Controllers\Controller;
+use App\Models\ApplicationRating;
+use App\Models\Archive;
 use App\Models\Job;
 use App\Models\JobSeeker;
 use App\Models\SupportingFile;
@@ -26,7 +28,7 @@ class UploadController extends Controller
     public function index(): JsonResponse
     {
         $uploads = Upload::query()
-            ->with('supportingFiles')
+            ->with(['supportingFiles', 'ratings'])
             ->orderByDesc('uploaded_at')
             ->orderByDesc('id')
             ->get()
@@ -192,7 +194,7 @@ class UploadController extends Controller
 
     public function show(int $id): JsonResponse
     {
-        $upload = Upload::query()->with('supportingFiles')->findOrFail($id);
+        $upload = Upload::query()->with(['supportingFiles', 'ratings'])->findOrFail($id);
         return response()->json($this->serializeUpload($upload));
     }
 
@@ -287,9 +289,114 @@ class UploadController extends Controller
         return Storage::disk('local')->download($file->file_path, $file->original_name ?: basename($file->file_path));
     }
 
-    public function destroy(int $id): JsonResponse
+    public function markForEvaluation(int $id): JsonResponse
     {
         $upload = Upload::findOrFail($id);
+        $upload->evaluation_status = 'for_evaluation';
+        $upload->evaluation_started_at = now();
+        $upload->save();
+
+        return response()->json($this->serializeUpload($upload->fresh(['supportingFiles', 'ratings'])));
+    }
+
+    public function storeRating(Request $request, int $id): JsonResponse
+    {
+        $upload = Upload::findOrFail($id);
+        $data = $request->validate([
+            'raterName' => ['nullable', 'string', 'max:255'],
+            'raterEmail' => ['nullable', 'string', 'max:255'],
+            'scores' => ['required', 'array'],
+            'scores.*' => ['required', 'integer', 'min:1', 'max:5'],
+        ]);
+
+        $scores = array_map('intval', $data['scores']);
+        $totalScore = array_sum($scores);
+        $percentageScore = round(($totalScore / 50) * 100, 2);
+        $raterName = trim((string) ($data['raterName'] ?? ''));
+        $raterEmail = Str::lower(trim((string) ($data['raterEmail'] ?? '')));
+
+        $alreadyRated = ApplicationRating::query()
+            ->where('upload_id', $upload->id)
+            ->where(function ($query) use ($raterEmail, $raterName) {
+                if ($raterEmail !== '') {
+                    $query->whereRaw('LOWER(rater_email) = ?', [$raterEmail]);
+                    return;
+                }
+
+                $query->whereRaw('LOWER(rater_name) = ?', [Str::lower($raterName)]);
+            })
+            ->exists();
+
+        if ($alreadyRated) {
+            return response()->json([
+                'message' => 'This account has already rated this applicant.',
+            ], 422);
+        }
+
+        ApplicationRating::create([
+            'upload_id' => $upload->id,
+            'rater_name' => $raterName ?: null,
+            'rater_email' => $raterEmail ?: null,
+            'scores' => $scores,
+            'total_score' => $totalScore,
+            'percentage_score' => $percentageScore,
+        ]);
+
+        $upload->evaluation_status = 'rated';
+        if (!$upload->evaluation_started_at) {
+            $upload->evaluation_started_at = now();
+        }
+        $upload->save();
+
+        return response()->json($this->serializeUpload($upload->fresh(['supportingFiles', 'ratings'])));
+    }
+
+    public function cancelEvaluation(Request $request, int $id): JsonResponse
+    {
+        $upload = Upload::query()
+            ->with(['supportingFiles', 'ratings'])
+            ->findOrFail($id);
+
+        if ($upload->ratings->isNotEmpty()) {
+            Archive::create([
+                'record_type' => 'rating',
+                'record_id' => $upload->id,
+                'title' => $upload->name ?: $upload->original_name,
+                'subtitle' => $upload->applied_job_title ?: $upload->matched_job_title,
+                'data' => [
+                    'applicant' => $this->serializeUpload($upload),
+                    'ratings' => $this->serializeRatings($upload),
+                    'rating_count' => $this->ratingStats($upload)['count'],
+                    'rating_label' => $this->ratingStats($upload)['label'],
+                    'average_rating_score' => $this->ratingStats($upload)['average'],
+                ],
+                ...Archive::actorFromRequest($request),
+                'deleted_at' => now(),
+            ]);
+        }
+
+        $upload->ratings()->delete();
+        $upload->evaluation_status = null;
+        $upload->evaluation_started_at = null;
+        $upload->save();
+
+        return response()->json($this->serializeUpload($upload->fresh(['supportingFiles', 'ratings'])));
+    }
+
+    public function destroy(Request $request, int $id): JsonResponse
+    {
+        $upload = Upload::findOrFail($id);
+
+        Archive::create([
+            'record_type' => 'application',
+            'record_id' => $upload->id,
+            'title' => $upload->name ?: $upload->original_name,
+            'subtitle' => $upload->applied_job_title ?: $upload->matched_job_title,
+            'data' => $this->serializeUpload($upload),
+            ...Archive::actorFromRequest($request),
+            'deleted_at' => now(),
+        ]);
+
         if ($upload->file_path && Storage::disk('local')->exists($upload->file_path)) {
             Storage::disk('local')->delete($upload->file_path);
         }
@@ -298,9 +405,20 @@ class UploadController extends Controller
         return response()->json(['message' => 'Upload deleted successfully.']);
     }
 
-    public function hide(int $id): JsonResponse
+    public function hide(Request $request, int $id): JsonResponse
     {
         $upload = Upload::findOrFail($id);
+
+        Archive::create([
+            'record_type' => 'application',
+            'record_id' => $upload->id,
+            'title' => $upload->name ?: $upload->original_name,
+            'subtitle' => $upload->applied_job_title ?: $upload->matched_job_title,
+            'data' => $this->serializeUpload($upload),
+            ...Archive::actorFromRequest($request),
+            'deleted_at' => now(),
+        ]);
+
         $upload->job_seeker_hidden = true;
         $upload->job_seeker_hidden_at = now();
         $upload->save();
@@ -368,6 +486,17 @@ class UploadController extends Controller
             'experience_json' => $upload->experience_json,
             'job_seeker_hidden' => $upload->job_seeker_hidden,
             'job_seeker_hidden_at' => $upload->job_seeker_hidden_at,
+            'evaluation_status' => $upload->evaluation_status,
+            'evaluationStatus' => $upload->evaluation_status,
+            'evaluation_started_at' => $upload->evaluation_started_at?->toISOString(),
+            'evaluationStartedAt' => $upload->evaluation_started_at?->toISOString(),
+            'ratings' => $this->serializeRatings($upload),
+            'rating_count' => $this->ratingStats($upload)['count'],
+            'ratingCount' => $this->ratingStats($upload)['count'],
+            'average_rating_score' => $this->ratingStats($upload)['average'],
+            'averageRatingScore' => $this->ratingStats($upload)['average'],
+            'rating_label' => $this->ratingStats($upload)['label'],
+            'ratingLabel' => $this->ratingStats($upload)['label'],
             'hidden' => $upload->job_seeker_hidden,
             'uploaded_at' => $uploadedAt,
             'updatedAt' => $uploadedAt,
@@ -377,6 +506,51 @@ class UploadController extends Controller
             'supportingFiles' => $upload->relationLoaded('supportingFiles')
                 ? $upload->supportingFiles->map(fn (SupportingFile $file) => $this->serializeSupportingFile($file, $upload->id))->values()
                 : [],
+        ];
+    }
+
+    private function serializeRatings(Upload $upload): array
+    {
+        $ratings = $upload->relationLoaded('ratings')
+            ? $upload->ratings
+            : $upload->ratings()->orderByDesc('id')->get();
+
+        return $ratings->map(fn (ApplicationRating $rating) => [
+            'id' => $rating->id,
+            'rater_name' => $rating->rater_name,
+            'raterName' => $rating->rater_name,
+            'rater_email' => $rating->rater_email,
+            'raterEmail' => $rating->rater_email,
+            'scores' => $rating->scores ?? [],
+            'total_score' => $rating->total_score,
+            'totalScore' => $rating->total_score,
+            'percentage_score' => $rating->percentage_score,
+            'percentageScore' => $rating->percentage_score,
+            'created_at' => $rating->created_at?->toISOString(),
+            'createdAt' => $rating->created_at?->toISOString(),
+        ])->values()->all();
+    }
+
+    private function ratingStats(Upload $upload): array
+    {
+        $ratings = $upload->relationLoaded('ratings')
+            ? $upload->ratings
+            : $upload->ratings()->get();
+
+        $count = $ratings->count();
+        if ($count === 0) {
+            return [
+                'count' => 0,
+                'average' => null,
+                'label' => 'No rating',
+            ];
+        }
+
+        $average = round((float) $ratings->avg('percentage_score'), 2);
+        return [
+            'count' => $count,
+            'average' => $average,
+            'label' => "{$average}%",
         ];
     }
 

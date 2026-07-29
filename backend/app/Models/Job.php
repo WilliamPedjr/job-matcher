@@ -22,6 +22,7 @@ class Job extends Model
         'description',
         'status',
         'department',
+        'job_position',
         'item_no',
         'location',
         'type',

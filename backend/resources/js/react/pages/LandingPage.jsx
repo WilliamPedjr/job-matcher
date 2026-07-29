@@ -313,6 +313,9 @@ function LandingPage({ onLoginClick, onRegisterClick, scrollToSectionId = "" }) 
                   {job.itemNo || job.item_no ? (
                     <p className="landing-job-location">Item No. {job.itemNo || job.item_no}</p>
                   ) : null}
+                  {job.jobPosition || job.job_position ? (
+                    <p className="landing-job-location">{job.jobPosition || job.job_position}</p>
+                  ) : null}
                   <p className="landing-job-location">{job.location || "Leyte Normal University"}</p>
                   {job.deadline ? (
                     <p className="landing-job-location">Deadline {new Date(job.deadline).toLocaleDateString(undefined, { month: "short", day: "numeric", year: "numeric" })}</p>
@@ -454,6 +457,9 @@ function LandingPage({ onLoginClick, onRegisterClick, scrollToSectionId = "" }) 
 
                       {job.itemNo || job.item_no ? (
                         <p className="landing-job-location">Item No. {job.itemNo || job.item_no}</p>
+                      ) : null}
+                      {job.jobPosition || job.job_position ? (
+                        <p className="landing-job-location">{job.jobPosition || job.job_position}</p>
                       ) : null}
                       <p className="landing-job-location">{job.location || "Leyte Normal University"}</p>
                       {job.deadline ? (

@@ -1,6 +1,7 @@
 <?php
 
 use App\Http\Controllers\Api\AuthController;
+use App\Http\Controllers\Api\ArchiveController;
 use App\Http\Controllers\Api\EmployerController;
 use App\Http\Controllers\Api\JobController;
 use App\Http\Controllers\Api\LandingController;
@@ -20,6 +21,9 @@ Route::post('/auth/verify-recaptcha', [AuthController::class, 'verifyRecaptcha']
 Route::post('/staff/register', [AuthController::class, 'staffRegister']);
 Route::post('/staff/login', [AuthController::class, 'staffLogin']);
 Route::get('/staff/me', [AuthController::class, 'staffMe']);
+
+Route::get('/archives', [ArchiveController::class, 'index']);
+Route::post('/archives/{id}/restore-job', [ArchiveController::class, 'restoreJob']);
 
 Route::post('/job-seekers/register', [AuthController::class, 'jobSeekerRegister']);
 Route::post('/job-seekers/login', [AuthController::class, 'jobSeekerLogin']);
@@ -74,6 +78,9 @@ Route::put('/uploads/{id}/reanalyze', [UploadController::class, 'reanalyze']);
 Route::get('/uploads/{id}/download', [UploadController::class, 'download']);
 Route::get('/uploads/{id}/supporting', [UploadController::class, 'supporting']);
 Route::get('/uploads/{id}/supporting/{supportId}/download', [UploadController::class, 'supportingDownload']);
+Route::put('/uploads/{id}/evaluation', [UploadController::class, 'markForEvaluation']);
+Route::put('/uploads/{id}/evaluation/cancel', [UploadController::class, 'cancelEvaluation']);
+Route::post('/uploads/{id}/ratings', [UploadController::class, 'storeRating']);
 Route::delete('/uploads/{id}', [UploadController::class, 'destroy']);
 Route::put('/uploads/{id}/hide', [UploadController::class, 'hide']);
 

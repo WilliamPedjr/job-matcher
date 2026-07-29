@@ -158,7 +158,14 @@ function normalizeLines(value) {
     .filter(Boolean)
 }
 
-function ApplicantViewPage({ viewItem, onBack, onReanalyze, readOnly = false }) {
+function ApplicantViewPage({
+  viewItem,
+  onBack,
+  onReanalyze,
+  readOnly = false,
+  backLabel,
+  headerActions = null
+}) {
   const [supportingFiles, setSupportingFiles] = useState([])
   const [supportingError, setSupportingError] = useState("")
   const educationSource = normalizeLines(viewItem?.education_json)
@@ -212,11 +219,12 @@ function ApplicantViewPage({ viewItem, onBack, onReanalyze, readOnly = false }) 
         </div>
         <div className="candidate-actions">
           <button className="btn btn-secondary" onClick={onBack}>
-            {readOnly ? "Back" : "Back to Applicants"}
+            {backLabel || (readOnly ? "Back" : "Back to Applicants")}
           </button>
-          {!readOnly && (
+          {!readOnly && onReanalyze && (
             <button className="btn btn-secondary" onClick={onReanalyze}>Re-Analyze</button>
           )}
+          {headerActions}
         </div>
       </div>
 

@@ -60,6 +60,8 @@ class LandingController extends Controller
             'description' => $job->description,
             'status' => $job->status,
             'department' => $job->department,
+            'job_position' => $job->job_position,
+            'jobPosition' => $job->job_position,
             'item_no' => $job->item_no,
             'itemNo' => $job->item_no,
             'location' => $job->location,

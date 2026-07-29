@@ -36,6 +36,8 @@ class Upload extends Model
         'resume_summary',
         'job_seeker_hidden',
         'job_seeker_hidden_at',
+        'evaluation_status',
+        'evaluation_started_at',
         'size_bytes',
         'uploaded_at',
     ];
@@ -51,6 +53,7 @@ class Upload extends Model
         'project_score' => 'float',
         'uploaded_at' => 'datetime',
         'job_seeker_hidden_at' => 'datetime',
+        'evaluation_started_at' => 'datetime',
     ];
 
     public function supportingFiles()
@@ -61,5 +64,10 @@ class Upload extends Model
     public function jobSeeker()
     {
         return $this->belongsTo(JobSeeker::class);
+    }
+
+    public function ratings()
+    {
+        return $this->hasMany(ApplicationRating::class);
     }
 }

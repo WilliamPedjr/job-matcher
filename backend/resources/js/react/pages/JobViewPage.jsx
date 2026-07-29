@@ -418,6 +418,7 @@ function JobViewPage({ job, onBack, onApply, onRequireResume, jobSeekerProfile, 
           <p className="job-view-subtitle">{job.department || "-"} Department</p>
         </div>
         <div className="job-view-header-meta">
+          {job.jobPosition || job.job_position ? <span className="job-view-chip chip-outline">{job.jobPosition || job.job_position}</span> : null}
           <span className="job-view-chip">{job.type || "Full-time"}</span>
           <span className="job-view-chip chip-outline">{job.location || "Location TBA"}</span>
 
@@ -445,6 +446,10 @@ function JobViewPage({ job, onBack, onApply, onRequireResume, jobSeekerProfile, 
           <div className="job-view-info-item">
             <span>Department</span>
             <strong>{job.department || "-"}</strong>
+          </div>
+          <div className="job-view-info-item">
+            <span>Job Position Type</span>
+            <strong>{job.jobPosition || job.job_position || "-"}</strong>
           </div>
           <div className="job-view-info-item">
             <span>Item No.</span>

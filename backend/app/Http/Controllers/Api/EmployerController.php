@@ -3,6 +3,7 @@
 namespace App\Http\Controllers\Api;
 
 use App\Http\Controllers\Controller;
+use App\Models\Archive;
 use App\Models\Employer;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
@@ -19,6 +20,8 @@ class EmployerController extends Controller
 
     public function store(Request $request): JsonResponse
     {
+        $this->mergeEmployerAliases($request);
+
         $data = $request->validate([
             'company_name' => ['nullable', 'string', 'max:255'],
             'full_name' => ['nullable', 'string', 'max:255'],
@@ -43,6 +46,8 @@ class EmployerController extends Controller
     public function update(Request $request, int $id): JsonResponse
     {
         $employer = Employer::findOrFail($id);
+        $this->mergeEmployerAliases($request);
+
         $data = $request->validate([
             'company_name' => ['nullable', 'string', 'max:255'],
             'full_name' => ['nullable', 'string', 'max:255'],
@@ -76,9 +81,21 @@ class EmployerController extends Controller
         return response()->json($this->serialize($employer));
     }
 
-    public function destroy(int $id): JsonResponse
+    public function destroy(Request $request, int $id): JsonResponse
     {
-        Employer::findOrFail($id)->delete();
+        $employer = Employer::findOrFail($id);
+
+        Archive::create([
+            'record_type' => 'personnel',
+            'record_id' => $employer->id,
+            'title' => $employer->company_name ?: $employer->full_name,
+            'subtitle' => $employer->email,
+            'data' => $this->serialize($employer),
+            ...Archive::actorFromRequest($request),
+            'deleted_at' => now(),
+        ]);
+
+        $employer->delete();
         return response()->json(['message' => 'Employer deleted successfully.']);
     }
 
@@ -90,11 +107,33 @@ class EmployerController extends Controller
             'companyName' => $employer->company_name,
             'full_name' => $employer->full_name,
             'fullName' => $employer->full_name,
+            'contactName' => $employer->full_name,
             'email' => $employer->email,
             'username' => $employer->username,
             'phone' => $employer->phone,
             'created_at' => $employer->created_at,
+            'createdAt' => $employer->created_at,
             'updated_at' => $employer->updated_at,
+            'updatedAt' => $employer->updated_at,
         ];
+    }
+
+    private function mergeEmployerAliases(Request $request): void
+    {
+        $aliases = [
+            'companyName' => 'company_name',
+            'contactName' => 'full_name',
+        ];
+
+        $merged = [];
+        foreach ($aliases as $camel => $snake) {
+            if (!$request->has($snake) && $request->has($camel)) {
+                $merged[$snake] = $request->input($camel);
+            }
+        }
+
+        if ($merged) {
+            $request->merge($merged);
+        }
     }
 }

@@ -2,6 +2,7 @@ import React from 'react'
 import { useEffect, useRef, useState } from "react"
 import "../styles/ProfilePage.css"
 import profileIcon from "../assets/circle-user-solid-full.svg"
+import { getArchiveActorHeaders } from "../utils/archiveActor"
 
 const readJsonResponse = async (response) => {
   const contentType = response.headers.get("content-type") || ""
@@ -614,7 +615,8 @@ function ProfilePage({
     }
     setResumeStatus("Removing...")
     fetch(`http://localhost:5000/job-seekers/${resolvedJobSeekerId}/resume`, {
-      method: "DELETE"
+      method: "DELETE",
+      headers: getArchiveActorHeaders()
     })
       .then(async (response) => {
         if (!response.ok) {

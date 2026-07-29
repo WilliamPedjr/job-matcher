@@ -19,6 +19,7 @@ class JobTemplate extends Model
         'title',
         'description',
         'department',
+        'job_position',
         'item_no',
         'location',
         'type',

@@ -3,6 +3,7 @@
 namespace App\Http\Controllers\Api;
 
 use App\Http\Controllers\Controller;
+use App\Models\Archive;
 use App\Models\GlobalSkillCatalog;
 use App\Models\Job;
 use App\Models\JobTemplate;
@@ -63,9 +64,21 @@ class JobController extends Controller
         return response()->json($this->serialize($job->fresh()));
     }
 
-    public function destroy(int $id): JsonResponse
+    public function destroy(Request $request, int $id): JsonResponse
     {
-        Job::findOrFail($id)->delete();
+        $job = Job::findOrFail($id);
+
+        Archive::create([
+            'record_type' => 'job',
+            'record_id' => $job->id,
+            'title' => $job->title,
+            'subtitle' => $job->department,
+            'data' => $this->serialize($job),
+            ...Archive::actorFromRequest($request),
+            'deleted_at' => now(),
+        ]);
+
+        $job->delete();
         return response()->json(['message' => 'Job deleted successfully.']);
     }
 
@@ -122,6 +135,7 @@ class JobController extends Controller
             'description' => [$isUpdate ? 'sometimes' : 'required', 'string'],
             'status' => ['nullable', 'string', 'max:20'],
             'department' => ['nullable', 'string', 'max:255'],
+            'job_position' => ['nullable', 'string', 'in:Teaching,Non-Teaching'],
             'item_no' => ['nullable', 'string', 'max:255'],
             'location' => ['nullable', 'string', 'max:255'],
             'type' => ['nullable', 'string', 'max:255'],
@@ -141,6 +155,7 @@ class JobController extends Controller
     {
         $aliases = [
             'itemNo' => 'item_no',
+            'jobPosition' => 'job_position',
             'requiredSkills' => 'required_skills',
             'minimumEducation' => 'minimum_education',
             'minimumExperienceYears' => 'minimum_experience_years',
@@ -167,6 +182,7 @@ class JobController extends Controller
             'description' => $data['description'] ?? '',
             'status' => $this->normalizeStatus($data['status'] ?? 'active'),
             'department' => $data['department'] ?? ($mergeDefaults ? 'Information Technology' : null),
+            'job_position' => $this->normalizeJobPosition($data['job_position'] ?? null),
             'item_no' => $data['item_no'] ?? null,
             'location' => $data['location'] ?? ($mergeDefaults ? 'Manila, Philippines' : null),
             'type' => $data['type'] ?? ($mergeDefaults ? 'Full-time' : null),
@@ -184,6 +200,19 @@ class JobController extends Controller
     {
         $value = Str::lower(trim((string) $status));
         return in_array($value, ['active', 'closed'], true) ? $value : 'active';
+    }
+
+    private function normalizeJobPosition(?string $jobPosition): ?string
+    {
+        $value = Str::lower(trim((string) $jobPosition));
+        if ($value === 'teaching') {
+            return 'Teaching';
+        }
+        if ($value === 'non-teaching' || $value === 'non teaching') {
+            return 'Non-Teaching';
+        }
+
+        return null;
     }
 
     private function syncSkills(int $jobId, string|array|null $skills): void
@@ -230,6 +259,8 @@ class JobController extends Controller
             'description' => $job->description,
             'status' => $this->normalizeStatus($job->status),
             'department' => $job->department,
+            'job_position' => $job->job_position,
+            'jobPosition' => $job->job_position,
             'item_no' => $job->item_no,
             'itemNo' => $job->item_no,
             'location' => $job->location,
@@ -261,6 +292,8 @@ class JobController extends Controller
             'description' => $template->description,
             'status' => 'active',
             'department' => $template->department,
+            'job_position' => $template->job_position,
+            'jobPosition' => $template->job_position,
             'item_no' => $template->item_no,
             'itemNo' => $template->item_no,
             'location' => $template->location,

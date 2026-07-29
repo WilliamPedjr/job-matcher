@@ -3,8 +3,9 @@ import { useCallback, useEffect, useRef, useState } from "react"
 import "../styles/UsersPage.css"
 import eyeSolidIcon from "../assets/eye-solid-full.svg"
 import eyeRegularIcon from "../assets/eye-regular-full.svg"
+import { getArchiveActorHeaders } from "../utils/archiveActor"
 
-function UsersPage() {
+function UsersPage({ currentUser = null }) {
   const [jobSeekerUsers, setJobSeekerUsers] = useState([])
   const [employerUsers, setEmployerUsers] = useState([])
   const [isLoadingUsers, setIsLoadingUsers] = useState(false)
@@ -468,32 +469,13 @@ function UsersPage() {
                 <>
                   <div className="modal-grid">
                     <div className="field-group">
-                      <label>Company Name</label>
+                      <label>Name</label>
                       <input
                         className="input"
                         value={userForm.companyName}
                         onChange={(e) => setUserForm((prev) => ({ ...prev, companyName: e.target.value }))}
                       />
                     </div>
-                <div className="field-group">
-                  <label>Phone</label>
-                  <input
-                    className="input"
-                    value={userForm.contactName}
-                    onChange={(e) => setUserForm((prev) => ({ ...prev, contactName: e.target.value }))}
-                  />
-                </div>
-              </div>
-              <div className="modal-grid">
-                <div className="field-group">
-                  <label>Username</label>
-                  <input
-                    className="input"
-                    type="text"
-                    value={userForm.email}
-                    onChange={(e) => setUserForm((prev) => ({ ...prev, email: e.target.value }))}
-                  />
-                </div>
                 <div className="field-group">
                   <label>Phone</label>
                   <input
@@ -510,6 +492,18 @@ function UsersPage() {
                     }}
                   />
                 </div>
+              </div>
+              <div className="modal-grid">
+                <div className="field-group">
+                  <label>Username</label>
+                  <input
+                    className="input"
+                    type="text"
+                    value={userForm.email}
+                    onChange={(e) => setUserForm((prev) => ({ ...prev, email: e.target.value }))}
+                  />
+                </div>
+                
               </div>
                 </>
               )}
@@ -548,7 +542,8 @@ function UsersPage() {
                   try {
                     if (target.type === "jobseeker") {
                       const response = await fetch(`http://localhost:5000/job-seekers/${target.user.id}`, {
-                        method: "DELETE"
+                        method: "DELETE",
+                        headers: getArchiveActorHeaders(currentUser)
                       })
                       if (!response.ok) {
                         const payload = await response.json().catch(() => null)
@@ -556,7 +551,8 @@ function UsersPage() {
                       }
                     } else {
                       const response = await fetch(`http://localhost:5000/employers/${target.user.id}`, {
-                        method: "DELETE"
+                        method: "DELETE",
+                        headers: getArchiveActorHeaders(currentUser)
                       })
                       if (!response.ok) {
                         const payload = await response.json().catch(() => null)

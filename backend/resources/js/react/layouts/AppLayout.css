@@ -694,6 +694,29 @@ body {
   border-radius: 3px;
 }
 
+.topnav-icon-archive {
+  background: #eef2f7;
+}
+
+.topnav-icon-archive::before {
+  width: 14px;
+  height: 10px;
+  left: 5px;
+  top: 8px;
+  border: 2px solid #64748b;
+  border-top-width: 4px;
+  border-radius: 2px;
+}
+
+.topnav-icon-archive::after {
+  width: 8px;
+  height: 2px;
+  left: 8px;
+  top: 12px;
+  background: #94a3b8;
+  border-radius: 999px;
+}
+
 .topnav-icon-profile::before {
   width: 8px;
   height: 8px;
@@ -1408,6 +1431,12 @@ optgroup {
 
 .actions-menu-item:hover {
   background: #f4f7fb;
+}
+
+.actions-menu-item:disabled {
+  color: #98a2b3;
+  cursor: not-allowed;
+  background: #f8fafc;
 }
 
 .actions-menu-item.danger {

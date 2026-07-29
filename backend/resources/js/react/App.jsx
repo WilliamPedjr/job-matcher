@@ -14,7 +14,9 @@ import UsersPage from './pages/UsersPage'
 import RegisterPage from './pages/RegisterPage'
 import RatingsPage from './pages/RatingsPage'
 import HelpPage from './pages/HelpPage'
+import ArchivePage from './pages/ArchivePage'
 import CustomDropdown from './components/CustomDropdown'
+import { getArchiveActorHeaders } from './utils/archiveActor'
 import profileIcon from './assets/circle-user-solid-full.svg'
 import bellIcon from './assets/bell-solid-full.svg'
 import brandLogo from './assets/Logo.png'
@@ -270,6 +272,15 @@ function App() {
   const [userRole, setUserRole] = useState(() => localStorage.getItem("userRole") || "")
   const [loginEmail, setLoginEmail] = useState("")
   const [loginPassword, setLoginPassword] = useState("")
+  const [currentUser, setCurrentUser] = useState(() => {
+    const stored = localStorage.getItem("currentUser")
+    if (!stored) return null
+    try {
+      return JSON.parse(stored)
+    } catch {
+      return null
+    }
+  })
   const [loginError, setLoginError] = useState("")
   const [rememberMe, setRememberMe] = useState(false)
   const [loginMode, setLoginMode] = useState(() => localStorage.getItem("loginMode") || "staff")
@@ -346,6 +357,15 @@ function App() {
 
     setUserRole(nextRole)
     localStorage.setItem("userRole", nextRole)
+
+    const nextCurrentUser = {
+      id: payload?.id ?? null,
+      name: payload?.name || payload?.companyName || payload?.company_name || payload?.fullName || payload?.full_name || payload?.email || "",
+      email: payload?.email || "",
+      role: nextRole
+    }
+    setCurrentUser(nextCurrentUser)
+    localStorage.setItem("currentUser", JSON.stringify(nextCurrentUser))
 
     setActivePage(nextActivePage)
     localStorage.setItem("activePage", nextActivePage)
@@ -757,7 +777,9 @@ function App() {
     setIsAuthenticated(false)
     localStorage.removeItem("isAuthenticated")
     setUserRole("")
+    setCurrentUser(null)
     localStorage.removeItem("userRole")
+    localStorage.removeItem("currentUser")
     localStorage.removeItem("activePage")
     localStorage.removeItem("jobSeekerProfile")
     localStorage.removeItem("jobSeekerId")
@@ -1062,7 +1084,8 @@ function App() {
   const performDelete = async (id) => {
     try {
       const response = await fetch(`http://localhost:5000/uploads/${id}`, {
-        method: "DELETE"
+        method: "DELETE",
+        headers: getArchiveActorHeaders(currentUser || { name: loginEmail, email: loginEmail, role: userRole })
       })
 
       if (!response.ok) {
@@ -1086,7 +1109,8 @@ function App() {
   const performHideApplication = async (id) => {
     try {
       const response = await fetch(`http://localhost:5000/uploads/${id}/hide`, {
-        method: "PUT"
+        method: "PUT",
+        headers: getArchiveActorHeaders(currentUser || { name: loginEmail, email: loginEmail, role: userRole })
       })
       if (!response.ok) {
         setMessage("Failed to hide application.")
@@ -1102,6 +1126,27 @@ function App() {
       setMessage("Error hiding application.")
       showDeleteToast("Failed to hide application.", "fail")
       return false
+    }
+  }
+
+  const markApplicantForInterview = async (item) => {
+    if (!item?.id) return
+    setActionsMenu(null)
+    try {
+      const response = await fetch(`http://localhost:5000/uploads/${item.id}/evaluation`, {
+        method: "PUT"
+      })
+      const payload = await response.json().catch(() => null)
+      if (!response.ok) {
+        throw new Error(payload?.message || "Failed to send applicant for evaluation.")
+      }
+      setUploads((prev) => prev.map((upload) => (
+        upload.id === item.id ? { ...upload, ...payload } : upload
+      )))
+      showDeleteToast("Applicant moved to Ratings / Evaluation.", "success")
+      await fetchUploads({ silent: true })
+    } catch (error) {
+      showDeleteToast(error.message || "Failed to send applicant for evaluation.", "fail")
     }
   }
 
@@ -1263,6 +1308,25 @@ function App() {
       .sort((a, b) => Number(b.id || 0) - Number(a.id || 0))
       .slice(0, 4)
 
+    const topApplicantsByJob = Array.from(applicantsByJob.keys())
+      .map((jobTitle) => {
+        const jobApplicants = uploads
+          .filter((item) => resolveJobTitle(item) === jobTitle)
+          .sort((a, b) => {
+            const scoreDelta = Number(b.match_score || 0) - Number(a.match_score || 0)
+            if (scoreDelta !== 0) return scoreDelta
+            return new Date(b.uploaded_at || 0) - new Date(a.uploaded_at || 0)
+          })
+
+        return {
+          jobTitle,
+          applicant: jobApplicants[0] || null,
+          totalApplicants: jobApplicants.length
+        }
+      })
+      .filter((item) => item.applicant)
+      .sort((a, b) => a.jobTitle.localeCompare(b.jobTitle))
+
     const averageScore = scoreCount ? Number((scoreSum / scoreCount).toFixed(1)) : 0
 
     const scoreBuckets = {
@@ -1281,9 +1345,15 @@ function App() {
       else scoreBuckets["85-100"] += 1
     })
 
-    const topJobsByApplicants = [...jobPosts]
-      .map((job) => ({ title: job.title, applicants: Number(job.applicants || 0) }))
-      .sort((a, b) => b.applicants - a.applicants)
+    const topJobsByApplicants = Array.from(applicantsByJob.values())
+      .map((job) => ({
+        title: job.title,
+        applicants: Number(job.total || 0),
+        highlyQualified: Number(job.highlyQualified || 0),
+        moderatelyQualified: Number(job.moderatelyQualified || 0),
+        notQualified: Number(job.notQualified || 0)
+      }))
+      .sort((a, b) => b.applicants - a.applicants || a.title.localeCompare(b.title))
       .slice(0, 5)
 
     const monthKey = (date) => {
@@ -1325,6 +1395,7 @@ function App() {
       moderatelyQualified,
       notQualified,
       applicantJobs: Array.from(applicantsByJob.values()).sort((a, b) => a.title.localeCompare(b.title)),
+      topApplicantsByJob,
       recentApplicants,
       recentJobs,
       averageScore,
@@ -1506,7 +1577,10 @@ function App() {
       )
     }
     if (activePage === "users" && (isAdmin || isEmployer)) {
-      return <UsersPage isEmployer={isEmployer} />
+      return <UsersPage isEmployer={isEmployer} currentUser={currentUser || { name: loginEmail, email: loginEmail, role: userRole }} />
+    }
+    if (activePage === "archive" && (isAdmin || isEmployer)) {
+      return <ArchivePage />
     }
     if (activePage === "jobs") {
       return (
@@ -1514,6 +1588,7 @@ function App() {
           uploads={uploads}
           isEmployer={isEmployer}
           isJobSeeker={isJobSeeker}
+          currentUser={currentUser || { name: loginEmail, email: loginEmail, role: userRole }}
           jobSeekerId={resolvedJobSeekerId}
           jobSeekerResume={jobSeekerResume}
           onViewApplicant={handleViewApplicantFromJobs}
@@ -1585,7 +1660,14 @@ function App() {
       )
     }
     if (activePage === "ratings" && !isJobSeeker) {
-      return <RatingsPage />
+      return (
+        <RatingsPage
+          uploads={uploads}
+          isLoading={isLoadingUploads}
+          currentUser={currentUser || { name: loginEmail, email: loginEmail, role: userRole }}
+          onRatingsChanged={() => fetchUploads({ silent: true })}
+        />
+      )
     }
     if (activePage === "help") {
       return <HelpPage />
@@ -1724,7 +1806,7 @@ function App() {
             <span>Profile</span>
           </button>
           <span className="topnav-section-label">Additional Settings</span>
-          {isAdmin && (
+          {(isAdmin || isEmployer) && (
             <button
               type="button"
               className={`topnav-link ${activePage === "users" ? "active" : ""}`}
@@ -1734,14 +1816,14 @@ function App() {
               <span>Users</span>
             </button>
           )}
-          {isEmployer && (
+          {(isAdmin || isEmployer) && (
             <button
               type="button"
-              className={`topnav-link ${activePage === "users" ? "active" : ""}`}
-              onClick={() => handleTopNav("users")}
+              className={`topnav-link ${activePage === "archive" ? "active" : ""}`}
+              onClick={() => handleTopNav("archive")}
             >
-              <span className="topnav-icon topnav-icon-settings" aria-hidden="true" />
-              <span>Account Settings</span>
+              <span className="topnav-icon topnav-icon-archive" aria-hidden="true" />
+              <span>Archive</span>
             </button>
           )}
           <button
@@ -2441,6 +2523,30 @@ function App() {
             }}
           >
             Download Summary (Image)
+          </button>
+          <button
+            type="button"
+            className="actions-menu-item"
+            disabled={Boolean(actionsMenu.item?.ratingCount || actionsMenu.item?.rating_count)}
+            onClick={() => {
+              const status = String(actionsMenu.item?.evaluation_status || actionsMenu.item?.evaluationStatus || "").toLowerCase()
+              const hasRating = Boolean(actionsMenu.item?.ratingCount || actionsMenu.item?.rating_count)
+              if (hasRating) return
+              if (status === "for_evaluation" || status === "rated") {
+                setActionsMenu(null)
+                handleTopNav("ratings")
+                return
+              }
+              markApplicantForInterview(actionsMenu.item)
+            }}
+          >
+            {actionsMenu.item?.ratingCount || actionsMenu.item?.rating_count
+              ? "Rated"
+              : String(actionsMenu.item?.evaluation_status || actionsMenu.item?.evaluationStatus || "").toLowerCase() === "for_evaluation"
+                ? "Rating"
+                : String(actionsMenu.item?.evaluation_status || actionsMenu.item?.evaluationStatus || "").toLowerCase() === "rated"
+                  ? "Rated"
+                  : "Interview"}
           </button>
           <button
             type="button"
