@@ -364,7 +364,8 @@ function JobViewPage({ job, onBack, onApply, onRequireResume, jobSeekerProfile, 
   const normalizedResumeMatchScore = Number.isFinite(resumeMatchScore) ? resumeMatchScore : 0
   const resumeMatchQualified = resumeMatchReady && normalizedResumeMatchScore >= resumeMatchMinimumScore
   const resumeMatchError = resumeMatch.status === "error"
-  const applyGateDisabled = Boolean(resumeMatchLoading || resumeMatchError)
+  const applyBlockedByMatch = resumeMatchReady && !resumeMatchQualified
+  const applyGateDisabled = Boolean(resumeMatchLoading || applyBlockedByMatch || resumeMatchError)
   const skillItems = parseSkills(job?.requiredSkills || job?.required_skills || job?.required_skills_text || "")
 
   useEffect(() => {
@@ -378,10 +379,10 @@ function JobViewPage({ job, onBack, onApply, onRequireResume, jobSeekerProfile, 
       }
     } else if (resumeMatchReady) {
       nextPopup = resumeMatchQualified
-        ? { type: "success", text: "You are qualified to apply for this job." }
-        : { type: "fail", text: "You are not qualified to apply for this job." }
+        ? { type: "success", text: "Your resume matches this job well. You can apply now." }
+        : { type: "fail", text: "Your resume does not match this job enough to apply." }
     } else if (resumeMatchError) {
-      nextPopup = { type: "fail", text: resumeMatch.message || "Unable to verify resume match." }
+      nextPopup = { type: "fail", text: resumeMatch.message || "Unable to verify resume match. Please try again later." }
     }
 
     if (!nextPopup) return
@@ -502,23 +503,29 @@ function JobViewPage({ job, onBack, onApply, onRequireResume, jobSeekerProfile, 
 
       {String(job.status || "active").toLowerCase() === "active" && (
         <div className="job-view-footer">
-          {resumeMatchReady && resumeMatchQualified && (
-            <button
-              type="button"
-              className="btn"
-              disabled={applyGateDisabled}
-              onClick={() => {
-                if (!jobSeekerResume) {
-                  setApplyGateNotice("Please upload your resume in Profile before applying.")
-                  onRequireResume?.()
-                  return
-                }
-                setIsApplyModalOpen(true)
-              }}
-            >
-              Apply
-            </button>
-          )}
+          <button
+            type="button"
+            className="btn"
+            disabled={applyGateDisabled}
+            onClick={() => {
+              if (!jobSeekerResume) {
+                setApplyGateNotice("Please upload your resume in Profile before applying.")
+                onRequireResume?.()
+                return
+              }
+              if (applyBlockedByMatch) {
+                setApplyGateNotice("Your resume does not match this job enough to apply.")
+                return
+              }
+              if (resumeMatchError) {
+                setApplyGateNotice(resumeMatch.message || "Unable to verify resume match. Please try again later.")
+                return
+              }
+              setIsApplyModalOpen(true)
+            }}
+          >
+            {resumeMatchLoading ? "Checking match..." : applyBlockedByMatch ? "Not Qualified" : "Apply"}
+          </button>
           {applyGateNotice && (
             <p className="job-view-apply-notice">
               {applyGateNotice}
@@ -897,6 +904,10 @@ function JobViewPage({ job, onBack, onApply, onRequireResume, jobSeekerProfile, 
                     return
                   }
 
+                  if (!resumeMatchQualified) {
+                    setApplyNotice("Your resume does not match this job enough to apply.")
+                    return
+                  }
                   setApplyNotice("")
                   setShowErrors(true)
                   if (
@@ -911,11 +922,6 @@ function JobViewPage({ job, onBack, onApply, onRequireResume, jobSeekerProfile, 
                     setApplyNotice("Please complete all required fields.")
                     return
                   }
-                  if (!resumeMatchQualified) {
-                    setApplyNotice(`Resume match score ${normalizedResumeMatchScore.toFixed(2)}% is below the required ${resumeMatchMinimumScore}%.`)
-                    return
-                  }
-
                   setIsSubmitting(true)
                   const result = await onApply?.({
                     name: applicantName,

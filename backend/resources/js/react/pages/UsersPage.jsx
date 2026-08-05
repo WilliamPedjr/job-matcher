@@ -5,12 +5,13 @@ import eyeSolidIcon from "../assets/eye-solid-full.svg"
 import eyeRegularIcon from "../assets/eye-regular-full.svg"
 import { getArchiveActorHeaders } from "../utils/archiveActor"
 
-function UsersPage({ currentUser = null }) {
+function UsersPage({ currentUser = null, onUsersChanged }) {
   const [jobSeekerUsers, setJobSeekerUsers] = useState([])
   const [employerUsers, setEmployerUsers] = useState([])
   const [isLoadingUsers, setIsLoadingUsers] = useState(false)
   const [jobSeekerSearch, setJobSeekerSearch] = useState("")
   const [employerSearch, setEmployerSearch] = useState("")
+  const [activeUserTab, setActiveUserTab] = useState("jobseekers")
   const [userEditContext, setUserEditContext] = useState(null)
   const [userForm, setUserForm] = useState({
     fullName: "",
@@ -18,7 +19,8 @@ function UsersPage({ currentUser = null }) {
     email: "",
     phone: "",
     companyName: "",
-    contactName: ""
+    contactName: "",
+    idNumber: ""
   })
   const [confirmDeleteUser, setConfirmDeleteUser] = useState(null)
   const [employerActionsMenu, setEmployerActionsMenu] = useState(null)
@@ -27,7 +29,10 @@ function UsersPage({ currentUser = null }) {
   const [employerForm, setEmployerForm] = useState({
     companyName: "",
     contactName: "",
+    accountIdentifier: "",
     username: "",
+    email: "",
+    idNumber: "",
     phone: "",
     password: ""
   })
@@ -139,6 +144,9 @@ function UsersPage({ currentUser = null }) {
       user.companyName,
       user.contactName,
       user.email,
+      user.username,
+      user.idNumber,
+      user.id_number,
       user.phone
     ]
       .filter(Boolean)
@@ -156,7 +164,8 @@ function UsersPage({ currentUser = null }) {
         email: user.email || "",
         phone: user.phone || "",
         companyName: "",
-        contactName: ""
+        contactName: "",
+        idNumber: ""
       })
     } else {
       const digitsOnly = String(user.phone || "").replace(/\D/g, "")
@@ -166,11 +175,12 @@ function UsersPage({ currentUser = null }) {
         : withoutCountryPrefix
       setUserForm({
         fullName: "",
-        username: "",
+        username: user.username || "",
         email: user.email || "",
         phone: withoutLocalPrefix.slice(0, 10),
         companyName: user.companyName || "",
-        contactName: user.contactName || ""
+        contactName: user.contactName || "",
+        idNumber: user.idNumber || user.id_number || ""
       })
     }
     setToast(null)
@@ -187,7 +197,10 @@ function UsersPage({ currentUser = null }) {
       if (userEditContext.type === "jobseeker") {
         const response = await fetch(`http://localhost:5000/job-seekers/${userEditContext.user.id}/admin`, {
           method: "PUT",
-          headers: { "Content-Type": "application/json" },
+          headers: {
+            "Content-Type": "application/json",
+            ...getArchiveActorHeaders(currentUser)
+          },
           body: JSON.stringify({
             fullName: userForm.fullName,
             username: userForm.username,
@@ -202,11 +215,16 @@ function UsersPage({ currentUser = null }) {
       } else {
         const response = await fetch(`http://localhost:5000/employers/${userEditContext.user.id}`, {
           method: "PUT",
-          headers: { "Content-Type": "application/json" },
+          headers: {
+            "Content-Type": "application/json",
+            ...getArchiveActorHeaders(currentUser)
+          },
           body: JSON.stringify({
             companyName: userForm.companyName,
             contactName: userForm.contactName,
+            username: userForm.username,
             email: userForm.email,
+            idNumber: userForm.idNumber,
             phone: userForm.phone
           })
         })
@@ -229,11 +247,20 @@ function UsersPage({ currentUser = null }) {
     setConfirmDeleteUser({ type, user })
   }
 
+  const restoreScrollPosition = (scrollX, scrollY) => {
+    window.requestAnimationFrame(() => {
+      window.scrollTo(scrollX, scrollY)
+    })
+  }
+
   const openEmployerModal = () => {
     setEmployerForm({
       companyName: "",
       contactName: "",
+      accountIdentifier: "",
       username: "",
+      email: "",
+      idNumber: "",
       phone: "",
       password: ""
     })
@@ -248,22 +275,29 @@ function UsersPage({ currentUser = null }) {
       ? withoutCountryPrefix.slice(1)
       : withoutCountryPrefix
     const normalizedPhone = withoutLocalPrefix ? `+63${withoutLocalPrefix.slice(0, 10)}` : ""
+    const idNumber = employerForm.accountIdentifier.trim()
+    const emailValue = employerForm.email.trim()
     const payload = {
       companyName: employerForm.companyName.trim(),
       contactName: employerForm.contactName.trim(),
-      email: employerForm.username.trim(),
+      username: emailValue,
+      email: emailValue,
+      idNumber,
       phone: normalizedPhone,
       password: employerForm.password.trim()
     }
-    if (!payload.companyName || !payload.email || !payload.password) {
-      showToast("Name, username, and password are required.", "fail")
+    if (!payload.companyName || !idNumber || !emailValue || !payload.password) {
+      showToast("Name, ID number, email, and password are required.", "fail")
       return
     }
     showToast("Saving...", "info", 1800)
     try {
       const response = await fetch("http://localhost:5000/employers", {
         method: "POST",
-        headers: { "Content-Type": "application/json" },
+        headers: {
+          "Content-Type": "application/json",
+          ...getArchiveActorHeaders(currentUser)
+        },
         body: JSON.stringify(payload)
       })
       if (!response.ok) {
@@ -273,6 +307,7 @@ function UsersPage({ currentUser = null }) {
       showToast("Personnel account created successfully.", "success")
       setIsEmployerModalOpen(false)
       await fetchUsers()
+      await onUsersChanged?.()
     } catch (error) {
       showToast(error.message || "Failed to add Personnel.", "fail")
     }
@@ -289,6 +324,30 @@ function UsersPage({ currentUser = null }) {
         </div>
       </div>
 
+      <div className="users-tabs" role="tablist" aria-label="User tables">
+        <button
+          type="button"
+          className={`users-tab ${activeUserTab === "jobseekers" ? "is-active" : ""}`}
+          onClick={() => setActiveUserTab("jobseekers")}
+          role="tab"
+          aria-selected={activeUserTab === "jobseekers"}
+        >
+          Job Seekers
+          <span>{jobSeekerUsers.length}</span>
+        </button>
+        <button
+          type="button"
+          className={`users-tab ${activeUserTab === "personnel" ? "is-active" : ""}`}
+          onClick={() => setActiveUserTab("personnel")}
+          role="tab"
+          aria-selected={activeUserTab === "personnel"}
+        >
+          HR Personnel
+          <span>{employerUsers.length}</span>
+        </button>
+      </div>
+
+      {activeUserTab === "jobseekers" && (
       <section className="users-card users-card-employers">
         <div className="users-card-head">
           <h3>Job Seeker Users</h3>
@@ -344,7 +403,9 @@ function UsersPage({ currentUser = null }) {
           </div>
         </div>
       </section>
+      )}
 
+      {activeUserTab === "personnel" && (
       <section className="users-card users-card-employers">
         <div className="users-card-head">
           <h3>HR Personnel Users</h3>
@@ -369,6 +430,7 @@ function UsersPage({ currentUser = null }) {
                 <th>Position</th>
                 <th>Phone</th>
                 <th>Username</th>
+                <th>Email</th>
                 <th>Created</th>
                 <th>Action</th>
               </tr>
@@ -376,11 +438,11 @@ function UsersPage({ currentUser = null }) {
             <tbody>
               {isLoadingUsers ? (
                 <tr>
-                  <td colSpan={7} className="users-empty">Loading employers...</td>
+                  <td colSpan={8} className="users-empty">Loading employers...</td>
                 </tr>
               ) : filteredEmployers.length === 0 ? (
                 <tr>
-                  <td colSpan={7} className="users-empty">No Personnel users found.</td>
+                  <td colSpan={8} className="users-empty">No Personnel users found.</td>
                 </tr>
               ) : (
                 filteredEmployers.map((user, index) => (
@@ -394,6 +456,7 @@ function UsersPage({ currentUser = null }) {
                     </td>
                     <td>{user.contactName || "-"}</td>
                     <td>{user.phone || "-"}</td>
+                    <td>{user.username || "-"}</td>
                     <td>{user.email || "-"}</td>
                     <td>{formatDate(user.createdAt)}</td>
                     <td className="actions-cell">
@@ -416,6 +479,7 @@ function UsersPage({ currentUser = null }) {
           </div>
         </div>
       </section>
+      )}
 
       {userEditContext && (
         <div className="modal-overlay" onClick={closeEditUser}>
@@ -476,35 +540,61 @@ function UsersPage({ currentUser = null }) {
                         onChange={(e) => setUserForm((prev) => ({ ...prev, companyName: e.target.value }))}
                       />
                     </div>
-                <div className="field-group">
-                  <label>Phone</label>
-                  <input
-                    className="input"
-                    inputMode="numeric"
-                    value={`+63${userForm.phone}`}
-                    onChange={(e) => {
-                      const digitsOnly = String(e.target.value || "").replace(/\D/g, "")
-                      const withoutCountryPrefix = digitsOnly.startsWith("63") ? digitsOnly.slice(2) : digitsOnly
-                      const withoutLocalPrefix = withoutCountryPrefix.startsWith("0")
-                        ? withoutCountryPrefix.slice(1)
-                        : withoutCountryPrefix
-                      setUserForm((prev) => ({ ...prev, phone: withoutLocalPrefix.slice(0, 10) }))
-                    }}
-                  />
-                </div>
-              </div>
-              <div className="modal-grid">
-                <div className="field-group">
-                  <label>Username</label>
-                  <input
-                    className="input"
-                    type="text"
-                    value={userForm.email}
-                    onChange={(e) => setUserForm((prev) => ({ ...prev, email: e.target.value }))}
-                  />
-                </div>
-                
-              </div>
+                    <div className="field-group">
+                      <label>Position</label>
+                      <input
+                        className="input"
+                        value={userForm.contactName}
+                        onChange={(e) => setUserForm((prev) => ({ ...prev, contactName: e.target.value }))}
+                      />
+                    </div>
+                  </div>
+                  <div className="modal-grid">
+                    <div className="field-group">
+                      <label>ID Number</label>
+                      <input
+                        className="input"
+                        value={userForm.idNumber}
+                        onChange={(e) => setUserForm((prev) => ({ ...prev, idNumber: e.target.value }))}
+                      />
+                    </div>
+                    <div className="field-group">
+                      <label>Username</label>
+                      <input
+                        className="input"
+                        type="text"
+                        value={userForm.username}
+                        onChange={(e) => setUserForm((prev) => ({ ...prev, username: e.target.value }))}
+                      />
+                    </div>
+                  </div>
+                  <div className="modal-grid">
+                    <div className="field-group">
+                      <label>Email</label>
+                      <input
+                        className="input"
+                        type="email"
+                        value={userForm.email}
+                        onChange={(e) => setUserForm((prev) => ({ ...prev, email: e.target.value }))}
+                      />
+                    </div>
+                    <div className="field-group">
+                      <label>Phone</label>
+                      <input
+                        className="input"
+                        inputMode="numeric"
+                        value={`+63${userForm.phone}`}
+                        onChange={(e) => {
+                          const digitsOnly = String(e.target.value || "").replace(/\D/g, "")
+                          const withoutCountryPrefix = digitsOnly.startsWith("63") ? digitsOnly.slice(2) : digitsOnly
+                          const withoutLocalPrefix = withoutCountryPrefix.startsWith("0")
+                            ? withoutCountryPrefix.slice(1)
+                            : withoutCountryPrefix
+                          setUserForm((prev) => ({ ...prev, phone: withoutLocalPrefix.slice(0, 10) }))
+                        }}
+                      />
+                    </div>
+                  </div>
                 </>
               )}
             </div>
@@ -537,6 +627,8 @@ function UsersPage({ currentUser = null }) {
                 className="btn btn-danger"
                 onClick={async () => {
                   const target = confirmDeleteUser
+                  const scrollX = window.scrollX
+                  const scrollY = window.scrollY
                   setConfirmDeleteUser(null)
                   if (!target?.user?.id) return
                   try {
@@ -560,11 +652,13 @@ function UsersPage({ currentUser = null }) {
                       }
                     }
                     await fetchUsers()
+                    restoreScrollPosition(scrollX, scrollY)
                     showToast(
                       `${target.type === "jobseeker" ? "Job seeker" : "Personnel"} deleted successfully.`,
                       "success"
                     )
                   } catch (error) {
+                    restoreScrollPosition(scrollX, scrollY)
                     showToast(error.message || "Failed to delete user.", "fail")
                   }
                 }}
@@ -605,14 +699,27 @@ function UsersPage({ currentUser = null }) {
                 </div>
               </div>
               <div className="modal-grid">
-                <div className="field-group">
-                  <label>Username</label>
+                <div className="field-group users-account-group">
+                  <label>ID Number</label>
                   <input
                     className="input"
-                    value={employerForm.username}
-                    onChange={(e) => setEmployerForm((prev) => ({ ...prev, username: e.target.value }))}
+                    placeholder="Enter ID number"
+                    value={employerForm.accountIdentifier}
+                    onChange={(e) => setEmployerForm((prev) => ({ ...prev, accountIdentifier: e.target.value }))}
                   />
                 </div>
+                <div className="field-group">
+                  <label>Email</label>
+                  <input
+                    className="input"
+                    type="email"
+                    placeholder="Enter email"
+                    value={employerForm.email}
+                    onChange={(e) => setEmployerForm((prev) => ({ ...prev, email: e.target.value }))}
+                  />
+                </div>
+              </div>
+              <div className="modal-grid users-contact-row">
                 <div className="field-group">
                   <label>Phone</label>
                   <input
@@ -629,8 +736,6 @@ function UsersPage({ currentUser = null }) {
                     }}
                   />
                 </div>
-              </div>
-              <div className="modal-grid">
                 <div className="field-group">
                   <label>Password</label>
                   <div className={`password-field-row ${showEmployerPassword ? "is-visible" : ""}`}>

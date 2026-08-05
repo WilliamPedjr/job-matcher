@@ -14,6 +14,7 @@ class Employer extends Model
         'full_name',
         'email',
         'username',
+        'id_number',
         'phone',
         'password',
     ];

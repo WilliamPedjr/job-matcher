@@ -99,7 +99,7 @@ function LoginPage({
                 type="text"
                 value={loginEmail}
                 onChange={(e) => setLoginEmail(e.target.value)}
-                placeholder={isJobSeekerMode ? "Email or Username" : "Email"}
+                placeholder={isJobSeekerMode ? "Email or Username" : "Email, Username, or ID Number"}
                 required
               />
             </div>

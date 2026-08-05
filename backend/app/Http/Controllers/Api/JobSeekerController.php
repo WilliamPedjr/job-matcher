@@ -3,12 +3,14 @@
 namespace App\Http\Controllers\Api;
 
 use App\Http\Controllers\Controller;
+use App\Models\ActivityLog;
 use App\Models\Archive;
 use App\Models\Education;
 use App\Models\Experience;
 use App\Models\JobSeeker;
 use App\Models\SupportingFile;
 use App\Models\Upload;
+use App\Services\PdsExtractionService;
 use App\Services\ResumeAnalysisService;
 use App\Services\TextExtractionService;
 use Illuminate\Http\JsonResponse;
@@ -22,6 +24,7 @@ class JobSeekerController extends Controller
 {
     public function __construct(
         private readonly ResumeAnalysisService $resumeAnalysisService,
+        private readonly PdsExtractionService $pdsExtractionService,
         private readonly TextExtractionService $textExtractionService
     ) {
     }
@@ -55,6 +58,7 @@ class JobSeekerController extends Controller
     public function update(Request $request, int $id): JsonResponse
     {
         $jobSeeker = JobSeeker::findOrFail($id);
+        $before = $this->serializeJobSeeker($jobSeeker, true);
         $data = $request->validate([
             'full_name' => ['nullable', 'string', 'max:255'],
             'fullName' => ['nullable', 'string', 'max:255'],
@@ -100,6 +104,16 @@ class JobSeekerController extends Controller
         }
 
         $jobSeeker->save();
+        ActivityLog::record('job_seeker.updated', "Updated job seeker account for {$jobSeeker->full_name}.", $request, [
+            'subject_type' => 'job_seeker',
+            'subject_id' => $jobSeeker->id,
+            'subject_name' => $jobSeeker->full_name,
+            'metadata' => [
+                'before' => $before,
+                'after' => $this->serializeJobSeeker($jobSeeker, true),
+                'email' => $jobSeeker->email,
+            ],
+        ]);
 
         return response()->json($this->serializeJobSeeker($jobSeeker));
     }
@@ -114,15 +128,26 @@ class JobSeekerController extends Controller
         $jobSeeker = JobSeeker::query()
             ->with(['educations', 'experiences'])
             ->findOrFail($id);
+        $serialized = $this->serializeJobSeeker($jobSeeker, true);
 
         Archive::create([
             'record_type' => 'job_seeker',
             'record_id' => $jobSeeker->id,
             'title' => $jobSeeker->full_name,
             'subtitle' => $jobSeeker->email,
-            'data' => $this->serializeJobSeeker($jobSeeker, true),
+            'data' => $serialized,
             ...Archive::actorFromRequest($request),
             'deleted_at' => now(),
+        ]);
+
+        ActivityLog::record('job_seeker.deleted', "Deleted job seeker account for {$jobSeeker->full_name}.", $request, [
+            'subject_type' => 'job_seeker',
+            'subject_id' => $jobSeeker->id,
+            'subject_name' => $jobSeeker->full_name,
+            'metadata' => [
+                'email' => $jobSeeker->email,
+                'record' => $serialized,
+            ],
         ]);
 
         $jobSeeker->delete();
@@ -224,6 +249,15 @@ class JobSeekerController extends Controller
         ]);
         $resume->job_seeker_id = $jobSeeker->id;
         $resume->save();
+        ActivityLog::record('profile.resume_uploaded', "Uploaded resume for {$jobSeeker->full_name}.", $request, [
+            'subject_type' => 'job_seeker',
+            'subject_id' => $jobSeeker->id,
+            'subject_name' => $jobSeeker->full_name,
+            'metadata' => [
+                'resume_id' => $resume->id,
+                'file' => $resume->original_name,
+            ],
+        ]);
 
         return response()->json([
             'message' => 'Resume uploaded successfully.',
@@ -243,14 +277,25 @@ class JobSeekerController extends Controller
     {
         $resume = $this->getResumeUpload($id);
         if ($resume) {
+            $jobSeeker = JobSeeker::find($id);
+            $serialized = $this->serializeResume($resume);
             Archive::create([
                 'record_type' => 'application',
                 'record_id' => $resume->id,
                 'title' => $resume->name ?: $resume->original_name,
                 'subtitle' => $resume->applied_job_title ?: $resume->matched_job_title,
-                'data' => $this->serializeResume($resume),
+                'data' => $serialized,
                 ...Archive::actorFromRequest($request),
                 'deleted_at' => now(),
+            ]);
+
+            ActivityLog::record('profile.resume_deleted', "Deleted resume for " . ($jobSeeker?->full_name ?: $resume->name ?: 'job seeker') . ".", $request, [
+                'subject_type' => 'job_seeker',
+                'subject_id' => $id,
+                'subject_name' => $jobSeeker?->full_name ?: $resume->name,
+                'metadata' => [
+                    'resume' => $serialized,
+                ],
             ]);
 
             if ($resume->file_path && Storage::disk('local')->exists($resume->file_path)) {
@@ -400,6 +445,17 @@ class JobSeekerController extends Controller
             $created[] = $supportingFile;
         }
 
+        foreach ($created as $supportingFile) {
+            ActivityLog::record('profile.supporting_uploaded', "Uploaded supporting document for {$jobSeeker->full_name}.", $request, [
+                'subject_type' => 'job_seeker',
+                'subject_id' => $jobSeeker->id,
+                'subject_name' => $jobSeeker->full_name,
+                'metadata' => [
+                    'file' => $this->serializeSupportingFiles([$supportingFile])[0] ?? null,
+                ],
+            ]);
+        }
+
         return response()->json([
             'message' => 'Supporting files uploaded successfully.',
             'files' => $this->serializeSupportingFiles($created),
@@ -417,17 +473,27 @@ class JobSeekerController extends Controller
         return Storage::disk('local')->download($file->file_path, $file->original_name ?: basename($file->file_path));
     }
 
-    public function deleteSupportingFile(int $id, int $supportId): JsonResponse
+    public function deleteSupportingFile(Request $request, int $id, int $supportId): JsonResponse
     {
+        $jobSeeker = JobSeeker::find($id);
         $file = SupportingFile::query()
             ->where('job_seeker_id', $id)
             ->where('id', $supportId)
             ->firstOrFail();
+        $serialized = $this->serializeSupportingFiles([$file])[0] ?? null;
 
         if ($file->file_path && Storage::disk('local')->exists($file->file_path)) {
             Storage::disk('local')->delete($file->file_path);
         }
         $file->delete();
+        ActivityLog::record('profile.supporting_deleted', "Deleted supporting document for " . ($jobSeeker?->full_name ?: 'job seeker') . ".", $request, [
+            'subject_type' => 'job_seeker',
+            'subject_id' => $id,
+            'subject_name' => $jobSeeker?->full_name,
+            'metadata' => [
+                'file' => $serialized,
+            ],
+        ]);
 
         return response()->json(['message' => 'Supporting file deleted successfully.']);
     }
@@ -444,6 +510,14 @@ class JobSeekerController extends Controller
         ]);
 
         $education = $jobSeeker->educations()->create($data);
+        ActivityLog::record('profile.education_created', "Added education for {$jobSeeker->full_name}.", $request, [
+            'subject_type' => 'job_seeker',
+            'subject_id' => $jobSeeker->id,
+            'subject_name' => $jobSeeker->full_name,
+            'metadata' => [
+                'education' => $this->serializeEducation($education),
+            ],
+        ]);
 
         return response()->json($this->serializeEducation($education), 201);
     }
@@ -451,6 +525,8 @@ class JobSeekerController extends Controller
     public function updateEducation(Request $request, int $id, int $educationId): JsonResponse
     {
         $education = Education::query()->where('job_seeker_id', $id)->where('id', $educationId)->firstOrFail();
+        $jobSeeker = JobSeeker::findOrFail($id);
+        $before = $this->serializeEducation($education);
         $data = $request->validate([
             'school_name' => ['nullable', 'string', 'max:255'],
             'degree' => ['nullable', 'string', 'max:255'],
@@ -460,14 +536,33 @@ class JobSeekerController extends Controller
         ]);
 
         $education->update($data);
+        ActivityLog::record('profile.education_updated', "Updated education for {$jobSeeker->full_name}.", $request, [
+            'subject_type' => 'job_seeker',
+            'subject_id' => $jobSeeker->id,
+            'subject_name' => $jobSeeker->full_name,
+            'metadata' => [
+                'before' => $before,
+                'after' => $this->serializeEducation($education->fresh()),
+            ],
+        ]);
 
         return response()->json($this->serializeEducation($education));
     }
 
-    public function deleteEducation(int $id, int $educationId): JsonResponse
+    public function deleteEducation(Request $request, int $id, int $educationId): JsonResponse
     {
         $education = Education::query()->where('job_seeker_id', $id)->where('id', $educationId)->firstOrFail();
+        $jobSeeker = JobSeeker::findOrFail($id);
+        $serialized = $this->serializeEducation($education);
         $education->delete();
+        ActivityLog::record('profile.education_deleted', "Deleted education for {$jobSeeker->full_name}.", $request, [
+            'subject_type' => 'job_seeker',
+            'subject_id' => $jobSeeker->id,
+            'subject_name' => $jobSeeker->full_name,
+            'metadata' => [
+                'education' => $serialized,
+            ],
+        ]);
         return response()->json(['message' => 'Education deleted successfully.']);
     }
 
@@ -483,6 +578,14 @@ class JobSeekerController extends Controller
         ]);
 
         $experience = $jobSeeker->experiences()->create($data);
+        ActivityLog::record('profile.experience_created', "Added experience for {$jobSeeker->full_name}.", $request, [
+            'subject_type' => 'job_seeker',
+            'subject_id' => $jobSeeker->id,
+            'subject_name' => $jobSeeker->full_name,
+            'metadata' => [
+                'experience' => $this->serializeExperience($experience),
+            ],
+        ]);
 
         return response()->json($this->serializeExperience($experience), 201);
     }
@@ -490,6 +593,8 @@ class JobSeekerController extends Controller
     public function updateExperience(Request $request, int $id, int $experienceId): JsonResponse
     {
         $experience = Experience::query()->where('job_seeker_id', $id)->where('id', $experienceId)->firstOrFail();
+        $jobSeeker = JobSeeker::findOrFail($id);
+        $before = $this->serializeExperience($experience);
         $data = $request->validate([
             'company_name' => ['nullable', 'string', 'max:255'],
             'position' => ['nullable', 'string', 'max:255'],
@@ -499,14 +604,33 @@ class JobSeekerController extends Controller
         ]);
 
         $experience->update($data);
+        ActivityLog::record('profile.experience_updated', "Updated experience for {$jobSeeker->full_name}.", $request, [
+            'subject_type' => 'job_seeker',
+            'subject_id' => $jobSeeker->id,
+            'subject_name' => $jobSeeker->full_name,
+            'metadata' => [
+                'before' => $before,
+                'after' => $this->serializeExperience($experience->fresh()),
+            ],
+        ]);
 
         return response()->json($this->serializeExperience($experience));
     }
 
-    public function deleteExperience(int $id, int $experienceId): JsonResponse
+    public function deleteExperience(Request $request, int $id, int $experienceId): JsonResponse
     {
         $experience = Experience::query()->where('job_seeker_id', $id)->where('id', $experienceId)->firstOrFail();
+        $jobSeeker = JobSeeker::findOrFail($id);
+        $serialized = $this->serializeExperience($experience);
         $experience->delete();
+        ActivityLog::record('profile.experience_deleted', "Deleted experience for {$jobSeeker->full_name}.", $request, [
+            'subject_type' => 'job_seeker',
+            'subject_id' => $jobSeeker->id,
+            'subject_name' => $jobSeeker->full_name,
+            'metadata' => [
+                'experience' => $serialized,
+            ],
+        ]);
         return response()->json(['message' => 'Experience deleted successfully.']);
     }
 
@@ -559,6 +683,11 @@ class JobSeekerController extends Controller
         $uploadedAt = $resume->uploaded_at instanceof \DateTimeInterface
             ? $resume->uploaded_at->toISOString()
             : ($resume->uploaded_at ? (string) $resume->uploaded_at : null);
+        $resumeSummary = $resume->resume_summary ?? [];
+        $pdsFormat = $this->pdsFormatForResume($resume, $resumeSummary);
+        if ($pdsFormat !== null) {
+            $resumeSummary['pds'] = $pdsFormat;
+        }
 
         return [
             'id' => $resume->id,
@@ -581,13 +710,30 @@ class JobSeekerController extends Controller
             'extracted_text' => $resume->extracted_text,
             'experience_json' => $resume->experience_json,
             'summary_text' => $resume->summary_text,
-            'resume_summary' => $resume->resume_summary ?? [],
+            'resume_summary' => $resumeSummary,
+            'pds_format' => $pdsFormat,
             'uploaded_at' => $uploadedAt,
             'updatedAt' => $uploadedAt,
             'updated_at' => $uploadedAt,
             'size_bytes' => $resume->size_bytes,
             'download_url' => url("/api/job-seekers/{$resume->job_seeker_id}/resume/download"),
         ];
+    }
+
+    private function pdsFormatForResume(Upload $resume, array $resumeSummary): ?array
+    {
+        $existing = $resumeSummary['pds'] ?? null;
+        $text = trim((string) ($resume->extracted_text ?? ''));
+        if ($text === '') {
+            return is_array($existing) ? $existing : null;
+        }
+
+        $format = $this->pdsExtractionService->format($text);
+        if (($format['detected'] ?? false) === true) {
+            return $format;
+        }
+
+        return is_array($existing) ? $existing : null;
     }
 
     private function serializeSupportingFiles(iterable $files): array

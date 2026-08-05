@@ -3,6 +3,7 @@
 namespace App\Http\Controllers\Api;
 
 use App\Http\Controllers\Controller;
+use App\Models\ActivityLog;
 use App\Models\Archive;
 use App\Models\GlobalSkillCatalog;
 use App\Models\Job;
@@ -46,6 +47,21 @@ class JobController extends Controller
         $job = Job::create($this->normalizeJobPayload($data, 'db'));
         $job->closeIfDeadlineIsMet();
         $this->syncSkills($job->id, $data['required_skills'] ?? '');
+        $event = $request->input('activityEvent') === 'job.duplicated' ? 'job.duplicated' : 'job.created';
+        $description = $event === 'job.duplicated'
+            ? "Duplicated job post {$job->title}."
+            : "Posted job {$job->title}.";
+        ActivityLog::record($event, $description, $request, [
+            'subject_type' => 'job',
+            'subject_id' => $job->id,
+            'subject_name' => $job->title,
+            'metadata' => [
+                'status' => $job->status,
+                'department' => $job->department,
+                'sourceJobId' => $request->input('sourceJobId'),
+                'sourceJobTitle' => $request->input('sourceJobTitle'),
+            ],
+        ]);
         return response()->json($this->serialize($job->fresh()), 201);
     }
 
@@ -60,6 +76,16 @@ class JobController extends Controller
         if (array_key_exists('required_skills', $data)) {
             $this->syncSkills($job->id, $data['required_skills'] ?? '');
         }
+
+        ActivityLog::record('job.updated', "Edited job details for {$job->title}.", $request, [
+            'subject_type' => 'job',
+            'subject_id' => $job->id,
+            'subject_name' => $job->title,
+            'metadata' => [
+                'status' => $job->status,
+                'department' => $job->department,
+            ],
+        ]);
 
         return response()->json($this->serialize($job->fresh()));
     }
@@ -78,6 +104,16 @@ class JobController extends Controller
             'deleted_at' => now(),
         ]);
 
+        ActivityLog::record('job.deleted', "Deleted job post {$job->title}.", $request, [
+            'subject_type' => 'job',
+            'subject_id' => $job->id,
+            'subject_name' => $job->title,
+            'metadata' => [
+                'department' => $job->department,
+                'status' => $job->status,
+            ],
+        ]);
+
         $job->delete();
         return response()->json(['message' => 'Job deleted successfully.']);
     }
@@ -89,9 +125,20 @@ class JobController extends Controller
             'status' => ['required', 'string', 'max:20'],
         ]);
 
+        $previousStatus = $this->normalizeStatus($job->status);
         $job->status = $this->normalizeStatus($data['status'] ?? 'active');
         $job->save();
         $job->closeIfDeadlineIsMet();
+
+        ActivityLog::record('job.status_changed', "Changed {$job->title} status from {$previousStatus} to {$job->status}.", $request, [
+            'subject_type' => 'job',
+            'subject_id' => $job->id,
+            'subject_name' => $job->title,
+            'metadata' => [
+                'previousStatus' => $previousStatus,
+                'newStatus' => $job->status,
+            ],
+        ]);
 
         return response()->json($this->serialize($job));
     }

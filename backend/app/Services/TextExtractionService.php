@@ -371,6 +371,10 @@ class TextExtractionService
         $source = $this->normalizeOcrText($input);
         $source = str_replace("\r", "\n", $source);
         $source = preg_replace("/\t/u", ' ', $source);
+        if ($this->looksLikePdsText((string) $source)) {
+            return $this->cleanupPdsText((string) $source);
+        }
+
         $source = $this->insertSectionBreaks((string) $source);
 
         $originalLines = array_values(array_filter(array_map('trim', preg_split("/\n+/", (string) $source) ?: [])));
@@ -384,6 +388,65 @@ class TextExtractionService
         $reordered = $this->reorderSections($cleaned);
 
         return trim(preg_replace("/\n{3,}/u", "\n\n", implode("\n", $reordered)));
+    }
+
+    private function looksLikePdsText(string $text): bool
+    {
+        $lower = strtolower($text);
+
+        return str_contains($lower, 'personal data sheet')
+            || str_contains($lower, 'cs form no. 212')
+            || (str_contains($lower, 'civil service commission') && str_contains($lower, 'personal information'));
+    }
+
+    private function cleanupPdsText(string $input): string
+    {
+        $text = preg_replace("/[ \t]+/u", ' ', $input);
+        $labels = [
+            'PERSONAL INFORMATION',
+            'FAMILY BACKGROUND',
+            'EDUCATIONAL BACKGROUND',
+            'CIVIL SERVICE ELIGIBILITY',
+            'WORK EXPERIENCE',
+            'VOLUNTARY WORK',
+            'LEARNING AND DEVELOPMENT',
+            'OTHER INFORMATION',
+            'SURNAME',
+            'FIRST NAME',
+            'MIDDLE NAME',
+            'NAME EXTENSION',
+            'DATE OF BIRTH',
+            'PLACE OF BIRTH',
+            'SEX',
+            'CIVIL STATUS',
+            'HEIGHT',
+            'WEIGHT',
+            'BLOOD TYPE',
+            'GSIS ID NO',
+            'PAG-IBIG ID NO',
+            'PHILHEALTH NO',
+            'SSS NO',
+            'TIN NO',
+            'AGENCY EMPLOYEE NO',
+            'CITIZENSHIP',
+            'RESIDENTIAL ADDRESS',
+            'PERMANENT ADDRESS',
+            'TELEPHONE NO',
+            'MOBILE NO',
+            'EMAIL ADDRESS',
+        ];
+
+        foreach ($labels as $label) {
+            $pattern = '/(?<!^)(?<!\n)\b' . preg_quote($label, '/') . '\b\s*(?=:|-|\s)/i';
+            $text = preg_replace($pattern, "\n$label", (string) $text);
+        }
+
+        $lines = array_values(array_filter(array_map(
+            fn ($line) => trim(preg_replace('/\s+/u', ' ', (string) $line)),
+            preg_split("/\n+/", (string) $text) ?: []
+        )));
+
+        return trim(preg_replace("/\n{3,}/u", "\n\n", implode("\n", $lines)));
     }
 
     private function insertSectionBreaks(string $text): string

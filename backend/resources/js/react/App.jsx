@@ -23,6 +23,80 @@ import brandLogo from './assets/Logo.png'
 import './layouts/SidebarLayout.css'
 import html2canvas from "html2canvas"
 
+const jobSeekerPageIntros = {
+  dashboard: {
+    title: "Dashboard",
+    body: "This is where you track applications you submitted, see dates applied, check status, and review qualification results.",
+    tips: [
+      "Use Applied Jobs to view or remove your submitted applications.",
+      "Check the overview cards to understand your application results."
+    ]
+  },
+  jobs: {
+    title: "Jobs",
+    body: "This page lists available job openings. Open a job to read its details, then apply using your saved resume and supporting documents.",
+    tips: [
+      "Upload your resume in Profile before applying.",
+      "Use job details to confirm the position fits your skills."
+    ]
+  },
+  profile: {
+    title: "Profile",
+    body: "This is your setup page. Add your phone number, address, education, experience, resume, and supporting documents here.",
+    tips: [
+      "Use Edit Profile to add phone number and address.",
+      "Upload resume, certificates, portfolio, application letter, and transcript."
+    ]
+  },
+  help: {
+    title: "Help",
+    body: "This page keeps the setup walkthrough and page guide available whenever you need a reminder.",
+    tips: [
+      "Open the setup guide again from here.",
+      "Use the page guide to learn what each job seeker page does."
+    ]
+  }
+}
+
+const jobSeekerSetupGuideSteps = [
+  {
+    page: "profile",
+    title: "Open Profile",
+    body: "Start in Profile and review your basic account information.",
+    detail: "This is where your job seeker identity lives before you apply to any job."
+  },
+  {
+    page: "profile",
+    title: "Add Contact Details",
+    body: "Add your phone number, address, about section, education, and work experience.",
+    detail: "Complete profile details help applications look ready and make your information easier to review."
+  },
+  {
+    page: "profile",
+    title: "Upload Resume",
+    body: "Save one resume so job applications can use it automatically.",
+    detail: "The system uses your resume for matching and application submission."
+  },
+  {
+    page: "profile",
+    title: "Add Documents",
+    body: "Upload certificates, portfolio, application letter, transcript, and other supporting files.",
+    detail: "Supporting documents are saved once and reused when you apply."
+  },
+  {
+    page: "jobs",
+    title: "Browse Jobs",
+    body: "Open Jobs, view available positions, and check each job's details.",
+    detail: "Read the requirements first, then apply when your resume and documents are ready."
+  },
+  {
+    page: "dashboard",
+    title: "Track Applications",
+    body: "Return to Dashboard to monitor submitted applications and qualification results.",
+    detail: "Dashboard is your home base after you start applying."
+  }
+]
+
 function parseSkills(skillsText) {
   const value = Array.isArray(skillsText)
     ? skillsText.join(",")
@@ -261,6 +335,7 @@ function App() {
   // Keeps upload records returned by GET /uploads.
   const [uploads, setUploads] = useState([])
   const [jobPosts, setJobPosts] = useState([])
+  const [activityLogs, setActivityLogs] = useState([])
   const [isLoadingUploads, setIsLoadingUploads] = useState(false)
   const [searchTerm, setSearchTerm] = useState("")
   const [sortConfig, setSortConfig] = useState({ key: "date", direction: "desc" })
@@ -336,6 +411,9 @@ function App() {
   const [summarySupportingFiles, setSummarySupportingFiles] = useState([])
   const [summarySupportingError, setSummarySupportingError] = useState("")
   const [resumeAttention, setResumeAttention] = useState(false)
+  const [showJobSeekerSetupGuide, setShowJobSeekerSetupGuide] = useState(false)
+  const [jobSeekerSetupStep, setJobSeekerSetupStep] = useState(0)
+  const [activeJobSeekerPageIntro, setActiveJobSeekerPageIntro] = useState(null)
   const summaryRef = useRef(null)
   const isHandlingPopState = useRef(false)
   const isEmployer = userRole === "employer"
@@ -443,6 +521,62 @@ function App() {
     setResumeAttention(true)
     setActivePage("profile")
   }, [])
+
+  const getJobSeekerSetupGuideKey = useCallback((id = resolvedJobSeekerId) => (
+    `jobSeekerSetupGuideDismissed:${id || jobSeekerProfile?.email || "unknown"}`
+  ), [jobSeekerProfile?.email, resolvedJobSeekerId])
+
+  const getJobSeekerIntroEnabledKey = useCallback((id = resolvedJobSeekerId) => (
+    `jobSeekerPageIntroEnabled:${id || jobSeekerProfile?.email || "unknown"}`
+  ), [jobSeekerProfile?.email, resolvedJobSeekerId])
+
+  const getJobSeekerPageIntroKey = useCallback((page, id = resolvedJobSeekerId) => (
+    `jobSeekerPageIntroSeen:${id || jobSeekerProfile?.email || "unknown"}:${page}`
+  ), [jobSeekerProfile?.email, resolvedJobSeekerId])
+
+  const openJobSeekerSetupGuide = useCallback(() => {
+    setJobSeekerSetupStep(0)
+    setShowJobSeekerSetupGuide(true)
+  }, [])
+
+  const closeJobSeekerSetupGuide = useCallback(() => {
+    if (isJobSeeker) {
+      localStorage.setItem(getJobSeekerSetupGuideKey(), "true")
+    }
+    setShowJobSeekerSetupGuide(false)
+    setJobSeekerSetupStep(0)
+  }, [getJobSeekerSetupGuideKey, isJobSeeker])
+
+  const closeJobSeekerPageIntro = useCallback(() => {
+    if (activeJobSeekerPageIntro) {
+      localStorage.setItem(getJobSeekerPageIntroKey(activeJobSeekerPageIntro), "true")
+    }
+    setActiveJobSeekerPageIntro(null)
+  }, [activeJobSeekerPageIntro, getJobSeekerPageIntroKey])
+
+  const goToJobSeekerSetupProfile = useCallback(() => {
+    closeJobSeekerSetupGuide()
+    setResumeAttention(true)
+    handleTopNav("profile")
+  }, [closeJobSeekerSetupGuide])
+
+  useEffect(() => {
+    if (!isAuthenticated || !isJobSeeker || !resolvedJobSeekerId || showJobSeekerSetupGuide || activeJobSeekerPageIntro) return
+    if (!jobSeekerPageIntros[activePage]) return
+    if (localStorage.getItem(getJobSeekerIntroEnabledKey()) !== "true") return
+    if (localStorage.getItem(getJobSeekerPageIntroKey(activePage)) === "true") return
+
+    setActiveJobSeekerPageIntro(activePage)
+  }, [
+    activeJobSeekerPageIntro,
+    activePage,
+    getJobSeekerIntroEnabledKey,
+    getJobSeekerPageIntroKey,
+    isAuthenticated,
+    isJobSeeker,
+    resolvedJobSeekerId,
+    showJobSeekerSetupGuide
+  ])
 
   useEffect(() => {
     if (!isAuthenticated || !isJobSeeker || !resolvedJobSeekerId) {
@@ -578,6 +712,59 @@ function App() {
     }
   }
 
+  const fetchActivityLogs = useCallback(async () => {
+    if (!isAuthenticated || isJobSeeker) {
+      setActivityLogs([])
+      return []
+    }
+
+    try {
+      const response = await fetch("/api/activity-logs")
+      if (!response.ok) {
+        throw new Error("Failed to fetch activity logs.")
+      }
+      const data = await response.json()
+      const logs = Array.isArray(data) ? data : []
+      setActivityLogs(logs)
+      return logs
+    } catch (error) {
+      setActivityLogs([])
+      return []
+    }
+  }, [isAuthenticated, isJobSeeker])
+
+  const recordActivity = useCallback(async ({
+    event,
+    description,
+    subjectType = "",
+    subjectId = null,
+    subjectName = "",
+    metadata = {}
+  }) => {
+    if (!event || !description || isJobSeeker) return
+
+    try {
+      await fetch("/api/activity-logs", {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          ...getArchiveActorHeaders(currentUser || { name: loginEmail, email: loginEmail, role: userRole })
+        },
+        body: JSON.stringify({
+          event,
+          description,
+          subjectType,
+          subjectId,
+          subjectName,
+          metadata
+        })
+      })
+      await fetchActivityLogs()
+    } catch (error) {
+      // Activity logging should never block the action the user just completed.
+    }
+  }, [currentUser, fetchActivityLogs, isJobSeeker, loginEmail, userRole])
+
   const openAddApplicantModal = async () => {
     await fetchJobPosts()
     setIsUploadModalOpen(true)
@@ -587,13 +774,20 @@ function App() {
     if (isAuthenticated) {
       fetchUploads()
       fetchJobPosts()
+      fetchActivityLogs()
     }
-  }, [isAuthenticated])
+  }, [fetchActivityLogs, isAuthenticated])
 
   useEffect(() => {
     if (!isAuthenticated) return
     localStorage.setItem("activePage", activePage)
   }, [activePage, isAuthenticated])
+
+  useEffect(() => {
+    if (!isAuthenticated || !isJobSeeker || !resolvedJobSeekerId) return
+    if (!jobSeekerPageIntros[activePage]) return
+    localStorage.setItem(`jobSeekerPageVisited:${resolvedJobSeekerId}:${activePage}`, "true")
+  }, [activePage, isAuthenticated, isJobSeeker, resolvedJobSeekerId])
 
   useEffect(() => {
     const onPopState = (event) => {
@@ -767,6 +961,10 @@ function App() {
         ...userPayload,
         role: "jobseeker",
       })
+      localStorage.removeItem(`jobSeekerSetupGuideDismissed:${userPayload.id}`)
+      localStorage.setItem(`jobSeekerPageIntroEnabled:${userPayload.id}`, "true")
+      setJobSeekerSetupStep(0)
+      setShowJobSeekerSetupGuide(true)
     } catch (err) {
       setRegisterNotice("")
       setRegisterError(err.message || "Registration failed.")
@@ -784,6 +982,8 @@ function App() {
     localStorage.removeItem("jobSeekerProfile")
     localStorage.removeItem("jobSeekerId")
     setActionsMenu(null)
+    setActiveJobSeekerPageIntro(null)
+    setShowJobSeekerSetupGuide(false)
     setIsProfileMenuOpen(false)
     setViewItem(null)
     setJobSeekerProfile(null)
@@ -867,6 +1067,17 @@ function App() {
     anchor.click()
     document.body.removeChild(anchor)
     URL.revokeObjectURL(url)
+    await recordActivity({
+      event: "application.summary_downloaded",
+      description: `Downloaded application summary for ${name}.`,
+      subjectType: "application",
+      subjectId: item.id,
+      subjectName: name,
+      metadata: {
+        jobTitle: appliedJob,
+        format: "txt"
+      }
+    })
   }
 
   const downloadApplicantSummaryImage = async (item) => {
@@ -896,6 +1107,17 @@ function App() {
           anchor.click()
           document.body.removeChild(anchor)
           URL.revokeObjectURL(url)
+          recordActivity({
+            event: "application.summary_downloaded",
+            description: `Downloaded application summary for ${item.name || "Applicant"}.`,
+            subjectType: "application",
+            subjectId: item.id,
+            subjectName: item.name || "Applicant",
+            metadata: {
+              jobTitle: item.applied_job_title || item.matched_job_title || "-",
+              format: "png"
+            }
+          })
         }, "image/png")
       })
     })
@@ -1098,6 +1320,7 @@ function App() {
       setMessage("Upload record deleted.")
       showDeleteToast("Delete successful.", "success")
       fetchUploads({ silent: true })
+      fetchActivityLogs()
       return true
     } catch (error) {
       setMessage("Error deleting record.")
@@ -1121,6 +1344,7 @@ function App() {
       )))
       setMessage("Application hidden.")
       showDeleteToast("Application deleted.", "success")
+      fetchActivityLogs()
       return true
     } catch (error) {
       setMessage("Error hiding application.")
@@ -1134,7 +1358,8 @@ function App() {
     setActionsMenu(null)
     try {
       const response = await fetch(`http://localhost:5000/uploads/${item.id}/evaluation`, {
-        method: "PUT"
+        method: "PUT",
+        headers: getArchiveActorHeaders(currentUser || { name: loginEmail, email: loginEmail, role: userRole })
       })
       const payload = await response.json().catch(() => null)
       if (!response.ok) {
@@ -1145,6 +1370,7 @@ function App() {
       )))
       showDeleteToast("Applicant moved to Ratings / Evaluation.", "success")
       await fetchUploads({ silent: true })
+      await fetchActivityLogs()
     } catch (error) {
       showDeleteToast(error.message || "Failed to send applicant for evaluation.", "fail")
     }
@@ -1185,6 +1411,16 @@ function App() {
     setViewItem(item)
     setActionsMenu(null)
     setActivePage("applicants")
+    recordActivity({
+      event: "application.viewed",
+      description: `Viewed application summary for ${item.name || "Applicant"}.`,
+      subjectType: "application",
+      subjectId: item.id,
+      subjectName: item.name || "Applicant",
+      metadata: {
+        jobTitle: item.applied_job_title || item.matched_job_title || "-"
+      }
+    })
   }
 
   const toggleSort = (key) => {
@@ -1577,10 +1813,21 @@ function App() {
       )
     }
     if (activePage === "users" && (isAdmin || isEmployer)) {
-      return <UsersPage isEmployer={isEmployer} currentUser={currentUser || { name: loginEmail, email: loginEmail, role: userRole }} />
+      return (
+        <UsersPage
+          isEmployer={isEmployer}
+          currentUser={currentUser || { name: loginEmail, email: loginEmail, role: userRole }}
+          onUsersChanged={fetchActivityLogs}
+        />
+      )
     }
     if (activePage === "archive" && (isAdmin || isEmployer)) {
-      return <ArchivePage />
+      return (
+        <ArchivePage
+          currentUser={currentUser || { name: loginEmail, email: loginEmail, role: userRole }}
+          onArchiveChanged={fetchActivityLogs}
+        />
+      )
     }
     if (activePage === "jobs") {
       return (
@@ -1593,7 +1840,10 @@ function App() {
           jobSeekerResume={jobSeekerResume}
           onViewApplicant={handleViewApplicantFromJobs}
           onDeleteApplicant={handleDelete}
-          onJobsChanged={fetchJobPosts}
+          onJobsChanged={async () => {
+            await fetchJobPosts()
+            await fetchActivityLogs()
+          }}
           onViewJob={(job) => {
             setSelectedJobView(job)
             setActivePage("job-view")
@@ -1650,11 +1900,22 @@ function App() {
       return (
         <DashboardPage
           dashboardData={dashboardData}
+          activityLogs={activityLogs}
           onViewAllJobs={() => handleTopNav("jobs")}
           onViewAllApplicants={() => handleTopNav("applicants")}
           onViewApplicant={(item) => {
             setViewItem(item)
             setActivePage("applicants")
+            recordActivity({
+              event: "application.viewed",
+              description: `Viewed application summary for ${item.name || "Applicant"}.`,
+              subjectType: "application",
+              subjectId: item.id,
+              subjectName: item.name || "Applicant",
+              metadata: {
+                jobTitle: item.applied_job_title || item.matched_job_title || "-"
+              }
+            })
           }}
         />
       )
@@ -1665,12 +1926,26 @@ function App() {
           uploads={uploads}
           isLoading={isLoadingUploads}
           currentUser={currentUser || { name: loginEmail, email: loginEmail, role: userRole }}
-          onRatingsChanged={() => fetchUploads({ silent: true })}
+          onRatingsChanged={async () => {
+            await fetchUploads({ silent: true })
+            await fetchActivityLogs()
+          }}
         />
       )
     }
     if (activePage === "help") {
-      return <HelpPage />
+      return (
+        <HelpPage
+          isJobSeeker={isJobSeeker}
+          jobSeekerId={resolvedJobSeekerId}
+          jobSeekerProfile={jobSeekerProfile}
+          jobSeekerResume={jobSeekerResume}
+          jobSeekerSupporting={jobSeekerSupporting}
+          jobSeekerApplications={jobSeekerApplications}
+          onOpenSetupGuide={openJobSeekerSetupGuide}
+          onGoToPage={handleTopNav}
+        />
+      )
     }
     if (isLoadingUploads && !isJobSeeker) {
       return <p>Loading uploads...</p>
@@ -2098,6 +2373,156 @@ function App() {
           </div>
         </div>
       </header>
+
+      {showJobSeekerSetupGuide && isJobSeeker && (
+        <div
+          className="modal-overlay jobseeker-setup-overlay"
+          onClick={(e) => {
+            if (e.target === e.currentTarget) {
+              closeJobSeekerSetupGuide()
+            }
+          }}
+        >
+          <div className="modal-card jobseeker-setup-modal" onClick={(e) => e.stopPropagation()}>
+            {(() => {
+              const currentStep = jobSeekerSetupGuideSteps[jobSeekerSetupStep] || jobSeekerSetupGuideSteps[0]
+              const isLastStep = jobSeekerSetupStep === jobSeekerSetupGuideSteps.length - 1
+              return (
+              <>
+            <div className="jobseeker-setup-head">
+              <div>
+                <span className="jobseeker-setup-kicker">Account Setup</span>
+                <h3>Step-by-step account guide</h3>
+              </div>
+              <button type="button" className="close-x" onClick={closeJobSeekerSetupGuide}>×</button>
+            </div>
+            <p className="jobseeker-setup-intro">
+              Follow each step to set up your profile, discover the pages, and understand where to go next.
+            </p>
+
+            <div className="jobseeker-setup-wizard-progress" aria-label={`Step ${jobSeekerSetupStep + 1} of ${jobSeekerSetupGuideSteps.length}`}>
+              {jobSeekerSetupGuideSteps.map((step, index) => (
+                <button
+                  key={step.title}
+                  type="button"
+                  className={index === jobSeekerSetupStep ? "active" : index < jobSeekerSetupStep ? "done" : ""}
+                  onClick={() => setJobSeekerSetupStep(index)}
+                  aria-label={`Go to step ${index + 1}: ${step.title}`}
+                >
+                  {index + 1}
+                </button>
+              ))}
+            </div>
+
+            <div className="jobseeker-setup-wizard-card">
+              <span className="jobseeker-setup-step">{jobSeekerSetupStep + 1}</span>
+              <div>
+                <strong>{currentStep.title}</strong>
+                <p>{currentStep.body}</p>
+                <small>{currentStep.detail}</small>
+              </div>
+            </div>
+
+            <div className="modal-actions jobseeker-setup-actions">
+              <button
+                type="button"
+                className="btn btn-secondary"
+                disabled={jobSeekerSetupStep === 0}
+                onClick={() => setJobSeekerSetupStep((prev) => Math.max(0, prev - 1))}
+              >
+                Back
+              </button>
+              <button
+                type="button"
+                className="btn"
+                onClick={() => {
+                  if (!isLastStep) {
+                    setJobSeekerSetupStep((prev) => Math.min(jobSeekerSetupGuideSteps.length - 1, prev + 1))
+                    return
+                  }
+                  if (currentStep.page === "profile") {
+                    goToJobSeekerSetupProfile()
+                    return
+                  }
+                  closeJobSeekerSetupGuide()
+                  handleTopNav(currentStep.page)
+                }}
+              >
+                {isLastStep ? "Go to Dashboard" : "Next Step"}
+              </button>
+              <button
+                type="button"
+                className="btn btn-secondary"
+                onClick={() => {
+                  if (currentStep.page === "profile") {
+                    goToJobSeekerSetupProfile()
+                    return
+                  }
+                  closeJobSeekerSetupGuide()
+                  handleTopNav(currentStep.page)
+                }}
+              >
+                Open {currentStep.page === "jobs" ? "Jobs" : currentStep.page === "dashboard" ? "Dashboard" : "Profile"}
+              </button>
+              <button type="button" className="btn btn-secondary" onClick={closeJobSeekerSetupGuide}>
+                Later
+              </button>
+            </div>
+            </>
+              )
+            })()}
+          </div>
+        </div>
+      )}
+
+      {activeJobSeekerPageIntro && isJobSeeker && !showJobSeekerSetupGuide && (
+        <div
+          className="modal-overlay jobseeker-page-intro-overlay"
+          onClick={(e) => {
+            if (e.target === e.currentTarget) {
+              closeJobSeekerPageIntro()
+            }
+          }}
+        >
+          <div className="modal-card jobseeker-page-intro-modal" onClick={(e) => e.stopPropagation()}>
+            <div className="jobseeker-setup-head">
+              <div>
+                <span className="jobseeker-setup-kicker">About This Page</span>
+                <h3>{jobSeekerPageIntros[activeJobSeekerPageIntro].title}</h3>
+              </div>
+              <button type="button" className="close-x" onClick={closeJobSeekerPageIntro}>×</button>
+            </div>
+            <p className="jobseeker-setup-intro">
+              {jobSeekerPageIntros[activeJobSeekerPageIntro].body}
+            </p>
+            <div className="jobseeker-page-intro-tips">
+              {jobSeekerPageIntros[activeJobSeekerPageIntro].tips.map((tip) => (
+                <div key={tip}>
+                  <span aria-hidden="true">•</span>
+                  <p>{tip}</p>
+                </div>
+              ))}
+            </div>
+            <div className="modal-actions jobseeker-setup-actions">
+              <button type="button" className="btn" onClick={closeJobSeekerPageIntro}>
+                Continue
+              </button>
+              {activeJobSeekerPageIntro !== "help" && (
+                <button
+                  type="button"
+                  className="btn btn-secondary"
+                  onClick={() => {
+                    closeJobSeekerPageIntro()
+                    handleTopNav("help")
+                  }}
+                >
+                  Open Help
+                </button>
+              )}
+            </div>
+          </div>
+        </div>
+      )}
 
       {confirmDeleteId != null && (
         <div

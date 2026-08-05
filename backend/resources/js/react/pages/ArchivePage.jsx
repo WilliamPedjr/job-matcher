@@ -1,5 +1,6 @@
 import React, { useCallback, useEffect, useMemo, useState } from 'react'
 import '../styles/ArchivePage.css'
+import { getArchiveActorHeaders } from '../utils/archiveActor'
 
 function formatDate(value) {
   const date = new Date(value)
@@ -41,7 +42,7 @@ function formatActorRole(value) {
   return normalized.replace(/\b\w/g, (char) => char.toUpperCase())
 }
 
-function ArchivePage() {
+function ArchivePage({ currentUser = null, onArchiveChanged }) {
   const [archives, setArchives] = useState([])
   const [isLoading, setIsLoading] = useState(false)
   const [error, setError] = useState('')
@@ -49,6 +50,8 @@ function ArchivePage() {
   const [typeFilter, setTypeFilter] = useState('all')
   const [notice, setNotice] = useState('')
   const [restoringId, setRestoringId] = useState(null)
+  const [archivePage, setArchivePage] = useState(1)
+  const archivePageSize = 10
 
   const fetchArchives = useCallback(async () => {
     setIsLoading(true)
@@ -129,13 +132,27 @@ function ArchivePage() {
     })
   }, [archives, searchTerm, typeFilter])
 
+  useEffect(() => {
+    setArchivePage(1)
+  }, [searchTerm, typeFilter])
+
+  const archivePageCount = Math.max(1, Math.ceil(filteredArchives.length / archivePageSize))
+  const currentArchivePage = Math.min(archivePage, archivePageCount)
+  const pagedArchives = filteredArchives.slice(
+    (currentArchivePage - 1) * archivePageSize,
+    currentArchivePage * archivePageSize
+  )
+  const pageStart = filteredArchives.length === 0 ? 0 : (currentArchivePage - 1) * archivePageSize + 1
+  const pageEnd = Math.min(currentArchivePage * archivePageSize, filteredArchives.length)
+
   const restoreJob = async (archiveId) => {
     setRestoringId(archiveId)
     setError('')
     setNotice('')
     try {
       const response = await fetch(`http://localhost:5000/archives/${archiveId}/restore-job`, {
-        method: 'POST'
+        method: 'POST',
+        headers: getArchiveActorHeaders(currentUser)
       })
       const payload = await response.json().catch(() => null)
       if (!response.ok) {
@@ -143,6 +160,7 @@ function ArchivePage() {
       }
       setArchives((prev) => prev.filter((item) => item.id !== archiveId))
       setNotice(payload?.message || 'Job restored successfully.')
+      onArchiveChanged?.()
     } catch (err) {
       setError(err.message || 'Failed to restore job.')
     } finally {
@@ -209,7 +227,7 @@ function ArchivePage() {
                 <td colSpan={7} className="archive-empty">No archive records found.</td>
               </tr>
             ) : (
-              filteredArchives.map((item, index) => {
+              pagedArchives.map((item, index) => {
                 const data = item.data || {}
                 const type = item.record_type || item.recordType
                 const recordTitle = getArchiveTitle(item, data)
@@ -219,7 +237,7 @@ function ArchivePage() {
                 const actorRole = formatActorRole(item.actorRole || item.actor_role)
                 return (
                   <tr key={item.id}>
-                    <td>{index + 1}</td>
+                    <td>{(currentArchivePage - 1) * archivePageSize + index + 1}</td>
                     <td>
                       <span className={`archive-type archive-type-${String(type || '').replace(/_/g, '-')}`}>
                         {formatType(type)}
@@ -276,9 +294,30 @@ function ArchivePage() {
         </table>
       </div>
 
-      <p className="archive-count">
-        Showing {filteredArchives.length} of {archives.length} archived records
-      </p>
+      <div className="archive-pagination">
+        <p className="archive-count">
+          Showing {pageStart}-{pageEnd} of {filteredArchives.length} archived records
+        </p>
+        <div className="archive-page-controls">
+          <button
+            type="button"
+            className="archive-page-btn"
+            disabled={currentArchivePage === 1}
+            onClick={() => setArchivePage((page) => Math.max(1, page - 1))}
+          >
+            Previous
+          </button>
+          <span>Page {currentArchivePage} of {archivePageCount}</span>
+          <button
+            type="button"
+            className="archive-page-btn"
+            disabled={currentArchivePage === archivePageCount}
+            onClick={() => setArchivePage((page) => Math.min(archivePageCount, page + 1))}
+          >
+            Next
+          </button>
+        </div>
+      </div>
     </section>
   )
 }

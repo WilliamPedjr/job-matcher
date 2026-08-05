@@ -3,12 +3,14 @@
 namespace App\Http\Controllers\Api;
 
 use App\Http\Controllers\Controller;
+use App\Models\ActivityLog;
 use App\Models\ApplicationRating;
 use App\Models\Archive;
 use App\Models\Job;
 use App\Models\JobSeeker;
 use App\Models\SupportingFile;
 use App\Models\Upload;
+use App\Services\PdsExtractionService;
 use App\Services\ResumeAnalysisService;
 use App\Services\TextExtractionService;
 use Illuminate\Http\JsonResponse;
@@ -19,8 +21,22 @@ use Illuminate\Support\Str;
 
 class UploadController extends Controller
 {
+    private const APPLICATION_MATCH_BONUS_PERCENT = 10;
+    private const APPLICATION_MINIMUM_MATCH_SCORE = 50;
+
+    private const BOARD_MEMBERS = [
+        'Dr. Solomon Faller Jr.',
+        'Jasmin Graeles',
+        'Prof. Drake Ortega Jr.',
+        'Josisor Conchada',
+        'Prof. Jose Ismael Galamia',
+        'Dr. Joyce Magtolis',
+        'Cesar Blanco',
+    ];
+
     public function __construct(
         private readonly ResumeAnalysisService $resumeAnalysisService,
+        private readonly PdsExtractionService $pdsExtractionService,
         private readonly TextExtractionService $textExtractionService
     ) {
     }
@@ -94,6 +110,14 @@ class UploadController extends Controller
                 'summary_text' => '',
                 'resume_summary' => [],
             ];
+        }
+
+        $effectiveMatchScore = min(100, (float) ($analysis['overall_score'] ?? 0) + self::APPLICATION_MATCH_BONUS_PERCENT);
+        if ($appliedJobTitle !== '' && $effectiveMatchScore < self::APPLICATION_MINIMUM_MATCH_SCORE) {
+            Storage::disk('local')->delete($stored['path']);
+            return response()->json([
+                'message' => 'Your resume does not match this job enough to apply.',
+            ], 422);
         }
 
         $jobSeeker = null;
@@ -289,12 +313,21 @@ class UploadController extends Controller
         return Storage::disk('local')->download($file->file_path, $file->original_name ?: basename($file->file_path));
     }
 
-    public function markForEvaluation(int $id): JsonResponse
+    public function markForEvaluation(Request $request, int $id): JsonResponse
     {
         $upload = Upload::findOrFail($id);
         $upload->evaluation_status = 'for_evaluation';
         $upload->evaluation_started_at = now();
         $upload->save();
+
+        ActivityLog::record('application.interviewed', "Moved {$upload->name} to interview evaluation.", $request, [
+            'subject_type' => 'application',
+            'subject_id' => $upload->id,
+            'subject_name' => $upload->name,
+            'metadata' => [
+                'jobTitle' => $upload->applied_job_title ?: $upload->matched_job_title,
+            ],
+        ]);
 
         return response()->json($this->serializeUpload($upload->fresh(['supportingFiles', 'ratings'])));
     }
@@ -305,6 +338,8 @@ class UploadController extends Controller
         $data = $request->validate([
             'raterName' => ['nullable', 'string', 'max:255'],
             'raterEmail' => ['nullable', 'string', 'max:255'],
+            'boardMembers' => ['nullable', 'array'],
+            'boardMembers.*' => ['nullable', 'string', 'max:255'],
             'scores' => ['required', 'array'],
             'scores.*' => ['required', 'integer', 'min:1', 'max:5'],
         ]);
@@ -329,7 +364,7 @@ class UploadController extends Controller
 
         if ($alreadyRated) {
             return response()->json([
-                'message' => 'This account has already rated this applicant.',
+                'message' => 'This board member has already rated this applicant.',
             ], 422);
         }
 
@@ -342,11 +377,25 @@ class UploadController extends Controller
             'percentage_score' => $percentageScore,
         ]);
 
-        $upload->evaluation_status = 'rated';
+        $upload->load('ratings');
+        $boardMembers = $this->cleanBoardMembers($data['boardMembers'] ?? []);
+        $upload->evaluation_status = $this->allBoardMembersRated($upload, $boardMembers) ? 'rated' : 'for_evaluation';
         if (!$upload->evaluation_started_at) {
             $upload->evaluation_started_at = now();
         }
         $upload->save();
+
+        ActivityLog::record('application.rated', "Rated {$upload->name} for {$upload->applied_job_title}.", $request, [
+            'subject_type' => 'application',
+            'subject_id' => $upload->id,
+            'subject_name' => $upload->name,
+            'metadata' => [
+                'jobTitle' => $upload->applied_job_title ?: $upload->matched_job_title,
+                'raterName' => $raterName,
+                'totalScore' => $totalScore,
+                'percentageScore' => $percentageScore,
+            ],
+        ]);
 
         return response()->json($this->serializeUpload($upload->fresh(['supportingFiles', 'ratings'])));
     }
@@ -357,7 +406,8 @@ class UploadController extends Controller
             ->with(['supportingFiles', 'ratings'])
             ->findOrFail($id);
 
-        if ($upload->ratings->isNotEmpty()) {
+        $hadRatings = $upload->ratings->isNotEmpty();
+        if ($hadRatings) {
             Archive::create([
                 'record_type' => 'rating',
                 'record_id' => $upload->id,
@@ -380,6 +430,22 @@ class UploadController extends Controller
         $upload->evaluation_started_at = null;
         $upload->save();
 
+        ActivityLog::record(
+            $hadRatings ? 'rating.deleted' : 'application.cancelled',
+            $hadRatings
+                ? "Deleted rating record for {$upload->name}."
+                : "Cancelled interview evaluation for {$upload->name}.",
+            $request,
+            [
+                'subject_type' => 'application',
+                'subject_id' => $upload->id,
+                'subject_name' => $upload->name,
+                'metadata' => [
+                    'jobTitle' => $upload->applied_job_title ?: $upload->matched_job_title,
+                ],
+            ]
+        );
+
         return response()->json($this->serializeUpload($upload->fresh(['supportingFiles', 'ratings'])));
     }
 
@@ -395,6 +461,16 @@ class UploadController extends Controller
             'data' => $this->serializeUpload($upload),
             ...Archive::actorFromRequest($request),
             'deleted_at' => now(),
+        ]);
+
+        ActivityLog::record('application.deleted', "Deleted application for {$upload->name}.", $request, [
+            'subject_type' => 'application',
+            'subject_id' => $upload->id,
+            'subject_name' => $upload->name,
+            'metadata' => [
+                'jobTitle' => $upload->applied_job_title ?: $upload->matched_job_title,
+                'email' => $upload->email,
+            ],
         ]);
 
         if ($upload->file_path && Storage::disk('local')->exists($upload->file_path)) {
@@ -417,6 +493,16 @@ class UploadController extends Controller
             'data' => $this->serializeUpload($upload),
             ...Archive::actorFromRequest($request),
             'deleted_at' => now(),
+        ]);
+
+        ActivityLog::record('application.cancelled', "Cancelled application for {$upload->name}.", $request, [
+            'subject_type' => 'application',
+            'subject_id' => $upload->id,
+            'subject_name' => $upload->name,
+            'metadata' => [
+                'jobTitle' => $upload->applied_job_title ?: $upload->matched_job_title,
+                'email' => $upload->email,
+            ],
         ]);
 
         $upload->job_seeker_hidden = true;
@@ -447,6 +533,11 @@ class UploadController extends Controller
         $uploadedAt = $upload->uploaded_at instanceof \DateTimeInterface
             ? $upload->uploaded_at->toISOString()
             : ($upload->uploaded_at ? (string) $upload->uploaded_at : null);
+        $resumeSummary = $upload->resume_summary ?? [];
+        $pdsFormat = $this->pdsFormatForUpload($upload, $resumeSummary);
+        if ($pdsFormat !== null) {
+            $resumeSummary['pds'] = $pdsFormat;
+        }
 
         return [
             'id' => $upload->id,
@@ -482,7 +573,8 @@ class UploadController extends Controller
             'experience_text' => $upload->experience_text,
             'extracted_text' => $upload->extracted_text,
             'summary_text' => $upload->summary_text,
-            'resume_summary' => $upload->resume_summary ?? [],
+            'resume_summary' => $resumeSummary,
+            'pds_format' => $pdsFormat,
             'experience_json' => $upload->experience_json,
             'job_seeker_hidden' => $upload->job_seeker_hidden,
             'job_seeker_hidden_at' => $upload->job_seeker_hidden_at,
@@ -509,6 +601,22 @@ class UploadController extends Controller
         ];
     }
 
+    private function pdsFormatForUpload(Upload $upload, array $resumeSummary): ?array
+    {
+        $existing = $resumeSummary['pds'] ?? null;
+        $text = trim((string) ($upload->extracted_text ?? ''));
+        if ($text === '') {
+            return is_array($existing) ? $existing : null;
+        }
+
+        $format = $this->pdsExtractionService->format($text);
+        if (($format['detected'] ?? false) === true) {
+            return $format;
+        }
+
+        return is_array($existing) ? $existing : null;
+    }
+
     private function serializeRatings(Upload $upload): array
     {
         $ratings = $upload->relationLoaded('ratings')
@@ -529,6 +637,43 @@ class UploadController extends Controller
             'created_at' => $rating->created_at?->toISOString(),
             'createdAt' => $rating->created_at?->toISOString(),
         ])->values()->all();
+    }
+
+    private function allBoardMembersRated(Upload $upload, array $boardMembers = []): bool
+    {
+        $requiredBoardMembers = count($boardMembers) > 0 ? $boardMembers : self::BOARD_MEMBERS;
+        $ratings = $upload->relationLoaded('ratings')
+            ? $upload->ratings
+            : $upload->ratings()->get();
+
+        $ratedNames = $ratings
+            ->map(fn (ApplicationRating $rating) => $this->normalizeBoardMemberName($rating->rater_name))
+            ->filter()
+            ->unique()
+            ->values();
+
+        return collect($requiredBoardMembers)
+            ->map(fn (string $name) => $this->normalizeBoardMemberName($name))
+            ->every(fn (string $name) => $ratedNames->contains($name));
+    }
+
+    private function cleanBoardMembers(array $boardMembers): array
+    {
+        return collect($boardMembers)
+            ->map(fn ($name) => trim((string) $name))
+            ->filter()
+            ->unique(fn (string $name) => Str::lower($name))
+            ->values()
+            ->all();
+    }
+
+    private function normalizeBoardMemberName(?string $name): string
+    {
+        return Str::of((string) $name)
+            ->lower()
+            ->replaceMatches('/\s+/', ' ')
+            ->trim()
+            ->toString();
     }
 
     private function ratingStats(Upload $upload): array

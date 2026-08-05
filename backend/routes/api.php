@@ -1,12 +1,14 @@
 <?php
 
 use App\Http\Controllers\Api\AuthController;
+use App\Http\Controllers\Api\ActivityLogController;
 use App\Http\Controllers\Api\ArchiveController;
 use App\Http\Controllers\Api\EmployerController;
 use App\Http\Controllers\Api\JobController;
 use App\Http\Controllers\Api\LandingController;
 use App\Http\Controllers\Api\JobSeekerController;
 use App\Http\Controllers\Api\MatchController;
+use App\Http\Controllers\Api\PdsController;
 use App\Http\Controllers\Api\SkillController;
 use App\Http\Controllers\Api\UploadController;
 use Illuminate\Support\Facades\Route;
@@ -18,6 +20,8 @@ Route::get('/', function () {
 });
 
 Route::post('/auth/verify-recaptcha', [AuthController::class, 'verifyRecaptcha']);
+Route::get('/activity-logs', [ActivityLogController::class, 'index']);
+Route::post('/activity-logs', [ActivityLogController::class, 'store']);
 Route::post('/staff/register', [AuthController::class, 'staffRegister']);
 Route::post('/staff/login', [AuthController::class, 'staffLogin']);
 Route::get('/staff/me', [AuthController::class, 'staffMe']);
@@ -71,6 +75,7 @@ Route::get('/skills', [SkillController::class, 'index']);
 Route::get('/skills/catalog', [SkillController::class, 'catalog']);
 
 Route::get('/landing-summary', [LandingController::class, 'summary']);
+Route::post('/pds/extract', [PdsController::class, 'extract']);
 Route::post('/upload', [UploadController::class, 'store']);
 Route::get('/uploads', [UploadController::class, 'index']);
 Route::get('/uploads/{id}', [UploadController::class, 'show']);

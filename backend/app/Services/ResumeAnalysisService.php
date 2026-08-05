@@ -4,13 +4,13 @@ namespace App\Services;
 
 use App\Models\GlobalSkillCatalog;
 use App\Models\Job;
-use Illuminate\Support\Arr;
 use Illuminate\Support\Str;
 
 class ResumeAnalysisService
 {
     public function __construct(
-        private readonly TextExtractionService $textExtractionService
+        private readonly TextExtractionService $textExtractionService,
+        private readonly PdsExtractionService $pdsExtractionService
     ) {
     }
 
@@ -31,6 +31,9 @@ class ResumeAnalysisService
         }
 
         $resumeText = $this->normalizeWhitespace($extractedText);
+        $pdsFormat = $this->pdsExtractionService->format($extractedText);
+        $isPds = ($pdsFormat['detected'] ?? false) === true;
+        $analysisText = $this->analysisTextForMatching($resumeText, $pdsFormat);
         $globalSkills = GlobalSkillCatalog::query()->pluck('skill')->all();
 
         $job = null;
@@ -42,30 +45,36 @@ class ResumeAnalysisService
 
         $requiredSkills = $this->splitSkills($job?->required_skills ?? '');
         if (!$requiredSkills) {
-            $requiredSkills = $this->buildSkillSuggestions($resumeText, $globalSkills);
+            $requiredSkills = $this->buildSkillSuggestions($analysisText, $globalSkills);
         }
 
-        $matchedSkills = $this->findMatchedSkills($resumeText, $requiredSkills ?: $globalSkills);
+        $matchedSkills = $this->findMatchedSkills($analysisText, $requiredSkills ?: $globalSkills);
         $missingSkills = array_values(array_diff($requiredSkills, $matchedSkills));
 
         $skillsScore = $this->calculateSkillsScore($requiredSkills, $matchedSkills);
-        $projectScore = $this->calculateProjectScore($resumeText);
-        $educationLines = $this->extractEducationLines($extractedText);
-        $experienceLines = $this->extractExperienceLines($extractedText);
+        $projectScore = $this->calculateProjectScore($analysisText);
+        $educationLines = $isPds
+            ? $this->pdsSummaryLines($pdsFormat, 'education')
+            : $this->extractEducationLines($extractedText);
+        $experienceLines = $isPds
+            ? $this->pdsSummaryLines($pdsFormat, 'experience')
+            : $this->extractExperienceLines($extractedText);
 
         $minimumEducation = (string) ($job?->minimum_education ?? '');
         $minimumExperienceYears = (int) ($job?->minimum_experience_years ?? 0);
         $educationScore = $this->calculateEducationScore($educationLines, $minimumEducation);
         $experienceScore = $this->calculateExperienceScore($experienceLines, $minimumExperienceYears);
         $overall = round(($skillsScore * 0.55) + ($experienceScore * 0.2) + ($educationScore * 0.15) + ($projectScore * 0.1), 2);
+        $summarySourceText = $isPds && $analysisText !== '' ? $analysisText : $extractedText;
         $summary = $this->buildResumeSummary(
-            $extractedText,
+            $summarySourceText,
             $matchedSkills,
             $missingSkills,
             $educationLines,
             $experienceLines,
             $projectScore,
-            $overall
+            $overall,
+            $pdsFormat
         );
 
         return [
@@ -80,9 +89,10 @@ class ResumeAnalysisService
             'education_text' => implode("\n", $educationLines),
             'experience_text' => implode("\n", $experienceLines),
             'resume_text' => $resumeText,
-            'preview_text' => Str::limit($summary['summary_text'] !== '' ? $summary['summary_text'] : $resumeText, 1000, ''),
+            'preview_text' => Str::limit($summary['summary_text'] !== '' ? $summary['summary_text'] : ($isPds && $analysisText !== '' ? $analysisText : $resumeText), 1000, ''),
             'summary_text' => $summary['summary_text'],
             'resume_summary' => $summary,
+            'pds_format' => $pdsFormat,
             'matched_job_title' => $job?->title ?: ($appliedJobTitle !== '' ? $appliedJobTitle : null),
         ];
     }
@@ -91,39 +101,48 @@ class ResumeAnalysisService
     {
         $globalSkills = GlobalSkillCatalog::query()->pluck('skill')->all();
         $resumeText = $this->normalizeWhitespace($resumeText);
+        $pdsFormat = $this->pdsExtractionService->format($resumeText);
+        $isPds = ($pdsFormat['detected'] ?? false) === true;
+        $analysisText = $this->analysisTextForMatching($resumeText, $pdsFormat);
+        $educationLines = $isPds
+            ? $this->pdsSummaryLines($pdsFormat, 'education')
+            : $this->extractEducationLines($resumeText);
+        $experienceLines = $isPds
+            ? $this->pdsSummaryLines($pdsFormat, 'experience')
+            : $this->extractExperienceLines($resumeText);
         $results = [];
 
         foreach ($jobs as $job) {
-            $requiredSkills = $this->splitSkills((string) Arr::get((array) $job, 'requiredSkills', Arr::get((array) $job, 'required_skills', '')));
+            $requiredSkills = $this->splitSkills((string) $this->jobField($job, 'requiredSkills', 'required_skills', ''));
             if (!$requiredSkills) {
-                $requiredSkills = $this->buildSkillSuggestions($resumeText, $globalSkills);
+                $requiredSkills = $this->buildSkillSuggestions($analysisText, $globalSkills);
             }
 
-            $matchedSkills = $this->findMatchedSkills($resumeText, $requiredSkills ?: $globalSkills);
+            $matchedSkills = $this->findMatchedSkills($analysisText, $requiredSkills ?: $globalSkills);
             $missingSkills = array_values(array_diff($requiredSkills, $matchedSkills));
             $skillsScore = $this->calculateSkillsScore($requiredSkills, $matchedSkills);
-            $projectScore = $this->calculateProjectScore($resumeText);
+            $projectScore = $this->calculateProjectScore($analysisText);
             $educationScore = $this->calculateEducationScore(
-                $this->extractEducationLines($resumeText),
-                (string) Arr::get((array) $job, 'minimumEducation', Arr::get((array) $job, 'minimum_education', ''))
+                $educationLines,
+                (string) $this->jobField($job, 'minimumEducation', 'minimum_education', '')
             );
             $experienceScore = $this->calculateExperienceScore(
-                $this->extractExperienceLines($resumeText),
-                (int) Arr::get((array) $job, 'minimumExperienceYears', Arr::get((array) $job, 'minimum_experience_years', 0))
+                $experienceLines,
+                (int) $this->jobField($job, 'minimumExperienceYears', 'minimum_experience_years', 0)
             );
             $overall = round(($skillsScore * 0.55) + ($experienceScore * 0.2) + ($educationScore * 0.15) + ($projectScore * 0.1), 2);
 
             $results[] = [
-                'id' => Arr::get((array) $job, 'id'),
-                'title' => Arr::get((array) $job, 'title'),
-                'description' => Arr::get((array) $job, 'description'),
-                'status' => Arr::get((array) $job, 'status', 'active'),
-                'department' => Arr::get((array) $job, 'department'),
-                'location' => Arr::get((array) $job, 'location'),
-                'type' => Arr::get((array) $job, 'type'),
+                'id' => $this->jobField($job, 'id'),
+                'title' => $this->jobField($job, 'title'),
+                'description' => $this->jobField($job, 'description'),
+                'status' => $this->jobField($job, 'status', null, 'active'),
+                'department' => $this->jobField($job, 'department'),
+                'location' => $this->jobField($job, 'location'),
+                'type' => $this->jobField($job, 'type'),
                 'requiredSkills' => implode(', ', $requiredSkills),
-                'minimumEducation' => Arr::get((array) $job, 'minimumEducation', Arr::get((array) $job, 'minimum_education', '')),
-                'minimumExperienceYears' => Arr::get((array) $job, 'minimumExperienceYears', Arr::get((array) $job, 'minimum_experience_years', 0)),
+                'minimumEducation' => $this->jobField($job, 'minimumEducation', 'minimum_education', ''),
+                'minimumExperienceYears' => $this->jobField($job, 'minimumExperienceYears', 'minimum_experience_years', 0),
                 'overallScore' => $overall,
                 'classification' => $overall >= 80 ? 'Highly Qualified' : ($overall >= 60 ? 'Moderately Qualified' : 'Not Qualified'),
                 'matchedSkills' => $matchedSkills,
@@ -138,6 +157,45 @@ class ResumeAnalysisService
         usort($results, fn ($left, $right) => $right['overallScore'] <=> $left['overallScore']);
 
         return $results;
+    }
+
+    private function analysisTextForMatching(string $resumeText, array $pdsFormat): string
+    {
+        if (($pdsFormat['detected'] ?? false) !== true) {
+            return $resumeText;
+        }
+
+        return $this->normalizeWhitespace((string) ($pdsFormat['matching_text'] ?? ''));
+    }
+
+    private function pdsSummaryLines(array $pdsFormat, string $key): array
+    {
+        $items = $pdsFormat[$key] ?? [];
+        if (!is_array($items)) {
+            return [];
+        }
+
+        return array_values(array_filter(array_map(
+            fn ($item) => trim((string) $item),
+            $items
+        )));
+    }
+
+    private function jobField(mixed $job, string $camelKey, ?string $snakeKey = null, mixed $default = null): mixed
+    {
+        $value = data_get($job, $camelKey);
+        if ($value !== null) {
+            return $value;
+        }
+
+        if ($snakeKey !== null) {
+            $value = data_get($job, $snakeKey);
+            if ($value !== null) {
+                return $value;
+            }
+        }
+
+        return $default;
     }
 
     private function splitSkills(string $skills): array
@@ -213,7 +271,8 @@ class ResumeAnalysisService
         array $educationLines,
         array $experienceLines,
         float $projectScore,
-        float $overallScore
+        float $overallScore,
+        array $pdsFormat = []
     ): array {
         $profileLines = $this->extractProfileLines($sourceText);
         $projectLines = $this->extractProjectLines($sourceText);
@@ -255,6 +314,7 @@ class ResumeAnalysisService
             'education' => $educationHighlights,
             'projects' => $projectHighlights,
             'gaps' => $missingHighlights,
+            'pds' => $pdsFormat,
             'confidence' => $this->summarizationConfidence($summaryText, $matchedSkills, $educationLines, $experienceLines, $overallScore),
         ];
     }

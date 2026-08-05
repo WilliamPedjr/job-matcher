@@ -3,6 +3,7 @@
 namespace App\Http\Controllers\Api;
 
 use App\Http\Controllers\Controller;
+use App\Models\ActivityLog;
 use App\Models\Employer;
 use App\Models\JobSeeker;
 use App\Models\User;
@@ -40,6 +41,7 @@ class AuthController extends Controller
         $employer = Employer::query()
             ->whereRaw('LOWER(email) = ?', [$identifier])
             ->orWhereRaw('LOWER(username) = ?', [$identifier])
+            ->orWhereRaw('LOWER(id_number) = ?', [$identifier])
             ->orWhereRaw('LOWER(company_name) = ?', [$identifier])
             ->first();
 
@@ -64,6 +66,16 @@ class AuthController extends Controller
             'email' => Str::lower(trim($data['email'])),
             'password' => Hash::make($data['password']),
             'role' => $data['role'] ?? 'staff',
+        ]);
+
+        ActivityLog::record('personnel.created', "Added personnel account for {$user->name}.", $request, [
+            'subject_type' => 'personnel',
+            'subject_id' => $user->id,
+            'subject_name' => $user->name,
+            'metadata' => [
+                'email' => $user->email,
+                'role' => $user->role,
+            ],
         ]);
 
         return response()->json([
@@ -92,6 +104,7 @@ class AuthController extends Controller
         $employer = Employer::query()
             ->whereRaw('LOWER(email) = ?', [$identifier])
             ->orWhereRaw('LOWER(username) = ?', [$identifier])
+            ->orWhereRaw('LOWER(id_number) = ?', [$identifier])
             ->orWhereRaw('LOWER(company_name) = ?', [$identifier])
             ->first();
 
@@ -150,6 +163,18 @@ class AuthController extends Controller
             'password' => Hash::make($data['password']),
         ]);
 
+        ActivityLog::record('job_seeker.created', "New job seeker account created for {$jobSeeker->full_name}.", $request, [
+            'subject_type' => 'job_seeker',
+            'subject_id' => $jobSeeker->id,
+            'subject_name' => $jobSeeker->full_name,
+            'actor_name' => $jobSeeker->full_name,
+            'actor_email' => $jobSeeker->email,
+            'actor_role' => 'jobseeker',
+            'metadata' => [
+                'email' => $jobSeeker->email,
+            ],
+        ]);
+
         return response()->json([
             'message' => 'Job seeker registered successfully.',
             'jobSeeker' => $this->serializeJobSeeker($jobSeeker),
@@ -191,6 +216,8 @@ class AuthController extends Controller
             'fullName' => $employer->full_name,
             'email' => $employer->email,
             'username' => $employer->username,
+            'id_number' => $employer->id_number,
+            'idNumber' => $employer->id_number,
             'phone' => $employer->phone,
         ];
     }

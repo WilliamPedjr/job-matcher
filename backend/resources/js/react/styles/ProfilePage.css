@@ -926,23 +926,6 @@ optgroup {
   background: #1f2a44;
 }
 
-.extracted-block {
-  margin-top: 12px;
-}
-
-.extracted-block pre {
-  margin-top: 6px;
-  white-space: pre-wrap;
-  word-break: break-word;
-  max-height: 220px;
-  overflow: auto;
-  background: #f5f7fb;
-  border: 1px solid #d9e0ec;
-  border-radius: 6px;
-  padding: 10px;
-  font-size: var(--fs-13);
-}
-
 .toast {
   position: fixed;
   top: 16px;

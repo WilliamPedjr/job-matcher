@@ -1,6 +1,7 @@
 import React, { useEffect, useMemo, useRef, useState } from 'react'
 import '../styles/RatingsPage.css'
 import ApplicantViewPage from './ApplicantViewPage'
+import CustomDropdown from '../components/CustomDropdown'
 import { getArchiveActorHeaders } from '../utils/archiveActor'
 
 function formatInterviewDate(value) {
@@ -15,7 +16,15 @@ function getPosition(item) {
   return item.applied_job_title || item.appliedJobTitle || item.matched_job_title || 'No position selected'
 }
 
-const ratingCriteria = [
+function getEvaluationStatus(item) {
+  return String(item?.evaluation_status || item?.evaluationStatus || '').toLowerCase()
+}
+
+function getEvaluationStatusLabel(item) {
+  return getEvaluationStatus(item) === 'rated' ? 'Rated' : 'For Evaluation'
+}
+
+const defaultRatingCriteria = [
   'Appearance and Grooming',
   'Technical Knowledge and Mastery',
   'Confidence and Composure',
@@ -28,6 +37,24 @@ const ratingCriteria = [
   'Overall Interview Performance'
 ]
 
+const ratingCriteriaStorageKey = 'ratingsCriteria'
+const boardMembersStorageKey = 'ratingsBoardMembers'
+
+function loadRatingCriteria() {
+  if (typeof window === 'undefined') return defaultRatingCriteria
+  try {
+    const stored = window.localStorage.getItem(ratingCriteriaStorageKey)
+    const parsed = stored ? JSON.parse(stored) : null
+    if (Array.isArray(parsed) && parsed.length === defaultRatingCriteria.length) {
+      const cleaned = parsed.map((item) => String(item || '').trim())
+      if (cleaned.every(Boolean)) return cleaned
+    }
+  } catch {
+    // Use defaults when local storage is unavailable or invalid.
+  }
+  return defaultRatingCriteria
+}
+
 const ratingBands = [
   { label: 'Outstanding', range: '41 - 50', value: 5 },
   { label: 'Very Satisfactory', range: '31 - 40', value: 4 },
@@ -36,20 +63,53 @@ const ratingBands = [
   { label: 'Unsatisfactory', range: '10 & below', value: 1 }
 ]
 
+const defaultBoardMembers = [
+  'Dr. Solomon Faller Jr.',
+  'Jasmin Graeles',
+  'Prof. Drake Ortega Jr.',
+  'Josisor Conchada',
+  'Prof. Jose Ismael Galamia',
+  'Dr. Joyce Magtolis',
+  'Cesar Blanco'
+]
+
+function loadBoardMembers() {
+  if (typeof window === 'undefined') return defaultBoardMembers
+  try {
+    const stored = window.localStorage.getItem(boardMembersStorageKey)
+    const parsed = stored ? JSON.parse(stored) : null
+    if (Array.isArray(parsed)) {
+      const cleaned = parsed.map((item) => String(item || '').trim()).filter(Boolean)
+      if (cleaned.length > 0) return Array.from(new Set(cleaned))
+    }
+  } catch {
+    // Use defaults when local storage is unavailable or invalid.
+  }
+  return defaultBoardMembers
+}
+
 function RatingsPage({ uploads = [], isLoading = false, currentUser = null, onRatingsChanged }) {
   const [searchTerm, setSearchTerm] = useState('')
   const [positionFilter, setPositionFilter] = useState('all')
+  const [criteriaEditorOpen, setCriteriaEditorOpen] = useState(false)
+  const [ratingCriteria, setRatingCriteria] = useState(loadRatingCriteria)
+  const [criteriaDraft, setCriteriaDraft] = useState(() => loadRatingCriteria())
+  const [boardMembers, setBoardMembers] = useState(loadBoardMembers)
+  const [boardMembersDraft, setBoardMembersDraft] = useState(() => loadBoardMembers())
+  const [newBoardMemberName, setNewBoardMemberName] = useState('')
   const [selectedApplicant, setSelectedApplicant] = useState(null)
   const [ratingStarted, setRatingStarted] = useState(false)
   const [ratingScores, setRatingScores] = useState({})
   const [actionsMenu, setActionsMenu] = useState(null)
   const [confirmRatingAction, setConfirmRatingAction] = useState(null)
+  const [confirmSaveRating, setConfirmSaveRating] = useState(false)
   const [cancelledIds, setCancelledIds] = useState([])
   const [ratingNotice, setRatingNotice] = useState(null)
+  const [selectedBoardMember, setSelectedBoardMember] = useState('')
   const ratingNoticeTimer = useRef(null)
 
   const evaluationUploads = useMemo(() => (
-    uploads.filter((item) => ['for_evaluation', 'rated'].includes(String(item.evaluation_status || item.evaluationStatus || '').toLowerCase()))
+    uploads.filter((item) => ['for_evaluation', 'rated'].includes(getEvaluationStatus(item)))
   ), [uploads])
 
   const positionOptions = useMemo(() => {
@@ -120,6 +180,59 @@ function RatingsPage({ uploads = [], isLoading = false, currentUser = null, onRa
     }, 2800)
   }
 
+  const openCriteriaEditor = () => {
+    setCriteriaDraft(ratingCriteria)
+    setBoardMembersDraft(boardMembers)
+    setNewBoardMemberName('')
+    setCriteriaEditorOpen(true)
+  }
+
+  const saveCriteriaDraft = () => {
+    const cleaned = criteriaDraft.map((item) => String(item || '').trim())
+    if (cleaned.some((item) => !item)) {
+      showRatingNotice('fail', 'Please complete all rating criteria.')
+      return
+    }
+    const uniqueCount = new Set(cleaned.map((item) => item.toLowerCase())).size
+    if (uniqueCount !== cleaned.length) {
+      showRatingNotice('fail', 'Criteria names must be unique.')
+      return
+    }
+    const cleanedBoardMembers = boardMembersDraft.map((item) => String(item || '').trim()).filter(Boolean)
+    if (cleanedBoardMembers.length === 0) {
+      showRatingNotice('fail', 'Please add at least one board member.')
+      return
+    }
+    const uniqueBoardMembers = Array.from(new Set(cleanedBoardMembers.map((item) => item.toLowerCase())))
+    if (uniqueBoardMembers.length !== cleanedBoardMembers.length) {
+      showRatingNotice('fail', 'Board member names must be unique.')
+      return
+    }
+    setRatingCriteria(cleaned)
+    setBoardMembers(cleanedBoardMembers)
+    window.localStorage.setItem(ratingCriteriaStorageKey, JSON.stringify(cleaned))
+    window.localStorage.setItem(boardMembersStorageKey, JSON.stringify(cleanedBoardMembers))
+    setCriteriaEditorOpen(false)
+    showRatingNotice('success', 'Rating settings updated successfully.')
+  }
+
+  const resetCriteriaDraft = () => {
+    setCriteriaDraft(defaultRatingCriteria)
+    setBoardMembersDraft(defaultBoardMembers)
+    setNewBoardMemberName('')
+  }
+
+  const addBoardMemberDraft = () => {
+    const name = newBoardMemberName.trim()
+    if (!name) return
+    if (boardMembersDraft.some((member) => member.toLowerCase() === name.toLowerCase())) {
+      showRatingNotice('fail', 'Board member already exists.')
+      return
+    }
+    setBoardMembersDraft((prev) => [...prev, name])
+    setNewBoardMemberName('')
+  }
+
   const openActionsMenu = (event, item) => {
     const rect = event.currentTarget.getBoundingClientRect()
     setActionsMenu({
@@ -135,6 +248,14 @@ function RatingsPage({ uploads = [], isLoading = false, currentUser = null, onRa
 
   const saveRating = async () => {
     if (!selectedApplicant?.id) return
+    if (!selectedBoardMember) {
+      showRatingNotice('fail', 'Please select a board member before saving.')
+      return
+    }
+    if (hasBoardMemberRated(selectedApplicant, selectedBoardMember)) {
+      showRatingNotice('fail', `${selectedBoardMember} has already rated this applicant.`)
+      return
+    }
     const missingScore = ratingCriteria.some((criterion) => !ratingScores[criterion])
     if (missingScore) {
       showRatingNotice('fail', 'Please complete all rating criteria before saving.')
@@ -149,10 +270,14 @@ function RatingsPage({ uploads = [], isLoading = false, currentUser = null, onRa
     try {
       const response = await fetch(`http://localhost:5000/uploads/${selectedApplicant.id}/ratings`, {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
+        headers: {
+          'Content-Type': 'application/json',
+          ...getArchiveActorHeaders(currentUser)
+        },
         body: JSON.stringify({
-          raterName: currentUser?.name || currentUser?.email || 'Unknown account',
-          raterEmail: currentUser?.email || '',
+          raterName: selectedBoardMember,
+          raterEmail: '',
+          boardMembers,
           scores
         })
       })
@@ -162,12 +287,31 @@ function RatingsPage({ uploads = [], isLoading = false, currentUser = null, onRa
       }
       setSelectedApplicant(payload)
       setRatingScores({})
+      setSelectedBoardMember('')
       setRatingStarted(false)
       onRatingsChanged?.()
       showRatingNotice('success', 'Rating saved successfully.')
     } catch (error) {
       showRatingNotice('fail', error.message || 'Failed to save rating.')
     }
+  }
+
+  const requestSaveRating = () => {
+    if (!selectedBoardMember) {
+      showRatingNotice('fail', 'Please select a board member before saving.')
+      return
+    }
+    if (hasBoardMemberRated(selectedApplicant, selectedBoardMember)) {
+      showRatingNotice('fail', `${selectedBoardMember} has already rated this applicant.`)
+      return
+    }
+    const missingScore = ratingCriteria.some((criterion) => !ratingScores[criterion])
+    if (missingScore) {
+      showRatingNotice('fail', 'Please complete all rating criteria before saving.')
+      return
+    }
+
+    setConfirmSaveRating(true)
   }
 
   const cancelRating = async (item) => {
@@ -187,6 +331,7 @@ function RatingsPage({ uploads = [], isLoading = false, currentUser = null, onRa
         setSelectedApplicant(null)
         setRatingStarted(false)
         setRatingScores({})
+        setSelectedBoardMember('')
       }
       onRatingsChanged?.()
       showRatingNotice(
@@ -208,25 +353,20 @@ function RatingsPage({ uploads = [], isLoading = false, currentUser = null, onRa
     setConfirmRatingAction(null)
   }
 
-  const isRatedApplicant = (item) => Boolean(item?.ratingCount || item?.rating_count || (Array.isArray(item?.ratings) && item.ratings.length))
-  const hasCurrentUserRated = (item) => {
-    const ratings = Array.isArray(item?.ratings) ? item.ratings : []
-    const currentEmail = String(currentUser?.email || '').trim().toLowerCase()
-    const currentName = String(currentUser?.name || '').trim().toLowerCase()
-
-    return ratings.some((rating) => {
-      const raterEmail = String(rating.raterEmail || rating.rater_email || '').trim().toLowerCase()
-      const raterName = String(rating.raterName || rating.rater_name || '').trim().toLowerCase()
-      if (currentEmail && raterEmail) return currentEmail === raterEmail
-      return Boolean(currentName && raterName && currentName === raterName)
-    })
+  const closeSaveConfirmation = () => {
+    setConfirmSaveRating(false)
   }
 
-  useEffect(() => {
-    if (selectedApplicant && ratingStarted && hasCurrentUserRated(selectedApplicant)) {
-      setRatingStarted(false)
-    }
-  }, [ratingStarted, selectedApplicant, currentUser])
+  const isRatedApplicant = (item) => Boolean(item?.ratingCount || item?.rating_count || (Array.isArray(item?.ratings) && item.ratings.length))
+  const hasBoardMemberRated = (item, boardMember) => {
+    const ratings = Array.isArray(item?.ratings) ? item.ratings : []
+    const boardMemberName = String(boardMember || '').trim().toLowerCase()
+
+    return Boolean(boardMemberName) && ratings.some((rating) => {
+      const raterName = String(rating.raterName || rating.rater_name || '').trim().toLowerCase()
+      return raterName === boardMemberName
+    })
+  }
 
   const ratingNoticeNode = ratingNotice ? (
     <div className={`toast toast-${ratingNotice.type}`} role="status" aria-live="polite">
@@ -271,34 +411,201 @@ function RatingsPage({ uploads = [], isLoading = false, currentUser = null, onRa
     </div>
   ) : null
 
+  if (criteriaEditorOpen) {
+    return (
+      <section className="ratings-criteria-page" aria-label="Edit rating criteria">
+        {ratingNoticeNode}
+        <div className="ratings-form-header">
+          <div>
+            <button
+              type="button"
+              className="ratings-back-link"
+              onClick={() => setCriteriaEditorOpen(false)}
+            >
+              Back to Ratings
+            </button>
+            <h2>Edit Rating Settings</h2>
+            <p>Update the criteria and board members used in the interview rating form.</p>
+          </div>
+        </div>
+
+        <div className="ratings-criteria-card">
+          <div className="ratings-settings-section-head">
+            <h3>Rating Criteria</h3>
+            <span>{criteriaDraft.length} items</span>
+          </div>
+          {criteriaDraft.map((criterion, index) => (
+            <label key={`criteria-${index}`} className="ratings-criteria-field">
+              <span>Criteria {index + 1}</span>
+              <input
+                type="text"
+                value={criterion}
+                onChange={(event) => {
+                  const next = [...criteriaDraft]
+                  next[index] = event.target.value
+                  setCriteriaDraft(next)
+                }}
+              />
+            </label>
+          ))}
+        </div>
+
+        <div className="ratings-criteria-card">
+          <div className="ratings-settings-section-head">
+            <h3>Board Members</h3>
+            <span>{boardMembersDraft.length} members</span>
+          </div>
+          <div className="ratings-board-editor-add">
+            <input
+              type="text"
+              value={newBoardMemberName}
+              placeholder="Board member name"
+              onChange={(event) => setNewBoardMemberName(event.target.value)}
+              onKeyDown={(event) => {
+                if (event.key === 'Enter') {
+                  event.preventDefault()
+                  addBoardMemberDraft()
+                }
+              }}
+            />
+            <button type="button" className="btn" onClick={addBoardMemberDraft}>
+              Add
+            </button>
+          </div>
+          <div className="ratings-board-editor-list">
+            {boardMembersDraft.map((member, index) => (
+              <div key={`${member}-${index}`} className="ratings-board-editor-row">
+                <span>{member}</span>
+                <button
+                  type="button"
+                  className="ratings-board-delete-btn"
+                  onClick={() => {
+                    setBoardMembersDraft((prev) => prev.filter((_, memberIndex) => memberIndex !== index))
+                  }}
+                >
+                  Delete
+                </button>
+              </div>
+            ))}
+          </div>
+        </div>
+
+        <div className="ratings-form-footer">
+          <button type="button" className="btn btn-secondary" onClick={resetCriteriaDraft}>
+            Reset Defaults
+          </button>
+          <button type="button" className="btn btn-secondary" onClick={() => setCriteriaEditorOpen(false)}>
+            Cancel
+          </button>
+          <button type="button" className="btn" onClick={saveCriteriaDraft}>
+            Save Settings
+          </button>
+        </div>
+      </section>
+    )
+  }
+
   if (selectedApplicant) {
     const applicantRatings = Array.isArray(selectedApplicant.ratings) ? selectedApplicant.ratings : []
     const ratingLabel = selectedApplicant.ratingLabel || selectedApplicant.rating_label || 'No rating'
     const ratingCount = Number(selectedApplicant.ratingCount || selectedApplicant.rating_count || applicantRatings.length || 0)
-    const currentUserAlreadyRated = hasCurrentUserRated(selectedApplicant)
-    const canOpenRatingForm = ratingStarted && !currentUserAlreadyRated
+    const canOpenRatingForm = ratingStarted
+    const interviewDate = formatInterviewDate(selectedApplicant.uploaded_at || selectedApplicant.updated_at || selectedApplicant.updatedAt)
+    const selectedBoardMemberAlreadyRated = hasBoardMemberRated(selectedApplicant, selectedBoardMember)
+    const saveRatingConfirmNode = confirmSaveRating ? (
+      <div
+        className="modal-overlay delete-confirm-overlay"
+        onClick={(event) => {
+          if (event.target === event.currentTarget) {
+            closeSaveConfirmation()
+          }
+        }}
+      >
+        <div className="modal-card delete-confirm-card ratings-save-confirm-card">
+          <h3>Save Rating</h3>
+          <p>
+            Save {selectedBoardMember || 'this board member'}'s rating for {selectedApplicant.name || 'this applicant'}?
+          </p>
+          <div className="ratings-save-confirm-summary">
+            <span>Board Member</span>
+            <strong>{selectedBoardMember || '-'}</strong>
+            <span>Total Score</span>
+            <strong>{totalRatingScore}/50</strong>
+          </div>
+          <div className="modal-actions">
+            <button type="button" className="btn btn-secondary" onClick={closeSaveConfirmation}>
+              Cancel
+            </button>
+            <button
+              type="button"
+              className="btn"
+              onClick={async () => {
+                closeSaveConfirmation()
+                await saveRating()
+              }}
+            >
+              Confirm Save
+            </button>
+          </div>
+        </div>
+      </div>
+    ) : null
 
     if (canOpenRatingForm) {
       return (
         <section className="ratings-form-page" aria-label="Interview rating form">
           {ratingNoticeNode}
+          {saveRatingConfirmNode}
           <div className="ratings-form-header">
             <div>
               <button
                 type="button"
                 className="ratings-back-link"
-                onClick={() => setRatingStarted(false)}
+                onClick={() => {
+                  setSelectedBoardMember('')
+                  setRatingStarted(false)
+                }}
               >
                 Back to Applicant Summary
               </button>
               <h2>Interview Rating Form</h2>
-              <p>
-                {selectedApplicant.name || '(No name)'} · {getPosition(selectedApplicant)}
-              </p>
             </div>
             <div className="ratings-total-box">
               <span>Total Score</span>
               <strong>{totalRatingScore}/50</strong>
+            </div>
+          </div>
+
+          <div className="ratings-form-details">
+            <dl className="ratings-applicant-details" aria-label="Applicant interview details">
+              <div className="ratings-detail-row">
+                <dt>Name:</dt>
+                <dd>{selectedApplicant.name || '(No name)'}</dd>
+              </div>
+              <div className="ratings-detail-row">
+                <dt>Position Applied:</dt>
+                <dd>{getPosition(selectedApplicant)}</dd>
+              </div>
+              <div className="ratings-detail-row">
+                <dt>Date of Interview:</dt>
+                <dd>{interviewDate}</dd>
+              </div>
+            </dl>
+
+            <div className="ratings-board-block">
+              <span className="ratings-board-label">Board Members</span>
+              <CustomDropdown
+                className="ratings-board-dropdown"
+                options={boardMembers.map((member) => ({ value: member, label: member }))}
+                value={selectedBoardMember}
+                onChange={setSelectedBoardMember}
+                placeholder="Board Members"
+              />
+              {selectedBoardMemberAlreadyRated && (
+                <p className="ratings-board-warning">
+                  {selectedBoardMember} has already rated this applicant.
+                </p>
+              )}
             </div>
           </div>
 
@@ -356,11 +663,19 @@ function RatingsPage({ uploads = [], isLoading = false, currentUser = null, onRa
             <button
               type="button"
               className="btn btn-secondary"
-              onClick={() => setRatingStarted(false)}
+              onClick={() => {
+                setSelectedBoardMember('')
+                setRatingStarted(false)
+              }}
             >
               Cancel
             </button>
-            <button type="button" className="btn" onClick={saveRating}>
+            <button
+              type="button"
+              className="btn"
+              disabled={selectedBoardMemberAlreadyRated}
+              onClick={requestSaveRating}
+            >
               Save Rating
             </button>
           </div>
@@ -379,7 +694,7 @@ function RatingsPage({ uploads = [], isLoading = false, currentUser = null, onRa
         <section className="ratings-result-card">
           <div>
             <h3>Interview Rating</h3>
-            <p>{ratingCount ? `${ratingCount} account${ratingCount === 1 ? '' : 's'} rated this applicant.` : 'No account has rated this applicant yet.'}</p>
+            <p>{ratingCount ? `${ratingCount} board member${ratingCount === 1 ? '' : 's'} rated this applicant.` : 'No board member has rated this applicant yet.'}</p>
           </div>
           <div className="ratings-result-score">
             <span>Total Score</span>
@@ -389,7 +704,7 @@ function RatingsPage({ uploads = [], isLoading = false, currentUser = null, onRa
             <div className="ratings-rater-list">
               {applicantRatings.map((rating) => (
                 <span key={rating.id}>
-                  {rating.raterName || rating.rater_name || rating.raterEmail || rating.rater_email || 'Unknown account'} · {Number(rating.percentageScore ?? rating.percentage_score ?? 0).toFixed(0)}%
+                  {rating.raterName || rating.rater_name || 'Board member'} · {Number(rating.totalScore ?? rating.total_score ?? 0)}/50 · {Number(rating.percentageScore ?? rating.percentage_score ?? 0).toFixed(0)}%
                 </span>
               ))}
             </div>
@@ -402,18 +717,19 @@ function RatingsPage({ uploads = [], isLoading = false, currentUser = null, onRa
             setSelectedApplicant(null)
             setRatingStarted(false)
             setRatingScores({})
+            setSelectedBoardMember('')
           }}
           headerActions={(
           <button
             type="button"
             className="ratings-start-btn"
-            disabled={currentUserAlreadyRated}
             onClick={() => {
               setRatingScores({})
+              setSelectedBoardMember('')
               setRatingStarted(true)
             }}
           >
-            {currentUserAlreadyRated ? 'Already Rated' : 'Start Rating'}
+            Start Rating
           </button>
           )}
         />
@@ -426,8 +742,13 @@ function RatingsPage({ uploads = [], isLoading = false, currentUser = null, onRa
       {ratingNoticeNode}
       {ratingConfirmNode}
       <div className="ratings-header">
-        <h2>Ratings / Evaluation</h2>
-        <p>View the list of applicants who passed the initial process or interview.</p>
+        <div>
+          <h2>Ratings / Evaluation</h2>
+          <p>View the list of applicants who passed the initial process or interview.</p>
+        </div>
+        <button type="button" className="ratings-edit-criteria-btn" onClick={openCriteriaEditor}>
+          Edit Criteria
+        </button>
       </div>
 
       <div className="ratings-toolbar">
@@ -485,7 +806,9 @@ function RatingsPage({ uploads = [], isLoading = false, currentUser = null, onRa
                     <td>{getPosition(item)}</td>
                     <td>{formatInterviewDate(item.uploaded_at || item.updated_at || item.updatedAt)}</td>
                     <td>
-                      <span className="ratings-status">For Evaluation</span>
+                      <span className={`ratings-status ${getEvaluationStatus(item)}`}>
+                        {getEvaluationStatusLabel(item)}
+                      </span>
                     </td>
                     <td>
                       <span className={`ratings-score-chip ${(item.ratingCount || item.rating_count) ? 'has-rating' : ''}`}>
@@ -534,6 +857,7 @@ function RatingsPage({ uploads = [], isLoading = false, currentUser = null, onRa
               setSelectedApplicant(actionsMenu.item)
               setRatingStarted(false)
               setRatingScores({})
+              setSelectedBoardMember('')
               setActionsMenu(null)
             }}
           >

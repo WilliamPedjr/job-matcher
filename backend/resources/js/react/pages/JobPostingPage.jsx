@@ -757,7 +757,10 @@ function JobPostingPage({ uploads = [], isEmployer = false, isJobSeeker = false,
     try {
       const response = await fetch(`http://localhost:5000/jobs/${jobId}/status`, {
         method: "PUT",
-        headers: { "Content-Type": "application/json" },
+        headers: {
+          "Content-Type": "application/json",
+          ...getArchiveActorHeaders(currentUser)
+        },
         body: JSON.stringify({ status })
       })
       if (!response.ok) {
@@ -786,7 +789,10 @@ function JobPostingPage({ uploads = [], isEmployer = false, isJobSeeker = false,
     try {
       const response = await fetch("http://localhost:5000/jobs", {
         method: "POST",
-        headers: { "Content-Type": "application/json" },
+        headers: {
+          "Content-Type": "application/json",
+          ...getArchiveActorHeaders(currentUser)
+        },
         body: JSON.stringify({
           title: duplicateTitle,
           description: job.description || "",
@@ -802,7 +808,10 @@ function JobPostingPage({ uploads = [], isEmployer = false, isJobSeeker = false,
           minimumEducation: job.minimumEducation || job.minimum_education || "",
           minimumExperienceYears: job.minimumExperienceYears ?? job.minimum_experience_years ?? 0,
           salaryMin: job.salaryMin ?? job.salary_min ?? null,
-          salaryMax: job.salaryMax ?? job.salary_max ?? null
+          salaryMax: job.salaryMax ?? job.salary_max ?? null,
+          activityEvent: "job.duplicated",
+          sourceJobId: job.id,
+          sourceJobTitle: job.title || ""
         })
       })
       const payload = await response.json().catch(() => null)
@@ -1086,7 +1095,10 @@ function JobPostingPage({ uploads = [], isEmployer = false, isJobSeeker = false,
     try {
       const response = await fetch("http://localhost:5000/jobs", {
         method: "POST",
-        headers: { "Content-Type": "application/json" },
+        headers: {
+          "Content-Type": "application/json",
+          ...getArchiveActorHeaders(currentUser)
+        },
         body: JSON.stringify({
           title: newJobTitle.trim(),
           description: newJobDescription.trim(),
@@ -1169,7 +1181,10 @@ function JobPostingPage({ uploads = [], isEmployer = false, isJobSeeker = false,
     try {
       const response = await fetch(`http://localhost:5000/jobs/${editingJobId}`, {
         method: "PUT",
-        headers: { "Content-Type": "application/json" },
+        headers: {
+          "Content-Type": "application/json",
+          ...getArchiveActorHeaders(currentUser)
+        },
         body: JSON.stringify({
           title: newJobTitle.trim(),
           description: newJobDescription.trim(),

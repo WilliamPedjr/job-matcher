@@ -3,11 +3,13 @@
 namespace App\Http\Controllers\Api;
 
 use App\Http\Controllers\Controller;
+use App\Models\ActivityLog;
 use App\Models\Archive;
 use App\Models\GlobalSkillCatalog;
 use App\Models\Job;
 use App\Models\JobSkillCatalog;
 use Illuminate\Http\JsonResponse;
+use Illuminate\Http\Request;
 
 class ArchiveController extends Controller
 {
@@ -41,7 +43,7 @@ class ArchiveController extends Controller
         return response()->json($archives);
     }
 
-    public function restoreJob(int $id): JsonResponse
+    public function restoreJob(Request $request, int $id): JsonResponse
     {
         $archive = Archive::findOrFail($id);
         if ($archive->record_type !== 'job') {
@@ -80,6 +82,16 @@ class ArchiveController extends Controller
         }
 
         $archive->delete();
+
+        ActivityLog::record('job.restored', "Restored archived job {$job->title}.", $request, [
+            'subject_type' => 'job',
+            'subject_id' => $job->id,
+            'subject_name' => $job->title,
+            'metadata' => [
+                'archiveId' => $id,
+                'status' => $job->status,
+            ],
+        ]);
 
         return response()->json([
             'message' => 'Job restored successfully.',
