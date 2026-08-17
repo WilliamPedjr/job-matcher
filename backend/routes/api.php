@@ -20,17 +20,22 @@ Route::get('/', function () {
 });
 
 Route::post('/auth/verify-recaptcha', [AuthController::class, 'verifyRecaptcha']);
+Route::middleware('api-session')->group(function () {
+    Route::get('/auth/session', [AuthController::class, 'session']);
+    Route::post('/auth/logout', [AuthController::class, 'logout']);
+    Route::post('/staff/register', [AuthController::class, 'staffRegister']);
+    Route::post('/staff/login', [AuthController::class, 'staffLogin']);
+    Route::post('/job-seekers/register', [AuthController::class, 'jobSeekerRegister']);
+    Route::post('/job-seekers/login', [AuthController::class, 'jobSeekerLogin']);
+    Route::post('/employers/login', [AuthController::class, 'employerLogin']);
+});
 Route::get('/activity-logs', [ActivityLogController::class, 'index']);
 Route::post('/activity-logs', [ActivityLogController::class, 'store']);
-Route::post('/staff/register', [AuthController::class, 'staffRegister']);
-Route::post('/staff/login', [AuthController::class, 'staffLogin']);
 Route::get('/staff/me', [AuthController::class, 'staffMe']);
 
 Route::get('/archives', [ArchiveController::class, 'index']);
 Route::post('/archives/{id}/restore-job', [ArchiveController::class, 'restoreJob']);
 
-Route::post('/job-seekers/register', [AuthController::class, 'jobSeekerRegister']);
-Route::post('/job-seekers/login', [AuthController::class, 'jobSeekerLogin']);
 Route::get('/job-seekers/all', [JobSeekerController::class, 'indexAll']);
 Route::get('/job-seekers/{id}', [JobSeekerController::class, 'show']);
 Route::put('/job-seekers/{id}', [JobSeekerController::class, 'update']);
@@ -57,7 +62,6 @@ Route::delete('/job-seekers/{id}/experience/{experienceId}', [JobSeekerControlle
 
 Route::get('/employers', [EmployerController::class, 'index']);
 Route::post('/employers', [EmployerController::class, 'store']);
-Route::post('/employers/login', [AuthController::class, 'employerLogin']);
 Route::put('/employers/{id}', [EmployerController::class, 'update']);
 Route::delete('/employers/{id}', [EmployerController::class, 'destroy']);
 
@@ -83,6 +87,7 @@ Route::put('/uploads/{id}/reanalyze', [UploadController::class, 'reanalyze']);
 Route::get('/uploads/{id}/download', [UploadController::class, 'download']);
 Route::get('/uploads/{id}/supporting', [UploadController::class, 'supporting']);
 Route::get('/uploads/{id}/supporting/{supportId}/download', [UploadController::class, 'supportingDownload']);
+Route::get('/uploads/{id}/rating-summary/export', [UploadController::class, 'exportRatingSummary']);
 Route::put('/uploads/{id}/evaluation', [UploadController::class, 'markForEvaluation']);
 Route::put('/uploads/{id}/evaluation/cancel', [UploadController::class, 'cancelEvaluation']);
 Route::post('/uploads/{id}/ratings', [UploadController::class, 'storeRating']);

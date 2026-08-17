@@ -508,6 +508,54 @@
   overflow-x: auto;
 }
 
+.ratings-remarks-field {
+  display: grid;
+  gap: 8px;
+  border: 1px solid #d8dee8;
+  border-radius: 8px;
+  background: #ffffff;
+  box-shadow: 0 2px 10px rgba(17, 24, 39, 0.08);
+  padding: 14px;
+  margin-top: 16px;
+}
+
+.ratings-remarks-field span {
+  color: #172033;
+  font-size: 14px;
+  font-weight: 900;
+}
+
+.ratings-remarks-field small {
+  color: #667085;
+  font-size: 12px;
+  font-weight: 700;
+}
+
+.ratings-remarks-field textarea {
+  width: 100%;
+  min-height: 92px;
+  resize: vertical;
+  border: 1px solid #d9e1ec;
+  border-radius: 6px;
+  background: #ffffff;
+  color: #172033;
+  padding: 12px;
+  font-size: 14px;
+  font-weight: 600;
+  line-height: 1.5;
+}
+
+.ratings-remarks-field textarea::placeholder {
+  color: #98a2b3;
+  font-weight: 500;
+}
+
+.ratings-remarks-field textarea:focus {
+  border-color: #112b82;
+  box-shadow: 0 0 0 3px rgba(29, 78, 216, 0.14);
+  outline: 0;
+}
+
 .ratings-form-table {
   width: 100%;
   min-width: 980px;

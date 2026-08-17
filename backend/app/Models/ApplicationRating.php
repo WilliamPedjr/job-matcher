@@ -14,6 +14,7 @@ class ApplicationRating extends Model
         'rater_name',
         'rater_email',
         'scores',
+        'remarks',
         'total_score',
         'percentage_score',
     ];

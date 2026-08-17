@@ -28,7 +28,7 @@ function parseSkills(skillsText) {
     .filter(Boolean)
 }
 
-function JobViewPage({ job, onBack, onApply, onRequireResume, jobSeekerProfile, jobSeekerResume, jobSeekerSupporting, jobSeekerId }) {
+function JobViewPage({ job, onBack, onApply, onRequireResume, jobSeekerProfile, jobSeekerResume, jobSeekerSupporting, jobSeekerId, applications = [] }) {
   const APPLICATION_MATCH_BONUS_PERCENT = 10
   const [isApplyModalOpen, setIsApplyModalOpen] = useState(false)
   const [applicantName, setApplicantName] = useState("")
@@ -364,8 +364,20 @@ function JobViewPage({ job, onBack, onApply, onRequireResume, jobSeekerProfile, 
   const normalizedResumeMatchScore = Number.isFinite(resumeMatchScore) ? resumeMatchScore : 0
   const resumeMatchQualified = resumeMatchReady && normalizedResumeMatchScore >= resumeMatchMinimumScore
   const resumeMatchError = resumeMatch.status === "error"
+  const currentJobId = job?.id != null ? String(job.id) : ""
+  const currentJobTitle = String(job?.title || "").trim().toLowerCase()
+  const hasAlreadyApplied = applications.some((item) => {
+    const applicationJobId = item?.job_id ?? item?.jobId
+    if (currentJobId && applicationJobId != null && String(applicationJobId) === currentJobId) {
+      return true
+    }
+
+    return String(item?.applied_job_title || item?.appliedJobTitle || item?.matched_job_title || "")
+      .trim()
+      .toLowerCase() === currentJobTitle
+  })
   const applyBlockedByMatch = resumeMatchReady && !resumeMatchQualified
-  const applyGateDisabled = Boolean(resumeMatchLoading || applyBlockedByMatch || resumeMatchError)
+  const applyGateDisabled = Boolean(hasAlreadyApplied || resumeMatchLoading || applyBlockedByMatch || resumeMatchError)
   const skillItems = parseSkills(job?.requiredSkills || job?.required_skills || job?.required_skills_text || "")
 
   useEffect(() => {
@@ -377,6 +389,8 @@ function JobViewPage({ job, onBack, onApply, onRequireResume, jobSeekerProfile, 
         type: "fail",
         text: "No PDS/Resume uploaded. Go to your Profile and upload your PDS/Resume."
       }
+    } else if (hasAlreadyApplied) {
+      nextPopup = { type: "fail", text: "You already applied to this job." }
     } else if (resumeMatchReady) {
       nextPopup = resumeMatchQualified
         ? { type: "success", text: "Your resume matches this job well. You can apply now." }
@@ -392,7 +406,7 @@ function JobViewPage({ job, onBack, onApply, onRequireResume, jobSeekerProfile, 
 
     lastQualificationKeyRef.current = nextKey
     setQualificationPopup(nextPopup)
-  }, [job, resumeMatch.status, resumeMatch.qualifies, resumeMatch.message, resumeMatchError, resumeMatchQualified, resumeMatchReady])
+  }, [job, hasAlreadyApplied, resumeMatch.status, resumeMatch.qualifies, resumeMatch.message, resumeMatchError, resumeMatchQualified, resumeMatchReady])
 
   if (!job) {
     return (
@@ -513,6 +527,10 @@ function JobViewPage({ job, onBack, onApply, onRequireResume, jobSeekerProfile, 
                 onRequireResume?.()
                 return
               }
+              if (hasAlreadyApplied) {
+                setApplyGateNotice("You already applied to this job.")
+                return
+              }
               if (applyBlockedByMatch) {
                 setApplyGateNotice("Your resume does not match this job enough to apply.")
                 return
@@ -524,7 +542,7 @@ function JobViewPage({ job, onBack, onApply, onRequireResume, jobSeekerProfile, 
               setIsApplyModalOpen(true)
             }}
           >
-            {resumeMatchLoading ? "Checking match..." : applyBlockedByMatch ? "Not Qualified" : "Apply"}
+            {hasAlreadyApplied ? "Already Applied" : resumeMatchLoading ? "Checking match..." : applyBlockedByMatch ? "Not Qualified" : "Apply"}
           </button>
           {applyGateNotice && (
             <p className="job-view-apply-notice">
@@ -908,6 +926,10 @@ function JobViewPage({ job, onBack, onApply, onRequireResume, jobSeekerProfile, 
                     setApplyNotice("Your resume does not match this job enough to apply.")
                     return
                   }
+                  if (hasAlreadyApplied) {
+                    setApplyNotice("You already applied to this job.")
+                    return
+                  }
                   setApplyNotice("")
                   setShowErrors(true)
                   if (
@@ -941,6 +963,7 @@ function JobViewPage({ job, onBack, onApply, onRequireResume, jobSeekerProfile, 
                       return supportingDocs[step.key] ? [step.key] : []
                     }).concat(resumeFiles.slice(1).map(() => "other")),
                     address: applicantAddress,
+                    jobId: job.id,
                     appliedJobTitle: job.title,
                     totalMatchScore: normalizedResumeMatchScore,
                   })

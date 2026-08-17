@@ -416,6 +416,7 @@ function App() {
   const [activeJobSeekerPageIntro, setActiveJobSeekerPageIntro] = useState(null)
   const summaryRef = useRef(null)
   const isHandlingPopState = useRef(false)
+  const hasCheckedServerSession = useRef(false)
   const isEmployer = userRole === "employer"
   const isAdmin = userRole === "admin"
   const isJobSeeker = userRole === "jobseeker"
@@ -971,7 +972,19 @@ function App() {
     }
   }
 
-  const handleLogout = useCallback(() => {
+  const handleLogout = useCallback(async () => {
+    try {
+      await fetch("/api/auth/logout", {
+        method: "POST",
+        headers: {
+          "Accept": "application/json",
+          "X-CSRF-TOKEN": getCsrfToken(),
+        },
+        credentials: "same-origin",
+      })
+    } catch {
+      // Local session cleanup still happens even if the server is unreachable.
+    }
     setIsAuthenticated(false)
     localStorage.removeItem("isAuthenticated")
     setUserRole("")
@@ -995,6 +1008,44 @@ function App() {
     setIsViewingLanding(false)
     setLandingSectionTarget("")
   }, [])
+
+  useEffect(() => {
+    if (hasCheckedServerSession.current) return
+    hasCheckedServerSession.current = true
+    if (!isAuthenticated) return
+
+    let cancelled = false
+    const verifyServerSession = async () => {
+      try {
+        const response = await fetch("/api/auth/session", {
+          method: "GET",
+          headers: {
+            "Accept": "application/json",
+          },
+          credentials: "same-origin",
+        })
+        const payload = await response.json().catch(() => null)
+        if (cancelled) return
+
+        if (!response.ok || !payload?.authenticated || !payload?.user) {
+          await handleLogout()
+          return
+        }
+
+        applyAuthenticatedSession(payload.user)
+      } catch {
+        if (!cancelled) {
+          await handleLogout()
+        }
+      }
+    }
+
+    verifyServerSession()
+
+    return () => {
+      cancelled = true
+    }
+  }, [applyAuthenticatedSession, handleLogout, isAuthenticated])
 
   useEffect(() => {
     if (!isAuthenticated) return
@@ -1185,6 +1236,13 @@ function App() {
     formData.append("email", email.trim())
     formData.append("phone", normalizedPhone)
     formData.append("appliedJobTitle", appliedJobTitle.trim())
+    const selectedAppliedJob = jobPosts.find((job) => (
+      String(job.status || "active").toLowerCase() === "active"
+      && String(job.title || "").trim().toLowerCase() === appliedJobTitle.trim().toLowerCase()
+    ))
+    if (selectedAppliedJob?.id != null) {
+      formData.append("jobId", String(selectedAppliedJob.id))
+    }
     formData.append("file", file)
 
     try {
@@ -1219,6 +1277,7 @@ function App() {
     file: resumeFile,
     supportingFiles = [],
     supportingTypes = [],
+    jobId = null,
     appliedJobTitle,
     baseMatchScore = null,
     totalMatchScore = null,
@@ -1235,6 +1294,7 @@ function App() {
       normalizedPhone = normalizedPhone.slice(1)
     }
     const normalizedJobTitle = String(appliedJobTitle || "").trim()
+    const normalizedJobId = jobId != null && String(jobId).trim() !== "" ? String(jobId).trim() : ""
 
     if (!normalizedName || !normalizedEmail || !normalizedPhone || !normalizedJobTitle) {
       return { ok: false, message: "Please fill in all fields." }
@@ -1262,6 +1322,12 @@ function App() {
     formData.append("email", normalizedEmail)
     formData.append("phone", `+63${normalizedPhone}`)
     formData.append("appliedJobTitle", normalizedJobTitle)
+    if (normalizedJobId) {
+      formData.append("jobId", normalizedJobId)
+    }
+    if (resolvedJobSeekerId) {
+      formData.append("jobSeekerId", String(resolvedJobSeekerId))
+    }
     formData.append("matchBonusPercentage", String(safeBonus))
     if (baseMatchScore != null && Number.isFinite(Number(baseMatchScore))) {
       formData.append("baseMatchScore", String(Number(baseMatchScore)))
@@ -1865,6 +1931,7 @@ function App() {
           jobSeekerResume={jobSeekerResume}
           jobSeekerSupporting={jobSeekerSupporting}
           jobSeekerId={resolvedJobSeekerId}
+          applications={jobSeekerApplications}
         />
       )
     }

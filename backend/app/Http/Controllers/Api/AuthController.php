@@ -10,12 +10,50 @@ use App\Models\User;
 use App\Services\RecaptchaService;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
+use Illuminate\Support\Facades\Auth;
 use Illuminate\Support\Facades\Hash;
 use Illuminate\Validation\Rule;
 use Illuminate\Support\Str;
 
 class AuthController extends Controller
 {
+    private const SESSION_GUARDS = ['web', 'employer', 'job_seeker'];
+
+    public function session(Request $request): JsonResponse
+    {
+        if ($user = Auth::guard('web')->user()) {
+            return response()->json([
+                'authenticated' => true,
+                'user' => $this->serializeStaff($user),
+            ]);
+        }
+
+        if ($employer = Auth::guard('employer')->user()) {
+            return response()->json([
+                'authenticated' => true,
+                'user' => [
+                    ...$this->serializeEmployer($employer),
+                    'role' => 'employer',
+                ],
+            ]);
+        }
+
+        if ($jobSeeker = Auth::guard('job_seeker')->user()) {
+            return response()->json([
+                'authenticated' => true,
+                'user' => [
+                    ...$this->serializeJobSeeker($jobSeeker),
+                    'role' => 'jobseeker',
+                ],
+            ]);
+        }
+
+        return response()->json([
+            'authenticated' => false,
+            'user' => null,
+        ], 401);
+    }
+
     public function verifyRecaptcha(Request $request, RecaptchaService $recaptchaService): JsonResponse
     {
         $data = $request->validate([
@@ -28,6 +66,22 @@ class AuthController extends Controller
         );
 
         return response()->json($result);
+    }
+
+    public function logout(Request $request): JsonResponse
+    {
+        foreach (self::SESSION_GUARDS as $guard) {
+            Auth::guard($guard)->logout();
+        }
+
+        if ($request->hasSession()) {
+            $request->session()->invalidate();
+            $request->session()->regenerateToken();
+        }
+
+        return response()->json([
+            'message' => 'Logged out successfully.',
+        ]);
     }
 
     public function employerLogin(Request $request): JsonResponse
@@ -49,7 +103,12 @@ class AuthController extends Controller
             return response()->json(['message' => 'Invalid employer credentials.'], 401);
         }
 
-        return response()->json($this->serializeEmployer($employer));
+        $this->startSession($request, 'employer', $employer);
+
+        return response()->json([
+            ...$this->serializeEmployer($employer),
+            'role' => 'employer',
+        ]);
     }
 
     public function staffRegister(Request $request): JsonResponse
@@ -98,6 +157,8 @@ class AuthController extends Controller
             ->first();
 
         if ($user && Hash::check($data['password'], (string) $user->password)) {
+            $this->startSession($request, 'web', $user);
+
             return response()->json($this->serializeStaff($user));
         }
 
@@ -109,6 +170,8 @@ class AuthController extends Controller
             ->first();
 
         if ($employer && $this->passwordMatchesAndUpgrades($data['password'], $employer)) {
+            $this->startSession($request, 'employer', $employer);
+
             return response()->json([
                 ...$this->serializeEmployer($employer),
                 'role' => 'employer',
@@ -153,6 +216,7 @@ class AuthController extends Controller
         }
 
         $jobSeeker = JobSeeker::create([
+            'id_number' => $this->generateJobSeekerIdNumber(),
             'full_name' => $data['fullName'],
             'email' => Str::lower(trim($data['email'])),
             'username' => $data['username'] ?? null,
@@ -175,6 +239,8 @@ class AuthController extends Controller
             ],
         ]);
 
+        $this->startSession($request, 'job_seeker', $jobSeeker);
+
         return response()->json([
             'message' => 'Job seeker registered successfully.',
             'jobSeeker' => $this->serializeJobSeeker($jobSeeker),
@@ -192,6 +258,7 @@ class AuthController extends Controller
         $jobSeeker = JobSeeker::query()
             ->whereRaw('LOWER(email) = ?', [$identifier])
             ->orWhereRaw('LOWER(username) = ?', [$identifier])
+            ->orWhereRaw('LOWER(id_number) = ?', [$identifier])
             ->first();
 
         if (!$jobSeeker || !$this->passwordMatchesAndUpgrades($data['password'], $jobSeeker)) {
@@ -203,7 +270,22 @@ class AuthController extends Controller
             $jobSeeker->save();
         }
 
+        $this->startSession($request, 'job_seeker', $jobSeeker);
+
         return response()->json($this->serializeJobSeeker($jobSeeker));
+    }
+
+    private function startSession(Request $request, string $guard, object $user): void
+    {
+        foreach (self::SESSION_GUARDS as $sessionGuard) {
+            Auth::guard($sessionGuard)->logout();
+        }
+
+        Auth::guard($guard)->login($user);
+
+        if ($request->hasSession()) {
+            $request->session()->regenerate();
+        }
     }
 
     private function serializeEmployer(Employer $employer): array
@@ -236,6 +318,8 @@ class AuthController extends Controller
     {
         return [
             'id' => $jobSeeker->id,
+            'id_number' => $jobSeeker->id_number,
+            'idNumber' => $jobSeeker->id_number,
             'full_name' => $jobSeeker->full_name,
             'fullName' => $jobSeeker->full_name,
             'email' => $jobSeeker->email,
@@ -250,6 +334,15 @@ class AuthController extends Controller
             'updated_at' => $jobSeeker->updated_at?->toISOString(),
             'updatedAt' => $jobSeeker->updated_at?->toISOString(),
         ];
+    }
+
+    private function generateJobSeekerIdNumber(): string
+    {
+        do {
+            $idNumber = 'JS-' . now()->format('ym') . '-' . random_int(100000, 999999);
+        } while (JobSeeker::query()->where('id_number', $idNumber)->exists());
+
+        return $idNumber;
     }
 
     private function passwordMatchesAndUpgrades(string $plainPassword, object $user): bool

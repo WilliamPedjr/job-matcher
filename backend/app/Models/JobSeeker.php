@@ -3,13 +3,14 @@
 namespace App\Models;
 
 use Illuminate\Database\Eloquent\Factories\HasFactory;
-use Illuminate\Database\Eloquent\Model;
+use Illuminate\Foundation\Auth\User as Authenticatable;
 
-class JobSeeker extends Model
+class JobSeeker extends Authenticatable
 {
     use HasFactory;
 
     protected $fillable = [
+        'id_number',
         'full_name',
         'email',
         'username',
@@ -22,6 +23,10 @@ class JobSeeker extends Model
 
     protected $hidden = [
         'password',
+    ];
+
+    protected $casts = [
+        'password' => 'hashed',
     ];
 
     public function educations()

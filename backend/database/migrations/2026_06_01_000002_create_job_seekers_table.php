@@ -10,6 +10,7 @@ return new class extends Migration
     {
         Schema::create('job_seekers', function (Blueprint $table) {
             $table->id();
+            $table->string('id_number')->nullable()->unique();
             $table->string('full_name');
             $table->string('email')->unique();
             $table->string('username')->nullable()->unique();

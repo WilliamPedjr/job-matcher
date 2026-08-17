@@ -2472,6 +2472,35 @@ optgroup {
   color: #0f4fb8;
 }
 
+.js-profile-unique-id {
+  display: inline-grid;
+  grid-template-columns: auto auto;
+  align-items: center;
+  gap: 10px;
+  max-width: 100%;
+  border: 1px solid #c7d7f4;
+  border-radius: 8px;
+  background: #eef5ff;
+  color: #14318f;
+  padding: 8px 12px;
+  margin-bottom: 14px;
+}
+
+.js-profile-unique-id span {
+  color: #526172;
+  font-size: 12px;
+  font-weight: 800;
+  text-transform: uppercase;
+}
+
+.js-profile-unique-id strong {
+  min-width: 0;
+  color: #102a7a;
+  font-size: 15px;
+  font-weight: 900;
+  overflow-wrap: anywhere;
+}
+
 .js-profile-quick-details {
   display: grid;
   grid-template-columns: repeat(4, minmax(120px, 1fr));

@@ -221,6 +221,7 @@ class JobSeekerController extends Controller
             preg_split("/\n+/", (string) ($analysis['experience_text'] ?? '')) ?: []
         )));
         $resume->fill([
+            'job_seeker_id_number' => $jobSeeker->id_number,
             'name' => $jobSeeker->full_name,
             'email' => $jobSeeker->email,
             'phone' => $jobSeeker->phone,
@@ -651,6 +652,8 @@ class JobSeekerController extends Controller
     {
         $base = [
             'id' => $jobSeeker->id,
+            'id_number' => $jobSeeker->id_number,
+            'idNumber' => $jobSeeker->id_number,
             'full_name' => $jobSeeker->full_name,
             'fullName' => $jobSeeker->full_name,
             'email' => $jobSeeker->email,

@@ -13,6 +13,8 @@ class Upload extends Model
 
     protected $fillable = [
         'job_seeker_id',
+        'job_seeker_id_number',
+        'job_id',
         'name',
         'email',
         'phone',
@@ -49,6 +51,7 @@ class Upload extends Model
         'experience_json' => 'array',
         'resume_summary' => 'array',
         'job_seeker_hidden' => 'boolean',
+        'job_id' => 'integer',
         'match_score' => 'float',
         'project_score' => 'float',
         'uploaded_at' => 'datetime',
@@ -64,6 +67,11 @@ class Upload extends Model
     public function jobSeeker()
     {
         return $this->belongsTo(JobSeeker::class);
+    }
+
+    public function job()
+    {
+        return $this->belongsTo(Job::class);
     }
 
     public function ratings()

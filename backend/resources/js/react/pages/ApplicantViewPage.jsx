@@ -232,6 +232,7 @@ function ApplicantViewPage({
         <div className="candidate-left">
           <section className="candidate-card">
             <h3>Contact Information</h3>
+            <p>ID Number: {viewItem?.idNumber || viewItem?.id_number || viewItem?.jobSeekerIdNumber || viewItem?.job_seeker_id_number || "-"}</p>
             <p>{viewItem?.email || "No email"}</p>
             <p>{viewItem?.phone || "No phone"}</p>
             <p>{viewItem?.original_name || "-"}</p>

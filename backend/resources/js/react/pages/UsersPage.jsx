@@ -366,6 +366,7 @@ function UsersPage({ currentUser = null, onUsersChanged }) {
               <tr>
                 <th>#</th>
                 <th>User</th>
+                <th>ID Number</th>
                 <th>Phone</th>
                 <th>Username</th>
                 <th>Email</th>
@@ -375,11 +376,11 @@ function UsersPage({ currentUser = null, onUsersChanged }) {
             <tbody>
               {isLoadingUsers ? (
                 <tr>
-                  <td colSpan={6} className="users-empty">Loading job seekers...</td>
+                  <td colSpan={7} className="users-empty">Loading job seekers...</td>
                 </tr>
               ) : filteredJobSeekers.length === 0 ? (
                 <tr>
-                  <td colSpan={6} className="users-empty">No job seeker users found.</td>
+                  <td colSpan={7} className="users-empty">No job seeker users found.</td>
                 </tr>
               ) : (
                 filteredJobSeekers.map((user, index) => (
@@ -391,6 +392,7 @@ function UsersPage({ currentUser = null, onUsersChanged }) {
                         <span>{user.email || "-"}</span>
                       </div>
                     </td>
+                    <td>{user.idNumber || user.id_number || "-"}</td>
                     <td>{user.phone || "-"}</td>
                     <td>{user.username || "-"}</td>
                     <td>{user.email || "-"}</td>

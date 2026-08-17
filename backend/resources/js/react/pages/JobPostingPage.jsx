@@ -1553,7 +1553,7 @@ function JobPostingPage({ uploads = [], isEmployer = false, isJobSeeker = false,
                           <td>
                             <div className="applicant-cell">
                               <strong>{item.name || "(No name)"}</strong>
-                              <span>{item.email || "No email"}</span>
+                              <span>{item.idNumber || item.id_number || item.jobSeekerIdNumber || item.job_seeker_id_number || item.email || "No ID number"}</span>
                             </div>
                           </td>
                           <td>{item.phone || "No phone"}</td>

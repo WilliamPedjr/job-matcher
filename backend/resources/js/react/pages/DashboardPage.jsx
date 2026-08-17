@@ -109,7 +109,8 @@ function DashboardPage({
       "application.deleted": "Deleted application",
       "application.cancelled": "Cancelled application",
       "application.rated": "Rated application",
-      "rating.deleted": "Deleted rating"
+      "rating.deleted": "Deleted rating",
+      "rating.settings_updated": "Edited rating form"
     }
     const label = actionLabels[event] || item.description || "Activity recorded"
     return subject && actionLabels[event] ? `${label}: ${subject}` : label

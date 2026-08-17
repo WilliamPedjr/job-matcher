@@ -100,6 +100,7 @@ function RatingsPage({ uploads = [], isLoading = false, currentUser = null, onRa
   const [selectedApplicant, setSelectedApplicant] = useState(null)
   const [ratingStarted, setRatingStarted] = useState(false)
   const [ratingScores, setRatingScores] = useState({})
+  const [ratingRemarks, setRatingRemarks] = useState('')
   const [actionsMenu, setActionsMenu] = useState(null)
   const [confirmRatingAction, setConfirmRatingAction] = useState(null)
   const [confirmSaveRating, setConfirmSaveRating] = useState(false)
@@ -187,7 +188,7 @@ function RatingsPage({ uploads = [], isLoading = false, currentUser = null, onRa
     setCriteriaEditorOpen(true)
   }
 
-  const saveCriteriaDraft = () => {
+  const saveCriteriaDraft = async () => {
     const cleaned = criteriaDraft.map((item) => String(item || '').trim())
     if (cleaned.some((item) => !item)) {
       showRatingNotice('fail', 'Please complete all rating criteria.')
@@ -212,6 +213,36 @@ function RatingsPage({ uploads = [], isLoading = false, currentUser = null, onRa
     setBoardMembers(cleanedBoardMembers)
     window.localStorage.setItem(ratingCriteriaStorageKey, JSON.stringify(cleaned))
     window.localStorage.setItem(boardMembersStorageKey, JSON.stringify(cleanedBoardMembers))
+    try {
+      await fetch('http://localhost:5000/activity-logs', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          ...getArchiveActorHeaders(currentUser)
+        },
+        body: JSON.stringify({
+          event: 'rating.settings_updated',
+          description: 'Edited rating form settings.',
+          subjectType: 'rating_settings',
+          subjectName: 'Rating form',
+          metadata: {
+            before: {
+              criteria: ratingCriteria,
+              boardMembers
+            },
+            after: {
+              criteria: cleaned,
+              boardMembers: cleanedBoardMembers
+            },
+            criteriaCount: cleaned.length,
+            boardMemberCount: cleanedBoardMembers.length
+          }
+        })
+      })
+      await onRatingsChanged?.()
+    } catch {
+      // Keep local settings saved even if activity logging is temporarily unavailable.
+    }
     setCriteriaEditorOpen(false)
     showRatingNotice('success', 'Rating settings updated successfully.')
   }
@@ -278,7 +309,8 @@ function RatingsPage({ uploads = [], isLoading = false, currentUser = null, onRa
           raterName: selectedBoardMember,
           raterEmail: '',
           boardMembers,
-          scores
+          scores,
+          remarks: ratingRemarks.trim()
         })
       })
       const payload = await response.json().catch(() => null)
@@ -287,6 +319,7 @@ function RatingsPage({ uploads = [], isLoading = false, currentUser = null, onRa
       }
       setSelectedApplicant(payload)
       setRatingScores({})
+      setRatingRemarks('')
       setSelectedBoardMember('')
       setRatingStarted(false)
       onRatingsChanged?.()
@@ -331,6 +364,7 @@ function RatingsPage({ uploads = [], isLoading = false, currentUser = null, onRa
         setSelectedApplicant(null)
         setRatingStarted(false)
         setRatingScores({})
+        setRatingRemarks('')
         setSelectedBoardMember('')
       }
       onRatingsChanged?.()
@@ -340,6 +374,43 @@ function RatingsPage({ uploads = [], isLoading = false, currentUser = null, onRa
       )
     } catch (error) {
       showRatingNotice('fail', error.message || 'Failed to cancel rating.')
+    }
+  }
+
+  const exportRatingSummary = async (item) => {
+    if (!item?.id) return
+    setActionsMenu(null)
+    try {
+      const response = await fetch(`http://localhost:5000/uploads/${item.id}/rating-summary/export`, {
+        headers: getArchiveActorHeaders(currentUser)
+      })
+      const blob = await response.blob()
+      if (!response.ok) {
+        const message = await blob.text().then((text) => {
+          try {
+            return JSON.parse(text)?.message
+          } catch {
+            return null
+          }
+        }).catch(() => null)
+        throw new Error(message || 'Failed to export rating summary.')
+      }
+
+      const disposition = response.headers.get('content-disposition') || ''
+      const filenameMatch = disposition.match(/filename="?([^"]+)"?/i)
+      const filename = filenameMatch?.[1] || `rating-summary-${item.id}.xls`
+      const url = window.URL.createObjectURL(blob)
+      const link = document.createElement('a')
+      link.href = url
+      link.download = filename
+      document.body.appendChild(link)
+      link.click()
+      link.remove()
+      window.URL.revokeObjectURL(url)
+      await onRatingsChanged?.()
+      showRatingNotice('success', 'Rating summary exported successfully.')
+    } catch (error) {
+      showRatingNotice('fail', error.message || 'Failed to export rating summary.')
     }
   }
 
@@ -562,8 +633,9 @@ function RatingsPage({ uploads = [], isLoading = false, currentUser = null, onRa
                 type="button"
                 className="ratings-back-link"
                 onClick={() => {
-                  setSelectedBoardMember('')
-                  setRatingStarted(false)
+          setSelectedBoardMember('')
+          setRatingRemarks('')
+          setRatingStarted(false)
                 }}
               >
                 Back to Applicant Summary
@@ -659,12 +731,24 @@ function RatingsPage({ uploads = [], isLoading = false, currentUser = null, onRa
             </div>
           </div>
 
+          <label className="ratings-remarks-field">
+            <span>Remarks <small>(Optional)</small></span>
+            <textarea
+              value={ratingRemarks}
+              onChange={(event) => setRatingRemarks(event.target.value)}
+              placeholder="Add any comments here..."
+              maxLength={1000}
+              rows={4}
+            />
+          </label>
+
           <div className="ratings-form-footer">
             <button
               type="button"
               className="btn btn-secondary"
               onClick={() => {
                 setSelectedBoardMember('')
+                setRatingRemarks('')
                 setRatingStarted(false)
               }}
             >
@@ -717,6 +801,7 @@ function RatingsPage({ uploads = [], isLoading = false, currentUser = null, onRa
             setSelectedApplicant(null)
             setRatingStarted(false)
             setRatingScores({})
+            setRatingRemarks('')
             setSelectedBoardMember('')
           }}
           headerActions={(
@@ -725,6 +810,7 @@ function RatingsPage({ uploads = [], isLoading = false, currentUser = null, onRa
             className="ratings-start-btn"
             onClick={() => {
               setRatingScores({})
+              setRatingRemarks('')
               setSelectedBoardMember('')
               setRatingStarted(true)
             }}
@@ -857,12 +943,22 @@ function RatingsPage({ uploads = [], isLoading = false, currentUser = null, onRa
               setSelectedApplicant(actionsMenu.item)
               setRatingStarted(false)
               setRatingScores({})
+              setRatingRemarks('')
               setSelectedBoardMember('')
               setActionsMenu(null)
             }}
           >
             View
           </button>
+          {getEvaluationStatus(actionsMenu.item) === 'rated' && (
+            <button
+              type="button"
+              className="actions-menu-item"
+              onClick={() => exportRatingSummary(actionsMenu.item)}
+            >
+              Export Excel
+            </button>
+          )}
           <button
             type="button"
             className="actions-menu-item danger"

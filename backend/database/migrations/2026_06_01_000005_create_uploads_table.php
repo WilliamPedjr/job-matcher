@@ -11,6 +11,7 @@ return new class extends Migration
         Schema::create('uploads', function (Blueprint $table) {
             $table->id();
             $table->foreignId('job_seeker_id')->nullable()->constrained('job_seekers')->nullOnDelete();
+            $table->string('job_seeker_id_number')->nullable();
             $table->string('name')->nullable();
             $table->string('email')->nullable();
             $table->string('phone')->nullable();

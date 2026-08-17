@@ -119,6 +119,7 @@ function ProfilePage({
 
     return {
       id: source.id ?? payload?.jobSeekerId ?? payload?.job_seeker_id ?? null,
+      idNumber: source.idNumber || source.id_number || "",
       fullName: source.fullName || source.full_name || loginEmail?.split("@")?.[0] || "Job Seeker",
       full_name: source.full_name || source.fullName || loginEmail?.split("@")?.[0] || "Job Seeker",
       email: source.email || loginEmail || "",
@@ -138,10 +139,18 @@ function ProfilePage({
     ? normalizeProfilePayload(jobSeekerProfile)
     : jobSeekerProfile
 
+  const formatJobSeekerUniqueId = (profile) => {
+    const explicitId = String(profile?.idNumber || profile?.id_number || "").trim()
+    if (explicitId) return explicitId
+    const numericId = Number(profile?.id)
+    return Number.isFinite(numericId) && numericId > 0 ? `JS-${String(numericId).padStart(6, "0")}` : "-"
+  }
+
   const displayName = isJobSeeker
     ? (normalizedJobSeekerProfile?.fullName || "Job Seeker")
     : (loginEmail ? loginEmail.split("@")[0] : "User")
   const email = isJobSeeker ? (normalizedJobSeekerProfile?.email || "-") : (loginEmail || "-")
+  const uniqueId = isJobSeeker ? formatJobSeekerUniqueId(normalizedJobSeekerProfile) : "-"
   const username = isJobSeeker
     ? (normalizedJobSeekerProfile?.username || "-")
     : (loginEmail ? loginEmail.split("@")[0] : "-")
@@ -825,6 +834,10 @@ function ProfilePage({
                     )}
                   </span>
                 </div>
+                <div className="js-profile-unique-id">
+                  <span>Unique ID</span>
+                  <strong>{uniqueId}</strong>
+                </div>
                 <div className="js-profile-quick-details">
                   <div>
                     <span>Email</span>
@@ -1095,6 +1108,12 @@ function ProfilePage({
                 <span>Name:</span>
                 <strong>{displayName}</strong>
               </div>
+              {isJobSeeker && (
+                <div className="profile-info-row">
+                  <span>Unique ID:</span>
+                  <strong>{uniqueId}</strong>
+                </div>
+              )}
               <div className="profile-info-row">
                 <span>Email:</span>
                 <strong>{email}</strong>

@@ -44,7 +44,7 @@ class UploadController extends Controller
     public function index(): JsonResponse
     {
         $uploads = Upload::query()
-            ->with(['supportingFiles', 'ratings'])
+            ->with(['supportingFiles', 'ratings', 'jobSeeker'])
             ->orderByDesc('uploaded_at')
             ->orderByDesc('id')
             ->get()
@@ -61,6 +61,7 @@ class UploadController extends Controller
             'email' => ['required', 'email', 'max:255'],
             'phone' => ['nullable', 'string', 'max:40'],
             'appliedJobTitle' => ['nullable', 'string', 'max:255'],
+            'jobId' => ['nullable', 'integer', 'exists:jobs,id'],
             'supportingTypes' => ['nullable'],
             'supportingFiles' => ['nullable'],
             'jobSeekerId' => ['nullable', 'integer'],
@@ -71,17 +72,24 @@ class UploadController extends Controller
 
         Job::closeExpiredActiveJobs();
         $appliedJobTitle = trim((string) ($data['appliedJobTitle'] ?? ''));
-        if ($appliedJobTitle !== '') {
+        $appliedJob = null;
+        if (!empty($data['jobId'])) {
+            $appliedJob = Job::query()->find((int) $data['jobId']);
+            if ($appliedJob && $appliedJobTitle === '') {
+                $appliedJobTitle = (string) $appliedJob->title;
+            }
+        }
+        if (!$appliedJob && $appliedJobTitle !== '') {
             $appliedJob = Job::query()
                 ->whereRaw('LOWER(title) = ?', [Str::lower($appliedJobTitle)])
                 ->orderByDesc('id')
                 ->first();
+        }
 
-            if ($appliedJob && Str::lower((string) $appliedJob->status) !== 'active') {
-                return response()->json([
-                    'message' => 'This job posting is already closed.',
-                ], 422);
-            }
+        if ($appliedJob && Str::lower((string) $appliedJob->status) !== 'active') {
+            return response()->json([
+                'message' => 'This job posting is already closed.',
+            ], 422);
         }
 
         $stored = $this->storeFile($file, 'uploads/resumes');
@@ -136,12 +144,46 @@ class UploadController extends Controller
             ], 422);
         }
 
+        if ($appliedJob?->id || $appliedJobTitle !== '') {
+            $alreadyApplied = Upload::query()
+                ->where('job_seeker_id', $jobSeeker->id)
+                ->where(function ($query) use ($appliedJob, $appliedJobTitle) {
+                    if ($appliedJob?->id) {
+                        $query->where('job_id', $appliedJob->id);
+                    }
+
+                    if ($appliedJobTitle !== '') {
+                        $legacyTitleCheck = function ($legacyQuery) use ($appliedJobTitle) {
+                            $legacyQuery
+                                ->whereNull('job_id')
+                                ->whereRaw('LOWER(applied_job_title) = ?', [Str::lower($appliedJobTitle)]);
+                        };
+
+                        if ($appliedJob?->id) {
+                            $query->orWhere($legacyTitleCheck);
+                        } else {
+                            $query->where($legacyTitleCheck);
+                        }
+                    }
+                })
+                ->exists();
+
+            if ($alreadyApplied) {
+                Storage::disk('local')->delete($stored['path']);
+                return response()->json([
+                    'message' => 'You already applied to this job.',
+                ], 422);
+            }
+        }
+
         $upload = Upload::create([
             'job_seeker_id' => $jobSeeker?->id,
+            'job_seeker_id_number' => $jobSeeker?->id_number,
+            'job_id' => $appliedJob?->id,
             'name' => $data['name'],
             'email' => Str::lower(trim($data['email'])),
             'phone' => $data['phone'] ?? null,
-            'applied_job_title' => $data['appliedJobTitle'] ?? null,
+            'applied_job_title' => $appliedJobTitle !== '' ? $appliedJobTitle : null,
             'original_name' => $stored['original_name'],
             'saved_name' => $stored['saved_name'],
             'file_path' => $stored['path'],
@@ -213,12 +255,12 @@ class UploadController extends Controller
             ]);
         }
 
-        return response()->json($this->serializeUpload($upload->fresh(['supportingFiles'])), 201);
+        return response()->json($this->serializeUpload($upload->fresh(['supportingFiles', 'jobSeeker'])), 201);
     }
 
     public function show(int $id): JsonResponse
     {
-        $upload = Upload::query()->with(['supportingFiles', 'ratings'])->findOrFail($id);
+        $upload = Upload::query()->with(['supportingFiles', 'ratings', 'jobSeeker'])->findOrFail($id);
         return response()->json($this->serializeUpload($upload));
     }
 
@@ -284,7 +326,7 @@ class UploadController extends Controller
             ))),
         ])->save();
 
-        return response()->json($this->serializeUpload($upload->fresh(['supportingFiles'])));
+        return response()->json($this->serializeUpload($upload->fresh(['supportingFiles', 'jobSeeker'])));
     }
 
     public function download(int $id): mixed
@@ -313,6 +355,114 @@ class UploadController extends Controller
         return Storage::disk('local')->download($file->file_path, $file->original_name ?: basename($file->file_path));
     }
 
+    public function exportRatingSummary(Request $request, int $id): mixed
+    {
+        $upload = Upload::query()->with(['ratings', 'jobSeeker'])->findOrFail($id);
+        if (Str::lower((string) $upload->evaluation_status) !== 'rated') {
+            return response()->json([
+                'message' => 'Rating summary can only be exported after the application is rated.',
+            ], 422);
+        }
+
+        $stats = $this->ratingStats($upload);
+        $phone = $this->formatPhoneForExcel($upload->phone);
+        $rows = [
+            ['Applicant Name', $upload->name ?: '-'],
+            ['Unique ID', $upload->job_seeker_id_number ?: $upload->jobSeeker?->id_number ?: '-'],
+            ['Email', $upload->email ?: '-'],
+            ['Phone', $phone, true],
+            ['Position Applied', $upload->applied_job_title ?: $upload->matched_job_title ?: '-'],
+            ['Date of Interview', $upload->uploaded_at?->format('F j, Y') ?: '-'],
+            ['Application Status', 'Rated'],
+            ['Classification', $upload->classification ?: '-'],
+            ['Match Score', $upload->match_score !== null ? round((float) $upload->match_score, 2) . '%' : '-'],
+            ['Average Rating', $stats['average'] !== null ? $stats['average'] . '%' : '-'],
+            ['Rating Count', $stats['count']],
+        ];
+
+        $ratings = $upload->ratings()->orderBy('id')->get();
+        $criteria = $ratings
+            ->flatMap(fn (ApplicationRating $rating) => array_keys($rating->scores ?? []))
+            ->unique()
+            ->values();
+        $ratingColumnSpan = 5 + $criteria->count();
+
+        $html = '<html><head><meta charset="UTF-8">';
+        $html .= '<style>
+            body { font-family: Arial, sans-serif; color: #172033; }
+            table { border-collapse: collapse; margin: 0; }
+            th, td { border: 1px solid #b8c4d8; padding: 8px 10px; vertical-align: middle; text-align: center; }
+            .title { background: #0f2f82; color: #ffffff; font-size: 20px; font-weight: 700; }
+            .subtitle { background: #eaf0ff; color: #172033; font-size: 12px; }
+            .section { background: #163d9b; color: #ffffff; font-weight: 700; font-size: 15px; }
+            .label { background: #f3f6fb; color: #172033; font-weight: 700; width: 210px; }
+            .value { width: 390px; mso-number-format:"\@"; }
+            .head { background: #dbe6ff; color: #10245a; font-weight: 700; }
+            .center { text-align: center; }
+            .text { mso-number-format:"\@"; }
+            .muted { color: #64748b; }
+        </style>';
+        $html .= '</head><body>';
+        $html .= '<table>';
+        $html .= '<colgroup><col style="width:210px"><col style="width:390px"></colgroup>';
+        $html .= '<tr><th class="title" colspan="2">Application Rating Summary</th></tr>';
+        $html .= '<tr><td class="subtitle" colspan="2">Generated on ' . $this->excelCell(now()->format('F j, Y g:i A')) . '</td></tr>';
+        $html .= '<tr><th class="section" colspan="2">Applicant Information</th></tr>';
+        foreach ($rows as $row) {
+            $value = ($row[2] ?? false) ? $this->excelTextFormula($row[1]) : $this->excelCell($row[1]);
+            $html .= '<tr><th class="label">' . $this->excelCell($row[0]) . '</th><td class="value text">' . $value . '</td></tr>';
+        }
+        $html .= '</table><br>';
+        $html .= '<table>';
+        $html .= '<tr><th class="section" colspan="' . $ratingColumnSpan . '">Board Member Ratings</th></tr>';
+        $html .= '<tr>';
+        $html .= '<th class="head">Board Member</th><th class="head">Date Rated</th><th class="head">Total Score</th><th class="head">Percentage</th>';
+        foreach ($criteria as $criterion) {
+            $html .= '<th class="head">' . $this->excelCell($criterion) . '</th>';
+        }
+        $html .= '<th class="head">Remarks</th>';
+        $html .= '</tr>';
+        foreach ($ratings as $rating) {
+            $scores = collect($rating->scores ?? []);
+            $possibleScore = max(1, $scores->count()) * 5;
+            $html .= '<tr>';
+            $html .= '<td class="text">' . $this->excelCell($rating->rater_name ?: 'Board member') . '</td>';
+            $html .= '<td class="text">' . $this->excelCell($rating->created_at?->format('F j, Y g:i A') ?: '-') . '</td>';
+            $html .= '<td class="text">' . $this->excelCell($rating->total_score . '/' . $possibleScore) . '</td>';
+            $html .= '<td class="text">' . $this->excelCell(round((float) $rating->percentage_score, 2) . '%') . '</td>';
+            foreach ($criteria as $criterion) {
+                $html .= '<td class="text">' . $this->excelCell($scores->get($criterion, '-')) . '</td>';
+            }
+            $html .= '<td class="text">' . $this->excelCell($rating->remarks ?: '-') . '</td>';
+            $html .= '</tr>';
+        }
+        $html .= '<tr>';
+        $html .= '<th class="label">Average</th><td class="muted" colspan="2">All board members</td>';
+        $html .= '<td class="text"><strong>' . $this->excelCell($stats['average'] !== null ? $stats['average'] . '%' : '-') . '</strong></td>';
+        if ($criteria->count() > 0) {
+            $html .= '<td class="muted" colspan="' . $criteria->count() . '"></td>';
+        }
+        $html .= '<td class="muted"></td>';
+        $html .= '</tr>';
+        $html .= '</table></body></html>';
+
+        ActivityLog::record('application.summary_downloaded', "Downloaded rating summary for {$upload->name}.", $request, [
+            'subject_type' => 'application',
+            'subject_id' => $upload->id,
+            'subject_name' => $upload->name,
+            'metadata' => [
+                'jobTitle' => $upload->applied_job_title ?: $upload->matched_job_title,
+                'format' => 'xls',
+            ],
+        ]);
+
+        $safeName = Str::slug($upload->name ?: 'application');
+        return response($html, 200, [
+            'Content-Type' => 'application/vnd.ms-excel; charset=UTF-8',
+            'Content-Disposition' => "attachment; filename=\"rating-summary-{$safeName}.xls\"",
+        ]);
+    }
+
     public function markForEvaluation(Request $request, int $id): JsonResponse
     {
         $upload = Upload::findOrFail($id);
@@ -329,7 +479,7 @@ class UploadController extends Controller
             ],
         ]);
 
-        return response()->json($this->serializeUpload($upload->fresh(['supportingFiles', 'ratings'])));
+        return response()->json($this->serializeUpload($upload->fresh(['supportingFiles', 'ratings', 'jobSeeker'])));
     }
 
     public function storeRating(Request $request, int $id): JsonResponse
@@ -342,6 +492,7 @@ class UploadController extends Controller
             'boardMembers.*' => ['nullable', 'string', 'max:255'],
             'scores' => ['required', 'array'],
             'scores.*' => ['required', 'integer', 'min:1', 'max:5'],
+            'remarks' => ['nullable', 'string', 'max:1000'],
         ]);
 
         $scores = array_map('intval', $data['scores']);
@@ -373,6 +524,7 @@ class UploadController extends Controller
             'rater_name' => $raterName ?: null,
             'rater_email' => $raterEmail ?: null,
             'scores' => $scores,
+            'remarks' => trim((string) ($data['remarks'] ?? '')) ?: null,
             'total_score' => $totalScore,
             'percentage_score' => $percentageScore,
         ]);
@@ -397,13 +549,13 @@ class UploadController extends Controller
             ],
         ]);
 
-        return response()->json($this->serializeUpload($upload->fresh(['supportingFiles', 'ratings'])));
+        return response()->json($this->serializeUpload($upload->fresh(['supportingFiles', 'ratings', 'jobSeeker'])));
     }
 
     public function cancelEvaluation(Request $request, int $id): JsonResponse
     {
         $upload = Upload::query()
-            ->with(['supportingFiles', 'ratings'])
+            ->with(['supportingFiles', 'ratings', 'jobSeeker'])
             ->findOrFail($id);
 
         $hadRatings = $upload->ratings->isNotEmpty();
@@ -446,7 +598,7 @@ class UploadController extends Controller
             ]
         );
 
-        return response()->json($this->serializeUpload($upload->fresh(['supportingFiles', 'ratings'])));
+        return response()->json($this->serializeUpload($upload->fresh(['supportingFiles', 'ratings', 'jobSeeker'])));
     }
 
     public function destroy(Request $request, int $id): JsonResponse
@@ -543,6 +695,12 @@ class UploadController extends Controller
             'id' => $upload->id,
             'job_seeker_id' => $upload->job_seeker_id,
             'jobSeekerId' => $upload->job_seeker_id,
+            'job_seeker_id_number' => $upload->job_seeker_id_number ?: $upload->jobSeeker?->id_number,
+            'jobSeekerIdNumber' => $upload->job_seeker_id_number ?: $upload->jobSeeker?->id_number,
+            'id_number' => $upload->job_seeker_id_number ?: $upload->jobSeeker?->id_number,
+            'idNumber' => $upload->job_seeker_id_number ?: $upload->jobSeeker?->id_number,
+            'job_id' => $upload->job_id,
+            'jobId' => $upload->job_id,
             'name' => $upload->name,
             'email' => $upload->email,
             'phone' => $upload->phone,
@@ -630,6 +788,7 @@ class UploadController extends Controller
             'rater_email' => $rating->rater_email,
             'raterEmail' => $rating->rater_email,
             'scores' => $rating->scores ?? [],
+            'remarks' => $rating->remarks,
             'total_score' => $rating->total_score,
             'totalScore' => $rating->total_score,
             'percentage_score' => $rating->percentage_score,
@@ -665,6 +824,35 @@ class UploadController extends Controller
             ->unique(fn (string $name) => Str::lower($name))
             ->values()
             ->all();
+    }
+
+    private function excelCell(mixed $value): string
+    {
+        return htmlspecialchars((string) $value, ENT_QUOTES | ENT_SUBSTITUTE, 'UTF-8');
+    }
+
+    private function excelTextFormula(mixed $value): string
+    {
+        $text = str_replace('"', '""', (string) $value);
+        return $this->excelCell('="' . $text . '"');
+    }
+
+    private function formatPhoneForExcel(mixed $phone): string
+    {
+        $phone = trim((string) $phone);
+        if ($phone === '') {
+            return '-';
+        }
+
+        $digits = preg_replace('/\D+/', '', $phone) ?? '';
+        if (!str_starts_with($phone, '+') && preg_match('/^63\d{10}$/', $digits)) {
+            return '+' . $digits;
+        }
+        if (!str_starts_with($phone, '+') && preg_match('/^9\d{9}$/', $digits)) {
+            return '+63' . $digits;
+        }
+
+        return $phone;
     }
 
     private function normalizeBoardMemberName(?string $name): string

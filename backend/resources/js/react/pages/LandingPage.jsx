@@ -303,45 +303,50 @@ function LandingPage({ onLoginClick, onRegisterClick, scrollToSectionId = "" }) 
               return (
                 <article key={job.id || job.title} className="landing-job-card">
                   <div className="landing-job-header">
-                    <div>
+                    <div className="landing-job-heading">
                       <h3 className="landing-job-title">{job.title || "Untitled role"}</h3>
                       <p className="landing-job-company">{job.department || "Hiring team"}</p>
                     </div>
                     <span className="landing-job-badge">{job.type || "Full-time"}</span>
                   </div>
 
-                  {job.itemNo || job.item_no ? (
-                    <p className="landing-job-location">Item No. {job.itemNo || job.item_no}</p>
-                  ) : null}
-                  {job.jobPosition || job.job_position ? (
-                    <p className="landing-job-location">{job.jobPosition || job.job_position}</p>
-                  ) : null}
-                  <p className="landing-job-location">{job.location || "Leyte Normal University"}</p>
-                  {job.deadline ? (
-                    <p className="landing-job-location">Deadline {new Date(job.deadline).toLocaleDateString(undefined, { month: "short", day: "numeric", year: "numeric" })}</p>
-                  ) : null}
-                  {job.eligibility ? (
-                    <p className="landing-job-location">{job.eligibility}</p>
-                  ) : null}
+                  <div className="landing-job-meta">
+                    {job.itemNo || job.item_no ? (
+                      <p className="landing-job-location">Item No. {job.itemNo || job.item_no}</p>
+                    ) : null}
+                    {job.jobPosition || job.job_position ? (
+                      <p className="landing-job-location">{job.jobPosition || job.job_position}</p>
+                    ) : null}
+                    <p className="landing-job-location">{job.location || "Leyte Normal University"}</p>
+                    {job.deadline ? (
+                      <p className="landing-job-location">Deadline {new Date(job.deadline).toLocaleDateString(undefined, { month: "short", day: "numeric", year: "numeric" })}</p>
+                    ) : null}
+                    {job.eligibility ? (
+                      <p className="landing-job-location">{job.eligibility}</p>
+                    ) : null}
+                  </div>
+
                   <p className="landing-job-description">
                     {job.description
                       ? job.description.slice(0, 90).replace(/\s+$/, "")
                       : "A featured opening from the active job board."}
                   </p>
 
-                  {skills.length > 0 && (
-                    <div className="landing-job-skills">
-                      {skills.map((skill) => (
-                        <span key={`${job.id || job.title}-${skill}`} className="landing-job-skill">
-                          {skill}
-                        </span>
-                      ))}
-                    </div>
-                  )}
+                  <div className="landing-job-footer">
+                    {skills.length > 0 && (
+                      <div className="landing-job-skills">
+                        {skills.map((skill) => (
+                          <span key={`${job.id || job.title}-${skill}`} className="landing-job-skill">
+                            {skill}
+                          </span>
+                        ))}
+                      </div>
+                    )}
 
-                  <button type="button" className="btn btn-primary btn-sm landing-job-action" onClick={onRegisterClick}>
-                    Apply now
-                  </button>
+                    <button type="button" className="btn btn-primary btn-sm landing-job-action" onClick={onRegisterClick}>
+                      Apply now
+                    </button>
+                  </div>
                 </article>
               )
             })
@@ -448,45 +453,50 @@ function LandingPage({ onLoginClick, onRegisterClick, scrollToSectionId = "" }) 
                   return (
                     <article key={`modal-${job.id || job.title}`} className="landing-job-card">
                       <div className="landing-job-header">
-                        <div>
+                        <div className="landing-job-heading">
                           <h3 className="landing-job-title">{job.title || "Untitled role"}</h3>
                           <p className="landing-job-company">{job.department || "Hiring team"}</p>
                         </div>
                         <span className="landing-job-badge">{job.type || "Full-time"}</span>
                       </div>
 
-                      {job.itemNo || job.item_no ? (
-                        <p className="landing-job-location">Item No. {job.itemNo || job.item_no}</p>
-                      ) : null}
-                      {job.jobPosition || job.job_position ? (
-                        <p className="landing-job-location">{job.jobPosition || job.job_position}</p>
-                      ) : null}
-                      <p className="landing-job-location">{job.location || "Leyte Normal University"}</p>
-                      {job.deadline ? (
-                        <p className="landing-job-location">Deadline {new Date(job.deadline).toLocaleDateString(undefined, { month: "short", day: "numeric", year: "numeric" })}</p>
-                      ) : null}
-                      {job.eligibility ? (
-                        <p className="landing-job-location">{job.eligibility}</p>
-                      ) : null}
+                      <div className="landing-job-meta">
+                        {job.itemNo || job.item_no ? (
+                          <p className="landing-job-location">Item No. {job.itemNo || job.item_no}</p>
+                        ) : null}
+                        {job.jobPosition || job.job_position ? (
+                          <p className="landing-job-location">{job.jobPosition || job.job_position}</p>
+                        ) : null}
+                        <p className="landing-job-location">{job.location || "Leyte Normal University"}</p>
+                        {job.deadline ? (
+                          <p className="landing-job-location">Deadline {new Date(job.deadline).toLocaleDateString(undefined, { month: "short", day: "numeric", year: "numeric" })}</p>
+                        ) : null}
+                        {job.eligibility ? (
+                          <p className="landing-job-location">{job.eligibility}</p>
+                        ) : null}
+                      </div>
+
                       <p className="landing-job-description">
                         {job.description
                           ? job.description.slice(0, 110).replace(/\s+$/, "")
                           : "A featured opening from the active job board."}
                       </p>
 
-                      {skills.length > 0 && (
-                        <div className="landing-job-skills">
-                          {skills.map((skill) => (
-                            <span key={`modal-${job.id || job.title}-${skill}`} className="landing-job-skill">
-                              {skill}
-                            </span>
-                          ))}
-                        </div>
-                      )}
+                      <div className="landing-job-footer">
+                        {skills.length > 0 && (
+                          <div className="landing-job-skills">
+                            {skills.map((skill) => (
+                              <span key={`modal-${job.id || job.title}-${skill}`} className="landing-job-skill">
+                                {skill}
+                              </span>
+                            ))}
+                          </div>
+                        )}
 
-                      <button type="button" className="btn btn-primary btn-sm landing-job-action" onClick={onRegisterClick}>
-                        Apply now
-                      </button>
+                        <button type="button" className="btn btn-primary btn-sm landing-job-action" onClick={onRegisterClick}>
+                          Apply now
+                        </button>
+                      </div>
                     </article>
                   )
                 })
