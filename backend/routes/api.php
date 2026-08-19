@@ -66,7 +66,8 @@ Route::put('/employers/{id}', [EmployerController::class, 'update']);
 Route::delete('/employers/{id}', [EmployerController::class, 'destroy']);
 
 Route::get('/job-templates', [JobController::class, 'templates']);
-Route::get('/jobs', [JobController::class, 'index']);
+Route::get('/jobs', [JobController::class, 'index'])
+    ->withoutMiddleware(['throttle:api']);
 Route::post('/jobs', [JobController::class, 'store']);
 Route::get('/jobs/{id}', [JobController::class, 'show']);
 Route::put('/jobs/{id}', [JobController::class, 'update']);

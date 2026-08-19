@@ -215,8 +215,15 @@ class AuthController extends Controller
             return response()->json(['message' => 'Passwords do not match.'], 422);
         }
 
+        if (
+            !preg_match('/[A-Z]/', $data['password']) ||
+            !preg_match('/\d/', $data['password']) ||
+            !preg_match('/[^A-Za-z0-9]/', $data['password'])
+        ) {
+            return response()->json(['message' => 'Password must include a capital letter, a number, and a special character.'], 422);
+        }
+
         $jobSeeker = JobSeeker::create([
-            'id_number' => $this->generateJobSeekerIdNumber(),
             'full_name' => $data['fullName'],
             'email' => Str::lower(trim($data['email'])),
             'username' => $data['username'] ?? null,
@@ -226,6 +233,9 @@ class AuthController extends Controller
             'about_text' => $data['about_text'] ?? $data['aboutText'] ?? null,
             'password' => Hash::make($data['password']),
         ]);
+        $jobSeeker->forceFill([
+            'id_number' => $this->formatJobSeekerIdNumber($jobSeeker->id),
+        ])->save();
 
         ActivityLog::record('job_seeker.created', "New job seeker account created for {$jobSeeker->full_name}.", $request, [
             'subject_type' => 'job_seeker',
@@ -336,13 +346,9 @@ class AuthController extends Controller
         ];
     }
 
-    private function generateJobSeekerIdNumber(): string
+    private function formatJobSeekerIdNumber(int $id): string
     {
-        do {
-            $idNumber = 'JS-' . now()->format('ym') . '-' . random_int(100000, 999999);
-        } while (JobSeeker::query()->where('id_number', $idNumber)->exists());
-
-        return $idNumber;
+        return sprintf('LNU-%06d', $id);
     }
 
     private function passwordMatchesAndUpgrades(string $plainPassword, object $user): bool

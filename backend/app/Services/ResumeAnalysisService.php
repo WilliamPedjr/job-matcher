@@ -8,6 +8,11 @@ use Illuminate\Support\Str;
 
 class ResumeAnalysisService
 {
+    private const UNIVERSAL_MATCH_SKILL = '__MATCH_ALL__';
+    private const UNIVERSAL_MATCH_TITLE = 'Universal Applicant Match';
+    private const UNIVERSAL_MODERATE_SKILL = '__MATCH_MODERATE__';
+    private const UNIVERSAL_MODERATE_TITLE = 'Universal Moderate Match';
+
     public function __construct(
         private readonly TextExtractionService $textExtractionService,
         private readonly PdsExtractionService $pdsExtractionService
@@ -43,6 +48,85 @@ class ResumeAnalysisService
                 ->first();
         }
 
+        $educationLines = $isPds
+            ? $this->pdsSummaryLines($pdsFormat, 'education')
+            : $this->extractEducationLines($extractedText);
+        $experienceLines = $isPds
+            ? $this->pdsSummaryLines($pdsFormat, 'experience')
+            : $this->extractExperienceLines($extractedText);
+
+        if ($this->isUniversalMatchJob($job)) {
+            $matchedSkills = ['General qualifications accepted'];
+            $missingSkills = [];
+            $overall = 100.0;
+            $summarySourceText = $isPds && $analysisText !== '' ? $analysisText : $extractedText;
+            $summary = $this->buildResumeSummary(
+                $summarySourceText,
+                $matchedSkills,
+                $missingSkills,
+                $educationLines,
+                $experienceLines,
+                100.0,
+                $overall,
+                $pdsFormat
+            );
+
+            return [
+                'classification' => 'Highly Qualified',
+                'overall_score' => $overall,
+                'skills_match_score' => 100.0,
+                'project_score' => 100.0,
+                'education_match_score' => 100.0,
+                'experience_match_score' => 100.0,
+                'matched_skills' => $matchedSkills,
+                'missing_skills' => $missingSkills,
+                'education_text' => implode("\n", $educationLines),
+                'experience_text' => implode("\n", $experienceLines),
+                'resume_text' => $resumeText,
+                'preview_text' => Str::limit($summary['summary_text'] !== '' ? $summary['summary_text'] : ($isPds && $analysisText !== '' ? $analysisText : $resumeText), 1000, ''),
+                'summary_text' => $summary['summary_text'],
+                'resume_summary' => $summary,
+                'pds_format' => $pdsFormat,
+                'matched_job_title' => $job?->title ?: ($appliedJobTitle !== '' ? $appliedJobTitle : null),
+            ];
+        }
+
+        if ($this->isUniversalModerateJob($job)) {
+            $matchedSkills = ['General qualifications partially accepted'];
+            $missingSkills = ['Final qualification review required'];
+            $overall = 70.0;
+            $summarySourceText = $isPds && $analysisText !== '' ? $analysisText : $extractedText;
+            $summary = $this->buildResumeSummary(
+                $summarySourceText,
+                $matchedSkills,
+                $missingSkills,
+                $educationLines,
+                $experienceLines,
+                70.0,
+                $overall,
+                $pdsFormat
+            );
+
+            return [
+                'classification' => 'Moderately Qualified',
+                'overall_score' => $overall,
+                'skills_match_score' => 70.0,
+                'project_score' => 70.0,
+                'education_match_score' => 70.0,
+                'experience_match_score' => 70.0,
+                'matched_skills' => $matchedSkills,
+                'missing_skills' => $missingSkills,
+                'education_text' => implode("\n", $educationLines),
+                'experience_text' => implode("\n", $experienceLines),
+                'resume_text' => $resumeText,
+                'preview_text' => Str::limit($summary['summary_text'] !== '' ? $summary['summary_text'] : ($isPds && $analysisText !== '' ? $analysisText : $resumeText), 1000, ''),
+                'summary_text' => $summary['summary_text'],
+                'resume_summary' => $summary,
+                'pds_format' => $pdsFormat,
+                'matched_job_title' => $job?->title ?: ($appliedJobTitle !== '' ? $appliedJobTitle : null),
+            ];
+        }
+
         $requiredSkills = $this->splitSkills($job?->required_skills ?? '');
         if (!$requiredSkills) {
             $requiredSkills = $this->buildSkillSuggestions($analysisText, $globalSkills);
@@ -53,13 +137,6 @@ class ResumeAnalysisService
 
         $skillsScore = $this->calculateSkillsScore($requiredSkills, $matchedSkills);
         $projectScore = $this->calculateProjectScore($analysisText);
-        $educationLines = $isPds
-            ? $this->pdsSummaryLines($pdsFormat, 'education')
-            : $this->extractEducationLines($extractedText);
-        $experienceLines = $isPds
-            ? $this->pdsSummaryLines($pdsFormat, 'experience')
-            : $this->extractExperienceLines($extractedText);
-
         $minimumEducation = (string) ($job?->minimum_education ?? '');
         $minimumExperienceYears = (int) ($job?->minimum_experience_years ?? 0);
         $educationScore = $this->calculateEducationScore($educationLines, $minimumEducation);
@@ -114,6 +191,54 @@ class ResumeAnalysisService
 
         foreach ($jobs as $job) {
             $requiredSkills = $this->splitSkills((string) $this->jobField($job, 'requiredSkills', 'required_skills', ''));
+            if ($this->isUniversalMatchJob($job)) {
+                $results[] = [
+                    'id' => $this->jobField($job, 'id'),
+                    'title' => $this->jobField($job, 'title'),
+                    'description' => $this->jobField($job, 'description'),
+                    'status' => $this->jobField($job, 'status', null, 'active'),
+                    'department' => $this->jobField($job, 'department'),
+                    'location' => $this->jobField($job, 'location'),
+                    'type' => $this->jobField($job, 'type'),
+                    'requiredSkills' => 'Open qualifications',
+                    'minimumEducation' => $this->jobField($job, 'minimumEducation', 'minimum_education', ''),
+                    'minimumExperienceYears' => (int) $this->jobField($job, 'minimumExperienceYears', 'minimum_experience_years', 0),
+                    'overallScore' => 100.0,
+                    'classification' => 'Highly Qualified',
+                    'matchedSkills' => ['General qualifications accepted'],
+                    'missingSkills' => [],
+                    'skillsScore' => 100.0,
+                    'projectScore' => 100.0,
+                    'educationScore' => 100.0,
+                    'experienceScore' => 100.0,
+                ];
+                continue;
+            }
+
+            if ($this->isUniversalModerateJob($job)) {
+                $results[] = [
+                    'id' => $this->jobField($job, 'id'),
+                    'title' => $this->jobField($job, 'title'),
+                    'description' => $this->jobField($job, 'description'),
+                    'status' => $this->jobField($job, 'status', null, 'active'),
+                    'department' => $this->jobField($job, 'department'),
+                    'location' => $this->jobField($job, 'location'),
+                    'type' => $this->jobField($job, 'type'),
+                    'requiredSkills' => 'Open qualifications with review',
+                    'minimumEducation' => $this->jobField($job, 'minimumEducation', 'minimum_education', ''),
+                    'minimumExperienceYears' => (int) $this->jobField($job, 'minimumExperienceYears', 'minimum_experience_years', 0),
+                    'overallScore' => 70.0,
+                    'classification' => 'Moderately Qualified',
+                    'matchedSkills' => ['General qualifications partially accepted'],
+                    'missingSkills' => ['Final qualification review required'],
+                    'skillsScore' => 70.0,
+                    'projectScore' => 70.0,
+                    'educationScore' => 70.0,
+                    'experienceScore' => 70.0,
+                ];
+                continue;
+            }
+
             if (!$requiredSkills) {
                 $requiredSkills = $this->buildSkillSuggestions($analysisText, $globalSkills);
             }
@@ -204,6 +329,34 @@ class ResumeAnalysisService
             fn ($item) => trim($item),
             preg_split('/[,;\n|]+/', $skills) ?: []
         )));
+    }
+
+    private function isUniversalMatchJob(mixed $job): bool
+    {
+        if (!$job) {
+            return false;
+        }
+
+        $title = trim((string) $this->jobField($job, 'title', null, ''));
+        if (Str::lower($title) === Str::lower(self::UNIVERSAL_MATCH_TITLE)) {
+            return true;
+        }
+
+        return in_array(self::UNIVERSAL_MATCH_SKILL, $this->splitSkills((string) $this->jobField($job, 'requiredSkills', 'required_skills', '')), true);
+    }
+
+    private function isUniversalModerateJob(mixed $job): bool
+    {
+        if (!$job) {
+            return false;
+        }
+
+        $title = trim((string) $this->jobField($job, 'title', null, ''));
+        if (Str::lower($title) === Str::lower(self::UNIVERSAL_MODERATE_TITLE)) {
+            return true;
+        }
+
+        return in_array(self::UNIVERSAL_MODERATE_SKILL, $this->splitSkills((string) $this->jobField($job, 'requiredSkills', 'required_skills', '')), true);
     }
 
     private function buildSkillSuggestions(string $resumeText, array $globalSkills): array

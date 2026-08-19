@@ -920,6 +920,10 @@ function App() {
       setRegisterError("Please fill in all fields.")
       return
     }
+    if (!/[A-Z]/.test(registerPassword) || !/\d/.test(registerPassword) || !/[^A-Za-z0-9]/.test(registerPassword)) {
+      setRegisterError("Password must include a capital letter, a number, and a special character.")
+      return
+    }
     if (registerPassword !== registerConfirmPassword) {
       setRegisterError("Passwords do not match.")
       return
@@ -1556,6 +1560,31 @@ function App() {
   const dashboardData = useMemo(() => {
     const normalize = (value) => String(value || "").trim().toLowerCase()
     const resolveJobTitle = (item) => String(item.applied_job_title || item.matched_job_title || "").trim()
+    const resolveUploadDate = (item) => item.uploaded_at || item.uploadedAt || item.created_at || item.createdAt
+    const resolveJobPosition = (item) => {
+      const directPosition = item.jobPositionType || item.job_position_type || item.jobPosition || item.job_position
+      if (directPosition) return directPosition
+
+      const jobId = Number(item.jobId || item.job_id)
+      const title = resolveJobTitle(item)
+      const job = jobPosts.find((post) => {
+        if (jobId > 0 && Number(post.id || post.jobId || post.job_id) === jobId) {
+          return true
+        }
+        return normalize(post.title) === normalize(title)
+      })
+      return job?.jobPosition || job?.job_position || ""
+    }
+    const jobPositionRank = (value) => {
+      const position = normalize(value)
+      if (position === "teaching") return 0
+      if (position === "non-teaching") return 1
+      return 2
+    }
+    const sortByJobPositionType = (a, b) => {
+      const rankDelta = jobPositionRank(a.jobPosition || a.job_position) - jobPositionRank(b.jobPosition || b.job_position)
+      return rankDelta || String(a.title || "").localeCompare(String(b.title || ""))
+    }
 
     let highlyQualified = 0
     let moderatelyQualified = 0
@@ -1563,14 +1592,36 @@ function App() {
     let scoreSum = 0
     let scoreCount = 0
     const applicantsByJob = new Map()
+    const applicantsByPositionType = new Map([
+      ["Teaching", 0],
+      ["Non-Teaching", 0],
+      ["Other", 0]
+    ])
+    const applicantsByYearMap = new Map()
 
     uploads.forEach((item) => {
       const cls = normalize(item.classification)
       const jobTitle = resolveJobTitle(item)
+      const positionType = resolveJobPosition(item)
+      const normalizedPositionType = normalize(positionType)
+      const positionBucket = normalizedPositionType === "teaching"
+        ? "Teaching"
+        : normalizedPositionType === "non-teaching"
+          ? "Non-Teaching"
+          : "Other"
+      applicantsByPositionType.set(positionBucket, (applicantsByPositionType.get(positionBucket) || 0) + 1)
+
+      const uploadedDate = new Date(resolveUploadDate(item))
+      if (!Number.isNaN(uploadedDate.getTime())) {
+        const year = String(uploadedDate.getFullYear())
+        applicantsByYearMap.set(year, (applicantsByYearMap.get(year) || 0) + 1)
+      }
+
       if (jobTitle) {
         if (!applicantsByJob.has(jobTitle)) {
           applicantsByJob.set(jobTitle, {
             title: jobTitle,
+            jobPosition: resolveJobPosition(item),
             total: 0,
             highlyQualified: 0,
             moderatelyQualified: 0,
@@ -1650,6 +1701,7 @@ function App() {
     const topJobsByApplicants = Array.from(applicantsByJob.values())
       .map((job) => ({
         title: job.title,
+        jobPosition: job.jobPosition,
         applicants: Number(job.total || 0),
         highlyQualified: Number(job.highlyQualified || 0),
         moderatelyQualified: Number(job.moderatelyQualified || 0),
@@ -1657,6 +1709,15 @@ function App() {
       }))
       .sort((a, b) => b.applicants - a.applicants || a.title.localeCompare(b.title))
       .slice(0, 5)
+
+    const applicantTotal = Math.max(1, uploads.length)
+    const positionTypeDistribution = Array.from(applicantsByPositionType.entries())
+      .map(([type, count]) => ({
+        type,
+        count,
+        percentage: Math.round((count / applicantTotal) * 100)
+      }))
+      .filter((item) => item.count > 0 || item.type !== "Other")
 
     const monthKey = (date) => {
       const d = new Date(date)
@@ -1685,10 +1746,14 @@ function App() {
 
     const monthIndex = new Map(applicantsByMonth.map((m, idx) => [m.key, idx]))
     uploads.forEach((item) => {
-      const key = monthKey(item.uploaded_at)
+      const key = monthKey(resolveUploadDate(item))
       if (!key || !monthIndex.has(key)) return
       applicantsByMonth[monthIndex.get(key)].count += 1
     })
+
+    const applicantsByYear = Array.from(applicantsByYearMap.entries())
+      .map(([year, count]) => ({ year, count }))
+      .sort((a, b) => Number(a.year) - Number(b.year))
 
     return {
       openJobs: jobPosts.filter((job) => String(job.status || "active").toLowerCase() === "active").length,
@@ -1696,14 +1761,16 @@ function App() {
       highlyQualified,
       moderatelyQualified,
       notQualified,
-      applicantJobs: Array.from(applicantsByJob.values()).sort((a, b) => a.title.localeCompare(b.title)),
+      applicantJobs: Array.from(applicantsByJob.values()).sort(sortByJobPositionType),
       topApplicantsByJob,
       recentApplicants,
       recentJobs,
       averageScore,
       scoreBuckets,
       topJobsByApplicants,
-      applicantsByMonth
+      applicantsByMonth,
+      applicantsByYear,
+      positionTypeDistribution
     }
   }, [uploads, jobPosts])
 
@@ -2096,7 +2163,7 @@ function App() {
           <img src={brandLogo} alt="LNU-HiRe" />
           <span className="brand-copy">
             <span className="brand-name">LNU-HiRe</span>
-            <span className="brand-tagline">AI recruitment platform</span>
+            {/* <span className="brand-tagline">AI recruitment platform</span> */}
           </span>
         </button>
         <nav className="topnav">
@@ -2507,17 +2574,12 @@ function App() {
                     setJobSeekerSetupStep((prev) => Math.min(jobSeekerSetupGuideSteps.length - 1, prev + 1))
                     return
                   }
-                  if (currentStep.page === "profile") {
-                    goToJobSeekerSetupProfile()
-                    return
-                  }
                   closeJobSeekerSetupGuide()
-                  handleTopNav(currentStep.page)
                 }}
               >
-                {isLastStep ? "Go to Dashboard" : "Next Step"}
+                {isLastStep ? "Finish Guide" : "Next Step"}
               </button>
-              <button
+              <button 
                 type="button"
                 className="btn btn-secondary"
                 onClick={() => {

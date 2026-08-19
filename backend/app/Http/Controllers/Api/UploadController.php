@@ -44,7 +44,7 @@ class UploadController extends Controller
     public function index(): JsonResponse
     {
         $uploads = Upload::query()
-            ->with(['supportingFiles', 'ratings', 'jobSeeker'])
+            ->with(['supportingFiles', 'ratings', 'jobSeeker', 'job'])
             ->orderByDesc('uploaded_at')
             ->orderByDesc('id')
             ->get()
@@ -180,6 +180,7 @@ class UploadController extends Controller
             'job_seeker_id' => $jobSeeker?->id,
             'job_seeker_id_number' => $jobSeeker?->id_number,
             'job_id' => $appliedJob?->id,
+            'job_position_type' => $appliedJob?->job_position,
             'name' => $data['name'],
             'email' => Str::lower(trim($data['email'])),
             'phone' => $data['phone'] ?? null,
@@ -255,12 +256,12 @@ class UploadController extends Controller
             ]);
         }
 
-        return response()->json($this->serializeUpload($upload->fresh(['supportingFiles', 'jobSeeker'])), 201);
+        return response()->json($this->serializeUpload($upload->fresh(['supportingFiles', 'jobSeeker', 'job'])), 201);
     }
 
     public function show(int $id): JsonResponse
     {
-        $upload = Upload::query()->with(['supportingFiles', 'ratings', 'jobSeeker'])->findOrFail($id);
+        $upload = Upload::query()->with(['supportingFiles', 'ratings', 'jobSeeker', 'job'])->findOrFail($id);
         return response()->json($this->serializeUpload($upload));
     }
 
@@ -326,7 +327,7 @@ class UploadController extends Controller
             ))),
         ])->save();
 
-        return response()->json($this->serializeUpload($upload->fresh(['supportingFiles', 'jobSeeker'])));
+        return response()->json($this->serializeUpload($upload->fresh(['supportingFiles', 'jobSeeker', 'job'])));
     }
 
     public function download(int $id): mixed
@@ -479,7 +480,7 @@ class UploadController extends Controller
             ],
         ]);
 
-        return response()->json($this->serializeUpload($upload->fresh(['supportingFiles', 'ratings', 'jobSeeker'])));
+        return response()->json($this->serializeUpload($upload->fresh(['supportingFiles', 'ratings', 'jobSeeker', 'job'])));
     }
 
     public function storeRating(Request $request, int $id): JsonResponse
@@ -549,13 +550,13 @@ class UploadController extends Controller
             ],
         ]);
 
-        return response()->json($this->serializeUpload($upload->fresh(['supportingFiles', 'ratings', 'jobSeeker'])));
+        return response()->json($this->serializeUpload($upload->fresh(['supportingFiles', 'ratings', 'jobSeeker', 'job'])));
     }
 
     public function cancelEvaluation(Request $request, int $id): JsonResponse
     {
         $upload = Upload::query()
-            ->with(['supportingFiles', 'ratings', 'jobSeeker'])
+            ->with(['supportingFiles', 'ratings', 'jobSeeker', 'job'])
             ->findOrFail($id);
 
         $hadRatings = $upload->ratings->isNotEmpty();
@@ -598,7 +599,7 @@ class UploadController extends Controller
             ]
         );
 
-        return response()->json($this->serializeUpload($upload->fresh(['supportingFiles', 'ratings', 'jobSeeker'])));
+        return response()->json($this->serializeUpload($upload->fresh(['supportingFiles', 'ratings', 'jobSeeker', 'job'])));
     }
 
     public function destroy(Request $request, int $id): JsonResponse
@@ -701,6 +702,10 @@ class UploadController extends Controller
             'idNumber' => $upload->job_seeker_id_number ?: $upload->jobSeeker?->id_number,
             'job_id' => $upload->job_id,
             'jobId' => $upload->job_id,
+            'job_position_type' => $upload->job_position_type ?: $upload->job?->job_position,
+            'jobPositionType' => $upload->job_position_type ?: $upload->job?->job_position,
+            'job_position' => $upload->job_position_type ?: $upload->job?->job_position,
+            'jobPosition' => $upload->job_position_type ?: $upload->job?->job_position,
             'name' => $upload->name,
             'email' => $upload->email,
             'phone' => $upload->phone,

@@ -101,34 +101,36 @@ function LandingPage({ onLoginClick, onRegisterClick, scrollToSectionId = "" }) 
           <img src={logoMark} alt="LNU-HiRe" className="landing-brand-logo" />
           <span className="landing-brand-copy">
             <span className="landing-brand-name">LNU-HiRe</span>
-            <span className="landing-brand-tagline">AI recruitment platform</span>
+            {/* <span className="landing-brand-tagline">AI recruitment platform</span> */}
           </span>
         </button>
 
         <nav className="landing-nav" aria-label="Landing page">
-          <button type="button" className="landing-nav-link" onClick={() => handleScrollTo("landing-features")}>
-            Features
-          </button>
-          <button type="button" className="landing-nav-link" onClick={() => handleScrollTo("landing-about")}>
-            About
-          </button>
-          <button type="button" className="landing-nav-link" onClick={() => handleScrollTo("landing-how-it-works")}>
-            How It Works
-          </button>
+          
           <button type="button" className="landing-nav-link" onClick={() => handleScrollTo("landing-jobs")}>
             Jobs
           </button>
+          <button type="button" className="landing-nav-link" onClick={() => handleScrollTo("landing-features")}>
+            Features
+          </button>
+          {/* <button type="button" className="landing-nav-link" onClick={() => handleScrollTo("landing-about")}>
+            About
+          </button> */}
+          <button type="button" className="landing-nav-link" onClick={() => handleScrollTo("landing-how-it-works")}>
+            How It Works
+          </button>
+          
           <button type="button" className="landing-nav-link" onClick={() => handleScrollTo("landing-footer")}>
             Contact
           </button>
         </nav>
 
         <div className="landing-actions">
-          <button type="button" className="btn btn-secondary landing-ghost-btn" onClick={onLoginClick}>
-            Log In
+          <button type="button" className="btn btn-secondary btn-sm" onClick={onLoginClick}>
+            Login
           </button>
-          <button type="button" className="btn btn-primary landing-accent-btn" onClick={onRegisterClick}>
-            Get Started
+          <button type="button" className="btn btn-primary btn-sm" onClick={onRegisterClick}>
+            Register
           </button>
         </div>
       </header>
@@ -142,65 +144,13 @@ function LandingPage({ onLoginClick, onRegisterClick, scrollToSectionId = "" }) 
               <h1 className="landing-hero-brand-title">LNU-HiRe</h1>
             </div>
           </div>
-
-          <div className="landing-hero-strip" aria-hidden="true">
-            <span>Post jobs</span>
-            <span>Review applicants</span>
-            <span>Manage hiring</span>
-          </div>
-
-          <div className="landing-kicker">
-            <span className="landing-kicker-dot" />
-            Smart hiring for modern teams
-          </div>
-
-          <h1 className="landing-title">
-            A cleaner hiring workspace for
-            <span className="landing-title-highlight"> Leyte Normal University</span>
-          </h1>
-
-          <p className="landing-subtitle">
+          {/* <p className="landing-subtitle">
             Manage job posts, applicants, resumes, and evaluations in one simple place.
-          </p>
+          </p> */}
 
-          <div className="landing-hero-note">
-            Clear on desktop and mobile.
-          </div>
 
-          <div className="landing-hero-ctas">
-            <button type="button" className="btn btn-primary btn-lg landing-primary-cta" onClick={onRegisterClick}>
-              Start Free
-            </button>
-            <button
-              type="button"
-              className="btn btn-secondary btn-lg landing-secondary-cta"
-              onClick={() => handleScrollTo("landing-how-it-works")}
-            >
-              See the flow
-            </button>
-          </div>
-
-          <div className="landing-highlights" aria-label="Platform highlights">
-            {highlights.map((item) => (
-              <span key={item} className="landing-highlight-pill">
-                {item}
-              </span>
-            ))}
-          </div>
-        </div>
-      </section>
-
-      <section className="landing-trustbar" aria-label="Key capabilities">
-        <div className="landing-trustbar-inner">
-          <span>Resume parsing</span>
-          <span>Skill matching</span>
-          <span>Applicant ranking</span>
-          <span>Secure records</span>
-          <span>Job posting management</span>
-        </div>
-      </section>
-
-      <section className="landing-about" id="landing-about">
+          
+            <section className="landing-about" id="landing-about">
         <div className="landing-section-header">
           <p className="landing-section-eyebrow">About LNU-HiRe</p>
           <h2>Recruitment made easier to manage</h2>
@@ -222,6 +172,84 @@ function LandingPage({ onLoginClick, onRegisterClick, scrollToSectionId = "" }) 
           </article>
         </div>
       </section>
+          
+        </div>
+      </section>
+
+      {/* <section className="landing-trustbar" aria-label="Key capabilities">
+        <div className="landing-trustbar-inner">
+          <span>Resume parsing</span>
+          <span>Skill matching</span>
+          <span>Applicant ranking</span>
+          <span>Secure records</span>
+          <span>Job posting management</span>
+        </div>
+      </section> */}
+
+      <section className="landing-jobs" id="landing-jobs">
+        <div className="landing-section-header">
+          <p className="landing-section-eyebrow">Available Jobs</p>
+          <h2>Open positions</h2>
+          <p>Browse current hiring opportunities.</p>
+        </div>
+
+        <div className="landing-jobs-grid">
+          {loadingJobs ? (
+            <div className="landing-empty-state landing-full-span">
+              <p>Loading jobs...</p>
+            </div>
+          ) : availableJobs.length ? (
+            availableJobs.slice(0, 6).map((job) => {
+              const skills = parseSkills(job.required_skills).slice(0, 4)
+              return (
+                <article key={job.id || job.title} className="landing-job-card">
+                  <div className="landing-job-header">
+                    <div className="landing-job-heading">
+                      <h3 className="landing-job-title">{job.title || "Untitled role"}</h3>
+                      <p className="landing-job-company">{job.department || "Hiring team"}</p>
+                    </div>
+                    <span className="landing-job-badge">{job.type || "Full-time"}</span>
+                  </div>
+
+                  <p className="landing-job-description">
+                    {job.description
+                      ? job.description.slice(0, 90).replace(/\s+$/, "")
+                      : "A featured opening from the active job board."}
+                  </p>
+
+                  <div className="landing-job-footer">
+                    {skills.length > 0 && (
+                      <div className="landing-job-skills">
+                        {skills.map((skill) => (
+                          <span key={`${job.id || job.title}-${skill}`} className="landing-job-skill">
+                            {skill}
+                          </span>
+                        ))}
+                      </div>
+                    )}
+
+                    <button type="button" className="btn btn-primary btn-sm landing-job-action" onClick={onRegisterClick}>
+                      Apply now
+                    </button>
+                  </div>
+                </article>
+              )
+            })
+          ) : (
+            <div className="landing-empty-state landing-full-span">
+              <p>No available jobs right now.</p>
+            </div>
+          )}
+        </div>
+
+        <div className="landing-jobs-footer">
+          <button type="button" className="btn btn-primary btn-lg" onClick={() => setIsJobsModalOpen(true)}>
+            Browse all jobs
+          </button>
+        </div>
+      </section>
+
+      
 
       <section className="landing-features" id="landing-features">
         <div className="landing-section-header">
@@ -285,86 +313,9 @@ function LandingPage({ onLoginClick, onRegisterClick, scrollToSectionId = "" }) 
         </div>
       </section>
 
-      <section className="landing-jobs" id="landing-jobs">
-        <div className="landing-section-header">
-          <p className="landing-section-eyebrow">Available Jobs</p>
-          <h2>Open positions</h2>
-          <p>Browse current hiring opportunities.</p>
-        </div>
+      
 
-        <div className="landing-jobs-grid">
-          {loadingJobs ? (
-            <div className="landing-empty-state landing-full-span">
-              <p>Loading jobs...</p>
-            </div>
-          ) : availableJobs.length ? (
-            availableJobs.slice(0, 6).map((job) => {
-              const skills = parseSkills(job.required_skills).slice(0, 4)
-              return (
-                <article key={job.id || job.title} className="landing-job-card">
-                  <div className="landing-job-header">
-                    <div className="landing-job-heading">
-                      <h3 className="landing-job-title">{job.title || "Untitled role"}</h3>
-                      <p className="landing-job-company">{job.department || "Hiring team"}</p>
-                    </div>
-                    <span className="landing-job-badge">{job.type || "Full-time"}</span>
-                  </div>
-
-                  <div className="landing-job-meta">
-                    {job.itemNo || job.item_no ? (
-                      <p className="landing-job-location">Item No. {job.itemNo || job.item_no}</p>
-                    ) : null}
-                    {job.jobPosition || job.job_position ? (
-                      <p className="landing-job-location">{job.jobPosition || job.job_position}</p>
-                    ) : null}
-                    <p className="landing-job-location">{job.location || "Leyte Normal University"}</p>
-                    {job.deadline ? (
-                      <p className="landing-job-location">Deadline {new Date(job.deadline).toLocaleDateString(undefined, { month: "short", day: "numeric", year: "numeric" })}</p>
-                    ) : null}
-                    {job.eligibility ? (
-                      <p className="landing-job-location">{job.eligibility}</p>
-                    ) : null}
-                  </div>
-
-                  <p className="landing-job-description">
-                    {job.description
-                      ? job.description.slice(0, 90).replace(/\s+$/, "")
-                      : "A featured opening from the active job board."}
-                  </p>
-
-                  <div className="landing-job-footer">
-                    {skills.length > 0 && (
-                      <div className="landing-job-skills">
-                        {skills.map((skill) => (
-                          <span key={`${job.id || job.title}-${skill}`} className="landing-job-skill">
-                            {skill}
-                          </span>
-                        ))}
-                      </div>
-                    )}
-
-                    <button type="button" className="btn btn-primary btn-sm landing-job-action" onClick={onRegisterClick}>
-                      Apply now
-                    </button>
-                  </div>
-                </article>
-              )
-            })
-          ) : (
-            <div className="landing-empty-state landing-full-span">
-              <p>No available jobs right now.</p>
-            </div>
-          )}
-        </div>
-
-        <div className="landing-jobs-footer">
-          <button type="button" className="btn btn-primary btn-lg" onClick={() => setIsJobsModalOpen(true)}>
-            Browse all jobs
-          </button>
-        </div>
-      </section>
-
-      <section className="landing-cta-section">
+      {/* <section className="landing-cta-section">
           <div className="landing-cta-content">
             <p className="landing-section-eyebrow landing-cta-eyebrow">Ready to begin</p>
             <h2>Bring clarity to your hiring pipeline</h2>
@@ -380,7 +331,7 @@ function LandingPage({ onLoginClick, onRegisterClick, scrollToSectionId = "" }) 
             </button>
           </div>
         </div>
-      </section>
+      </section> */}
 
       <footer className="landing-footer" id="landing-footer">
         <div className="landing-footer-content">

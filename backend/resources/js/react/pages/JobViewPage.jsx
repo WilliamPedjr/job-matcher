@@ -28,6 +28,11 @@ function parseSkills(skillsText) {
     .filter(Boolean)
 }
 
+function formatExperienceYears(value) {
+  const years = Number(value || 0)
+  return `${years} ${years === 1 ? "year" : "years"}`
+}
+
 function JobViewPage({ job, onBack, onApply, onRequireResume, jobSeekerProfile, jobSeekerResume, jobSeekerSupporting, jobSeekerId, applications = [] }) {
   const APPLICATION_MATCH_BONUS_PERCENT = 10
   const [isApplyModalOpen, setIsApplyModalOpen] = useState(false)
@@ -492,7 +497,7 @@ function JobViewPage({ job, onBack, onApply, onRequireResume, jobSeekerProfile, 
           </div>
           <div className="job-view-info-item">
             <span>Minimum Experience</span>
-            <strong>{job.minimumExperienceYears ?? 0} years</strong>
+            <strong>{formatExperienceYears(job.minimumExperienceYears)}</strong>
           </div>
         </div>
 

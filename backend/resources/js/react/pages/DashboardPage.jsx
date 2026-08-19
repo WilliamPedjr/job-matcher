@@ -1,6 +1,6 @@
 import React from 'react'
 import "../styles/DashboardPage.css"
-import { useMemo, useState } from "react"
+import { useEffect, useMemo, useState } from "react"
 
 function DashboardPage({
   dashboardData,
@@ -9,37 +9,63 @@ function DashboardPage({
   onViewAllApplicants,
   onViewApplicant
 }) {
+  const [selectedJobType, setSelectedJobType] = useState("Non-Teaching")
   const [selectedJobTitle, setSelectedJobTitle] = useState("all")
   const [isTopApplicantsModalOpen, setIsTopApplicantsModalOpen] = useState(false)
   const [isActivityModalOpen, setIsActivityModalOpen] = useState(false)
   const [activityPage, setActivityPage] = useState(1)
+  const positionTypes = ["Teaching", "Non-Teaching"]
 
-  const jobOptions = useMemo(() => {
+  const jobGroups = useMemo(() => {
     const jobs = Array.isArray(dashboardData?.applicantJobs) ? dashboardData.applicantJobs : []
-    return [
-      { value: "all", label: "All Jobs" },
-      ...jobs.map((job) => ({ value: job.title, label: `${job.title} (${job.total})` }))
-    ]
+    return ["Teaching", "Non-Teaching"].reduce((groups, type) => {
+      groups[type] = jobs
+        .filter((job) => {
+          const position = String(job.jobPosition || job.job_position || "").toLowerCase()
+          return position === type.toLowerCase()
+        })
+        .sort((a, b) => String(a.title || "").localeCompare(String(b.title || "")))
+      return groups
+    }, {})
   }, [dashboardData?.applicantJobs])
 
+  const typedJobs = useMemo(() => {
+    return jobGroups[selectedJobType] || []
+  }, [jobGroups, selectedJobType])
+
+  useEffect(() => {
+    if (selectedJobTitle !== "all" && !typedJobs.some((job) => job.title === selectedJobTitle)) {
+      setSelectedJobTitle("all")
+    }
+  }, [selectedJobTitle, typedJobs])
+
   const selectedJobStats = useMemo(() => {
-    const jobs = Array.isArray(dashboardData?.applicantJobs) ? dashboardData.applicantJobs : []
-    if (selectedJobTitle === "all") {
+    if (selectedJobTitle !== "all") {
+      const selected = typedJobs.find((job) => job.title === selectedJobTitle)
       return {
-        highlyQualified: Number(dashboardData?.highlyQualified || 0),
-        moderatelyQualified: Number(dashboardData?.moderatelyQualified || 0),
-        notQualified: Number(dashboardData?.notQualified || 0),
-        total: Number(dashboardData?.totalApplicants || 0)
+        highlyQualified: Number(selected?.highlyQualified || 0),
+        moderatelyQualified: Number(selected?.moderatelyQualified || 0),
+        notQualified: Number(selected?.notQualified || 0),
+        total: Number(selected?.total || 0)
       }
     }
-    const selected = jobs.find((job) => job.title === selectedJobTitle)
-    return {
-      highlyQualified: Number(selected?.highlyQualified || 0),
-      moderatelyQualified: Number(selected?.moderatelyQualified || 0),
-      notQualified: Number(selected?.notQualified || 0),
-      total: Number(selected?.total || 0)
-    }
-  }, [dashboardData, selectedJobTitle])
+
+    return typedJobs.reduce((totals, job) => ({
+      highlyQualified: totals.highlyQualified + Number(job.highlyQualified || 0),
+      moderatelyQualified: totals.moderatelyQualified + Number(job.moderatelyQualified || 0),
+      notQualified: totals.notQualified + Number(job.notQualified || 0),
+      total: totals.total + Number(job.total || 0)
+    }), {
+      highlyQualified: 0,
+      moderatelyQualified: 0,
+      notQualified: 0,
+      total: 0
+    })
+  }, [selectedJobTitle, typedJobs])
+
+  const getJobTypeTotal = (type) => {
+    return (jobGroups[type] || []).reduce((total, job) => total + Number(job.total || 0), 0)
+  }
 
   const allActivity = Array.isArray(activityLogs) ? activityLogs : []
   const recentActivity = allActivity.slice(0, 3)
@@ -241,17 +267,40 @@ function DashboardPage({
         <section className="analytics-card">
           <div className="analytics-card-head">
             <h3>Applicant Classification Distribution</h3>
-            <select
-              className="analytics-select"
-              value={selectedJobTitle}
-              onChange={(e) => setSelectedJobTitle(e.target.value)}
-            >
-              {jobOptions.map((option) => (
-                <option key={option.value} value={option.value}>
-                  {option.label}
-                </option>
-              ))}
-            </select>
+            <div className="analytics-filter-group">
+              <select
+                className="analytics-select analytics-position-select"
+                value={selectedJobType}
+                onChange={(event) => {
+                  setSelectedJobType(event.target.value)
+                  setSelectedJobTitle("all")
+                }}
+              >
+                {positionTypes.map((type) => (
+                  <option value={type} key={type}>
+                    {type} ({getJobTypeTotal(type)})
+                  </option>
+                ))}
+              </select>
+
+              <select
+                className="analytics-select analytics-job-select"
+                value={selectedJobTitle}
+                onChange={(event) => setSelectedJobTitle(event.target.value)}
+                disabled={typedJobs.length === 0}
+              >
+                <option value="all">All {selectedJobType} Jobs ({getJobTypeTotal(selectedJobType)})</option>
+                {typedJobs.length > 0 ? (
+                  typedJobs.map((job) => (
+                    <option value={job.title} key={`${selectedJobType}-${job.title}`}>
+                      {job.title} ({job.total})
+                    </option>
+                  ))
+                ) : (
+                  <option value="empty" disabled>No applied jobs</option>
+                )}
+              </select>
+            </div>
           </div>
           <div className="graph graph-centered">
             {(() => {
@@ -259,8 +308,8 @@ function DashboardPage({
               const moderate = Number(selectedJobStats.moderatelyQualified || 0)
               const notQualified = Number(selectedJobStats.notQualified || 0)
               const totalCount = Number(selectedJobStats.total || 0)
-              if (selectedJobTitle !== "all" && totalCount === 0) {
-                return <p className="muted">No applicants found for this job yet.</p>
+              if (totalCount === 0) {
+                return <p className="muted">No applications found for this position type yet.</p>
               }
               const total = qualified + moderate + notQualified || 1
               const qualifiedPct = Math.round((qualified / total) * 100)
@@ -372,6 +421,58 @@ function DashboardPage({
                   </div>
                 </div>
               )
+            })()}
+          </div>
+        </section>
+      </div>
+
+      <div className="dashboard-analytics dashboard-specific-analytics">
+        <section className="analytics-card">
+          <div className="analytics-card-head">
+            <h3>Position Type Distribution</h3>
+          </div>
+          <div className="analytics-list-chart">
+            {(dashboardData.positionTypeDistribution || []).length === 0 ? (
+              <p className="muted">No applications by position type yet.</p>
+            ) : (
+              dashboardData.positionTypeDistribution.map((item) => (
+                <div className="analytics-progress-row" key={`position-type-${item.type}`}>
+                  <div className="analytics-progress-head">
+                    <span>{item.type}</span>
+                    <strong>{item.count} ({item.percentage}%)</strong>
+                  </div>
+                  <div className="analytics-progress-track">
+                    <span style={{ width: `${Math.max(4, item.percentage)}%` }} />
+                  </div>
+                </div>
+              ))
+            )}
+          </div>
+        </section>
+
+        <section className="analytics-card">
+          <div className="analytics-card-head">
+            <h3>Applicantions Per Year</h3>
+          </div>
+          <div className="year-bars">
+            {(() => {
+              const years = dashboardData.applicantsByYear || []
+              const maxCount = Math.max(1, ...years.map((item) => Number(item.count || 0)))
+
+              if (years.length === 0) {
+                return <p className="muted">No yearly applicant data yet.</p>
+              }
+
+              return years.map((item) => {
+                const height = Math.max(10, Math.round((Number(item.count || 0) / maxCount) * 56))
+                return (
+                  <div className="year-bar-col" key={`year-${item.year}`}>
+                    <strong>{item.count}</strong>
+                    <span style={{ height: `${height}px` }} />
+                    <small>{item.year}</small>
+                  </div>
+                )
+              })
             })()}
           </div>
         </section>

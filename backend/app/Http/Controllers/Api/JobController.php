@@ -296,6 +296,7 @@ class JobController extends Controller
     private function serialize(Job $job): array
     {
         $skills = JobSkillCatalog::query()->where('job_id', $job->id)->orderBy('skill')->pluck('skill')->values()->all();
+        $requiredSkills = $this->publicRequiredSkills($job->required_skills);
 
         return [
             'id' => $job->id,
@@ -314,8 +315,8 @@ class JobController extends Controller
             'type' => $job->type,
             'deadline' => optional($job->deadline)->format('Y-m-d') ?? $job->deadline,
             'eligibility' => $job->eligibility,
-            'required_skills' => $job->required_skills,
-            'requiredSkills' => $job->required_skills,
+            'required_skills' => $requiredSkills,
+            'requiredSkills' => $requiredSkills,
             'minimum_education' => $job->minimum_education,
             'minimumEducation' => $job->minimum_education,
             'minimum_experience_years' => (int) $job->minimum_experience_years,
@@ -330,6 +331,8 @@ class JobController extends Controller
 
     private function serializeTemplate(JobTemplate $template): array
     {
+        $requiredSkills = $this->publicRequiredSkills($template->required_skills);
+
         return [
             'id' => $template->id,
             'template_id' => $template->id,
@@ -347,8 +350,8 @@ class JobController extends Controller
             'type' => $template->type,
             'deadline' => optional($template->deadline)->format('Y-m-d') ?? $template->deadline,
             'eligibility' => $template->eligibility,
-            'required_skills' => $template->required_skills,
-            'requiredSkills' => $template->required_skills,
+            'required_skills' => $requiredSkills,
+            'requiredSkills' => $requiredSkills,
             'minimum_education' => $template->minimum_education,
             'minimumEducation' => $template->minimum_education,
             'minimum_experience_years' => (int) $template->minimum_experience_years,
@@ -357,7 +360,20 @@ class JobController extends Controller
             'salaryMin' => $template->salary_min,
             'salary_max' => $template->salary_max,
             'salaryMax' => $template->salary_max,
-            'skills' => $this->parseSkills($template->required_skills),
+            'skills' => $this->parseSkills($requiredSkills),
         ];
+    }
+
+    private function publicRequiredSkills(?string $requiredSkills): ?string
+    {
+        if (trim((string) $requiredSkills) === '__MATCH_ALL__') {
+            return 'Open qualifications';
+        }
+
+        if (trim((string) $requiredSkills) === '__MATCH_MODERATE__') {
+            return 'Open qualifications with review';
+        }
+
+        return $requiredSkills;
     }
 }

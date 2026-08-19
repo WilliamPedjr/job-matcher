@@ -143,7 +143,7 @@ function ProfilePage({
     const explicitId = String(profile?.idNumber || profile?.id_number || "").trim()
     if (explicitId) return explicitId
     const numericId = Number(profile?.id)
-    return Number.isFinite(numericId) && numericId > 0 ? `JS-${String(numericId).padStart(6, "0")}` : "-"
+    return Number.isFinite(numericId) && numericId > 0 ? `LNU-${String(numericId).padStart(6, "0")}` : "-"
   }
 
   const displayName = isJobSeeker

@@ -54,6 +54,12 @@ class LandingController extends Controller
 
     private function serializeJob(Job $job): array
     {
+        $requiredSkills = match (trim((string) $job->required_skills)) {
+            '__MATCH_ALL__' => 'Open qualifications',
+            '__MATCH_MODERATE__' => 'Open qualifications with review',
+            default => $job->required_skills,
+        };
+
         return [
             'id' => $job->id,
             'title' => $job->title,
@@ -68,7 +74,7 @@ class LandingController extends Controller
             'type' => $job->type,
             'deadline' => optional($job->deadline)->format('Y-m-d') ?? $job->deadline,
             'eligibility' => $job->eligibility,
-            'required_skills' => $job->required_skills,
+            'required_skills' => $requiredSkills,
             'minimum_education' => $job->minimum_education,
             'minimum_experience_years' => (int) $job->minimum_experience_years,
         ];

@@ -44,7 +44,7 @@ function LoginPage({
           <img src={loginImage} alt="LNU-HiRe" />
           <span className="brand-copy">
             <span className="brand-name">LNU-HiRe</span>
-            <span className="brand-tagline">AI recruitment platform</span>
+            {/* <span className="brand-tagline">AI recruitment platform</span> */}
           </span>
         </button>
 

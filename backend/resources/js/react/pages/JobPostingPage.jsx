@@ -1710,7 +1710,7 @@ function JobPostingPage({ uploads = [], isEmployer = false, isJobSeeker = false,
 
                   <div className="modal-grid">
                     <div className="field-group">
-                      <label>Job Title</label>
+                      <label>Job Position</label>
                       <div
                         ref={jobPositionRef}
                         className="autocomplete"
@@ -1796,7 +1796,7 @@ function JobPostingPage({ uploads = [], isEmployer = false, isJobSeeker = false,
 
                   <div className="modal-grid">
                     <div className="field-group">
-                      <label>Item No.</label>
+                      <label>Plantilla Item No.</label>
                       <input
                         className="input"
                         type="text"

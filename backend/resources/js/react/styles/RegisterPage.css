@@ -2256,6 +2256,16 @@ optgroup {
   box-shadow: 0 0 0 2px rgba(26, 40, 123, 0.15);
 }
 
+.register-password-hint {
+  margin: -2px 0 2px;
+  font-size: var(--fs-12);
+  font-weight: 600;
+}
+
+.register-password-hint.is-missing {
+  color: #b91c1c;
+}
+
 .register-btn {
   margin: 12px auto 0;
   border: none;

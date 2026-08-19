@@ -123,7 +123,7 @@ function JobSeekerDashboard({ jobSeekerProfile, uploads = [], onBrowseJobs, onVi
           <table>
             <thead>
               <tr>
-                <th>Job Title</th>
+                <th>Job Position</th>
                 <th>Date Applied</th>
                 <th>Status</th>
                 <th>Action</th>

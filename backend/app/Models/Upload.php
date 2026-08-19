@@ -15,6 +15,7 @@ class Upload extends Model
         'job_seeker_id',
         'job_seeker_id_number',
         'job_id',
+        'job_position_type',
         'name',
         'email',
         'phone',

@@ -28,7 +28,7 @@ return new class extends Migration
             ->each(function ($jobSeeker) {
                 DB::table('job_seekers')
                     ->where('id', $jobSeeker->id)
-                    ->update(['id_number' => sprintf('JS-%06d', $jobSeeker->id)]);
+                    ->update(['id_number' => sprintf('LNU-%06d', $jobSeeker->id)]);
             });
 
         DB::table('uploads')

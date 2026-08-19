@@ -27,6 +27,10 @@ function RegisterPage({
   const emailError = !email.trim()
   const passwordError = !password.trim()
   const confirmPasswordError = !confirmPassword.trim()
+  const passwordRequirementError =
+    !/[A-Z]/.test(password) ||
+    !/\d/.test(password) ||
+    !/[^A-Za-z0-9]/.test(password)
   const goToLandingSection = (id) => {
     onGoToLandingSection(id)
   }
@@ -51,7 +55,7 @@ function RegisterPage({
           <img src={lnuLogo} alt="LNU-HiRe" />
           <span className="brand-copy">
             <span className="brand-name">LNU-HiRe</span>
-            <span className="brand-tagline">AI recruitment platform</span>
+            {/* <span className="brand-tagline">AI recruitment platform</span> */}
           </span>
         </button>
 
@@ -123,7 +127,7 @@ function RegisterPage({
             <label className="register-label">Password</label>
             <div className="register-input-wrap">
               <input
-                className={`register-input ${showErrors && passwordError ? "input-error" : ""}`}
+                className={`register-input ${showErrors && (passwordError || passwordRequirementError) ? "input-error" : ""}`}
                 type={showPassword ? "text" : "password"}
                 value={password}
                 onChange={(e) => setPassword(e.target.value)}
@@ -146,6 +150,11 @@ function RegisterPage({
                 <img src={showPassword ? eyeSolidIcon : eyeRegularIcon} alt="" />
               </span>
             </div>
+            {(passwordRequirementError && (password || showErrors)) && (
+              <p className="register-password-hint is-missing">
+                Use uppercase, number, and special character.
+              </p>
+            )}
 
             <label className="register-label">Confirm Password</label>
             <div className="register-input-wrap">
