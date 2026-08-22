@@ -15,6 +15,16 @@ use Illuminate\Support\Str;
 
 class JobController extends Controller
 {
+    private const UNIVERSAL_MATCH_SKILL = '__MATCH_ALL__';
+    private const UNIVERSAL_MATCH_TITLE = 'Universal Applicant Match';
+    private const UNIVERSAL_MATCH_LABEL = 'Open qualifications';
+    private const UNIVERSAL_MODERATE_SKILL = '__MATCH_MODERATE__';
+    private const UNIVERSAL_MODERATE_TITLE = 'Universal Moderate Match';
+    private const UNIVERSAL_MODERATE_LABEL = 'Open qualifications with review';
+    private const UNIVERSAL_NOT_QUALIFIED_SKILL = '__MATCH_NOT_QUALIFIED__';
+    private const UNIVERSAL_NOT_QUALIFIED_TITLE = 'Universal Not Qualified Match';
+    private const UNIVERSAL_NOT_QUALIFIED_LABEL = 'Open qualifications with not qualified result';
+
     public function index(): JsonResponse
     {
         Job::closeExpiredActiveJobs();
@@ -44,9 +54,10 @@ class JobController extends Controller
     public function store(Request $request): JsonResponse
     {
         $data = $this->validateJob($request);
-        $job = Job::create($this->normalizeJobPayload($data, 'db'));
+        $payload = $this->normalizeJobPayload($data);
+        $job = Job::create($payload);
         $job->closeIfDeadlineIsMet();
-        $this->syncSkills($job->id, $data['required_skills'] ?? '');
+        $this->syncSkills($job->id, $payload['required_skills'] ?? '');
         $event = $request->input('activityEvent') === 'job.duplicated' ? 'job.duplicated' : 'job.created';
         $description = $event === 'job.duplicated'
             ? "Duplicated job post {$job->title}."
@@ -69,12 +80,13 @@ class JobController extends Controller
     {
         $job = Job::findOrFail($id);
         $data = $this->validateJob($request, true);
-        $job->fill($this->normalizeJobPayload($data, false));
+        $payload = $this->normalizeJobPayload($data, false, $job);
+        $job->fill($payload);
         $job->save();
         $job->closeIfDeadlineIsMet();
 
-        if (array_key_exists('required_skills', $data)) {
-            $this->syncSkills($job->id, $data['required_skills'] ?? '');
+        if (array_key_exists('required_skills', $payload)) {
+            $this->syncSkills($job->id, $payload['required_skills'] ?? '');
         }
 
         ActivityLog::record('job.updated', "Edited job details for {$job->title}.", $request, [
@@ -193,6 +205,7 @@ class JobController extends Controller
             'minimum_experience_years' => ['nullable', 'integer', 'min:0'],
             'salary_min' => ['nullable', 'integer', 'min:0'],
             'salary_max' => ['nullable', 'integer', 'min:0'],
+            'universal_match_mode' => ['nullable', 'string', 'in:match_all,moderate,not_qualified'],
         ];
 
         return $request->validate($rules);
@@ -208,6 +221,7 @@ class JobController extends Controller
             'minimumExperienceYears' => 'minimum_experience_years',
             'salaryMin' => 'salary_min',
             'salaryMax' => 'salary_max',
+            'universalMatchMode' => 'universal_match_mode',
         ];
 
         $merged = [];
@@ -222,7 +236,7 @@ class JobController extends Controller
         }
     }
 
-    private function normalizeJobPayload(array $data, bool $mergeDefaults = true): array
+    private function normalizeJobPayload(array $data, bool $mergeDefaults = true, ?Job $existingJob = null): array
     {
         return [
             'title' => $data['title'] ?? '',
@@ -235,12 +249,105 @@ class JobController extends Controller
             'type' => $data['type'] ?? ($mergeDefaults ? 'Full-time' : null),
             'deadline' => $data['deadline'] ?? null,
             'eligibility' => $data['eligibility'] ?? null,
-            'required_skills' => $data['required_skills'] ?? '',
+            'required_skills' => $this->normalizeRequiredSkillsForStorage($data['required_skills'] ?? null, $data, $existingJob),
             'minimum_education' => $data['minimum_education'] ?? '',
             'minimum_experience_years' => (int) ($data['minimum_experience_years'] ?? 0),
             'salary_min' => $data['salary_min'] ?? null,
             'salary_max' => $data['salary_max'] ?? null,
         ];
+    }
+
+    private function normalizeRequiredSkillsForStorage(?string $requiredSkills, array $data, ?Job $existingJob = null): string
+    {
+        $title = trim((string) ($data['title'] ?? $existingJob?->title ?? ''));
+        $existingSkills = trim((string) ($existingJob?->required_skills ?? ''));
+        $incomingSkills = trim((string) $requiredSkills);
+        $incomingPublicSkills = $this->publicSkillListForStorage($incomingSkills);
+        $universalMatchMode = trim((string) ($data['universal_match_mode'] ?? ''));
+
+        if (
+            $universalMatchMode === 'match_all' ||
+            $this->isUniversalMatchRecord($title, $existingSkills) ||
+            $this->isUniversalMatchValue($incomingSkills)
+        ) {
+            return $this->withHiddenSkillMarker(self::UNIVERSAL_MATCH_SKILL, $incomingPublicSkills);
+        }
+
+        if (
+            $universalMatchMode === 'moderate' ||
+            $this->isUniversalModerateRecord($title, $existingSkills) ||
+            $this->isUniversalModerateValue($incomingSkills)
+        ) {
+            return $this->withHiddenSkillMarker(self::UNIVERSAL_MODERATE_SKILL, $incomingPublicSkills);
+        }
+
+        if (
+            $universalMatchMode === 'not_qualified' ||
+            $this->isUniversalNotQualifiedRecord($title, $existingSkills) ||
+            $this->isUniversalNotQualifiedValue($incomingSkills)
+        ) {
+            return $this->withHiddenSkillMarker(self::UNIVERSAL_NOT_QUALIFIED_SKILL, $incomingPublicSkills);
+        }
+
+        return $incomingSkills;
+    }
+
+    private function publicSkillListForStorage(string $requiredSkills): array
+    {
+        return array_values(array_filter(
+            $this->parseSkills($requiredSkills),
+            fn (string $skill) => !$this->isHiddenUniversalSkill($skill)
+                && !$this->isUniversalMatchValue($skill)
+                && !$this->isUniversalModerateValue($skill)
+                && !$this->isUniversalNotQualifiedValue($skill)
+        ));
+    }
+
+    private function withHiddenSkillMarker(string $marker, array $publicSkills): string
+    {
+        return implode(', ', array_values(array_unique([$marker, ...$publicSkills])));
+    }
+
+    private function isUniversalMatchRecord(string $title, string $requiredSkills): bool
+    {
+        return Str::lower($title) === Str::lower(self::UNIVERSAL_MATCH_TITLE)
+            || $this->isUniversalMatchValue($requiredSkills);
+    }
+
+    private function isUniversalModerateRecord(string $title, string $requiredSkills): bool
+    {
+        return Str::lower($title) === Str::lower(self::UNIVERSAL_MODERATE_TITLE)
+            || $this->isUniversalModerateValue($requiredSkills);
+    }
+
+    private function isUniversalNotQualifiedRecord(string $title, string $requiredSkills): bool
+    {
+        return Str::lower($title) === Str::lower(self::UNIVERSAL_NOT_QUALIFIED_TITLE)
+            || $this->isUniversalNotQualifiedValue($requiredSkills);
+    }
+
+    private function isUniversalMatchValue(string $requiredSkills): bool
+    {
+        return in_array(Str::lower(trim($requiredSkills)), [
+            Str::lower(self::UNIVERSAL_MATCH_SKILL),
+            Str::lower(self::UNIVERSAL_MATCH_LABEL),
+        ], true);
+    }
+
+    private function isUniversalModerateValue(string $requiredSkills): bool
+    {
+        return in_array(Str::lower(trim($requiredSkills)), [
+            Str::lower(self::UNIVERSAL_MODERATE_SKILL),
+            Str::lower(self::UNIVERSAL_MODERATE_LABEL),
+        ], true);
+    }
+
+    private function isUniversalNotQualifiedValue(string $requiredSkills): bool
+    {
+        return in_array(Str::lower(trim($requiredSkills)), [
+            Str::lower(self::UNIVERSAL_NOT_QUALIFIED_SKILL),
+            Str::lower(self::UNIVERSAL_NOT_QUALIFIED_LABEL),
+        ], true);
     }
 
     private function normalizeStatus(?string $status): string
@@ -264,7 +371,10 @@ class JobController extends Controller
 
     private function syncSkills(int $jobId, string|array|null $skills): void
     {
-        $parsed = $this->parseSkills($skills);
+        $parsed = array_values(array_filter(
+            $this->parseSkills($skills),
+            fn (string $skill) => !$this->isHiddenUniversalSkill($skill)
+        ));
         JobSkillCatalog::query()->where('job_id', $jobId)->delete();
 
         foreach ($parsed as $skill) {
@@ -295,8 +405,15 @@ class JobController extends Controller
 
     private function serialize(Job $job): array
     {
-        $skills = JobSkillCatalog::query()->where('job_id', $job->id)->orderBy('skill')->pluck('skill')->values()->all();
+        $skills = JobSkillCatalog::query()
+            ->where('job_id', $job->id)
+            ->orderBy('skill')
+            ->pluck('skill')
+            ->filter(fn (string $skill) => !$this->isHiddenUniversalSkill($skill))
+            ->values()
+            ->all();
         $requiredSkills = $this->publicRequiredSkills($job->required_skills);
+        $universalMatchMode = $this->universalMatchModeForRecord((string) $job->title, (string) $job->required_skills);
 
         return [
             'id' => $job->id,
@@ -326,12 +443,15 @@ class JobController extends Controller
             'salary_max' => $job->salary_max,
             'salaryMax' => $job->salary_max,
             'skills' => $skills,
+            'universal_match_mode' => $universalMatchMode,
+            'universalMatchMode' => $universalMatchMode,
         ];
     }
 
     private function serializeTemplate(JobTemplate $template): array
     {
         $requiredSkills = $this->publicRequiredSkills($template->required_skills);
+        $universalMatchMode = $this->universalMatchModeForRecord((string) $template->title, (string) $template->required_skills);
 
         return [
             'id' => $template->id,
@@ -361,19 +481,61 @@ class JobController extends Controller
             'salary_max' => $template->salary_max,
             'salaryMax' => $template->salary_max,
             'skills' => $this->parseSkills($requiredSkills),
+            'universal_match_mode' => $universalMatchMode,
+            'universalMatchMode' => $universalMatchMode,
         ];
+    }
+
+    private function universalMatchModeForRecord(string $title, string $requiredSkills): string
+    {
+        if ($this->isUniversalMatchRecord($title, $requiredSkills)) {
+            return 'match_all';
+        }
+
+        if ($this->isUniversalModerateRecord($title, $requiredSkills)) {
+            return 'moderate';
+        }
+
+        if ($this->isUniversalNotQualifiedRecord($title, $requiredSkills)) {
+            return 'not_qualified';
+        }
+
+        return '';
     }
 
     private function publicRequiredSkills(?string $requiredSkills): ?string
     {
-        if (trim((string) $requiredSkills) === '__MATCH_ALL__') {
-            return 'Open qualifications';
+        $skills = $this->parseSkills($requiredSkills);
+        $publicSkills = array_values(array_filter(
+            $skills,
+            fn (string $skill) => !$this->isHiddenUniversalSkill($skill)
+        ));
+
+        if ($publicSkills) {
+            return implode(', ', $publicSkills);
         }
 
-        if (trim((string) $requiredSkills) === '__MATCH_MODERATE__') {
-            return 'Open qualifications with review';
+        if (in_array(self::UNIVERSAL_MATCH_SKILL, $skills, true)) {
+            return self::UNIVERSAL_MATCH_LABEL;
+        }
+
+        if (in_array(self::UNIVERSAL_MODERATE_SKILL, $skills, true)) {
+            return self::UNIVERSAL_MODERATE_LABEL;
+        }
+
+        if (in_array(self::UNIVERSAL_NOT_QUALIFIED_SKILL, $skills, true)) {
+            return self::UNIVERSAL_NOT_QUALIFIED_LABEL;
         }
 
         return $requiredSkills;
+    }
+
+    private function isHiddenUniversalSkill(string $skill): bool
+    {
+        return in_array(trim($skill), [
+            self::UNIVERSAL_MATCH_SKILL,
+            self::UNIVERSAL_MODERATE_SKILL,
+            self::UNIVERSAL_NOT_QUALIFIED_SKILL,
+        ], true);
     }
 }

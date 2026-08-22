@@ -19,7 +19,7 @@ function JobSeekerDashboard({ jobSeekerProfile, uploads = [], onBrowseJobs, onVi
   const normalizeClassification = (value) => String(value || "").trim().toLowerCase()
   const isQualified = (value) => {
     const cls = normalizeClassification(value)
-    return cls.includes("qualified") && !cls.includes("not")
+    return cls.includes("highly") || (cls === "qualified")
   }
   const isModeratelyQualified = (value) => {
     const cls = normalizeClassification(value)
@@ -37,9 +37,9 @@ function JobSeekerDashboard({ jobSeekerProfile, uploads = [], onBrowseJobs, onVi
 
   const getStatusLabel = (item) => {
     const cls = normalizeClassification(item?.classification)
-    if (cls.includes("qualified") && !cls.includes("not")) return "Qualified"
-    if (cls.includes("highly")) return "Qualified"
     if (cls.includes("moderately")) return "Moderately Qualified"
+    if (cls.includes("highly")) return "Qualified"
+    if (cls === "qualified") return "Qualified"
     if (cls.includes("not")) return "Not Qualified"
     return "Under Review"
   }

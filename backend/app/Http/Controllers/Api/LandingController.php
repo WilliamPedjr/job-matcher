@@ -54,11 +54,22 @@ class LandingController extends Controller
 
     private function serializeJob(Job $job): array
     {
-        $requiredSkills = match (trim((string) $job->required_skills)) {
-            '__MATCH_ALL__' => 'Open qualifications',
-            '__MATCH_MODERATE__' => 'Open qualifications with review',
-            default => $job->required_skills,
-        };
+        $skills = array_values(array_filter(array_map(
+            fn ($skill) => trim((string) $skill),
+            preg_split('/[,;\n|]+/', (string) $job->required_skills) ?: []
+        )));
+        $publicSkills = array_values(array_filter(
+            $skills,
+            fn ($skill) => !in_array($skill, ['__MATCH_ALL__', '__MATCH_MODERATE__', '__MATCH_NOT_QUALIFIED__'], true)
+        ));
+        $requiredSkills = $publicSkills
+            ? implode(', ', $publicSkills)
+            : match (true) {
+                in_array('__MATCH_ALL__', $skills, true) => 'Open qualifications',
+                in_array('__MATCH_MODERATE__', $skills, true) => 'Open qualifications with review',
+                in_array('__MATCH_NOT_QUALIFIED__', $skills, true) => 'Open qualifications with not qualified result',
+                default => $job->required_skills,
+            };
 
         return [
             'id' => $job->id,

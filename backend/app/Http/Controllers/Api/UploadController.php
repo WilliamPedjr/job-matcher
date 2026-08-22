@@ -99,7 +99,8 @@ class UploadController extends Controller
                 Storage::disk('local')->path($stored['path']),
                 $stored['mime_type'],
                 (string) ($data['appliedJobTitle'] ?? ''),
-                $supportingText
+                $supportingText,
+                $appliedJob?->id
             );
         } catch (\RuntimeException $exception) {
             $analysis = [
@@ -121,7 +122,9 @@ class UploadController extends Controller
         }
 
         $effectiveMatchScore = min(100, (float) ($analysis['overall_score'] ?? 0) + self::APPLICATION_MATCH_BONUS_PERCENT);
-        if ($appliedJobTitle !== '' && $effectiveMatchScore < self::APPLICATION_MINIMUM_MATCH_SCORE) {
+        $minimumMatchScore = (float) ($analysis['application_minimum_score'] ?? self::APPLICATION_MINIMUM_MATCH_SCORE);
+        $allowApplication = ($analysis['allow_application'] ?? false) === true;
+        if ($appliedJobTitle !== '' && !$allowApplication && $effectiveMatchScore < $minimumMatchScore) {
             Storage::disk('local')->delete($stored['path']);
             return response()->json([
                 'message' => 'Your resume does not match this job enough to apply.',
@@ -284,7 +287,8 @@ class UploadController extends Controller
                 Storage::disk('local')->path($stored['path']),
                 $stored['mime_type'],
                 (string) ($upload->applied_job_title ?? ''),
-                $this->extractExistingSupportingText($upload)
+                $this->extractExistingSupportingText($upload),
+                $upload->job_id
             );
         } catch (\RuntimeException $exception) {
             $analysis = [

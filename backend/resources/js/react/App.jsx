@@ -1365,6 +1365,8 @@ function App() {
       showUploadNotice("success", "Application submitted successfully.")
       await fetchUploads({ silent: true })
       await fetchJobPosts()
+      setSelectedJobView(null)
+      setActivePage("jobs")
       return { ok: true }
     } catch (error) {
       showUploadNotice("fail", "Failed to submit application.")

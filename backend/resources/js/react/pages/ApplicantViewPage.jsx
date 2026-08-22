@@ -250,7 +250,7 @@ function ApplicantViewPage({
                   <li key={file.id}>
                     <a
                       className="supporting-doc-link"
-                      href={`http://localhost:8000/api/uploads/${viewItem.id}/supporting/${file.id}/download`}
+                      href={`/api/uploads/${viewItem.id}/supporting/${file.id}/download`}
                       target="_blank"
                       rel="noreferrer"
                     >

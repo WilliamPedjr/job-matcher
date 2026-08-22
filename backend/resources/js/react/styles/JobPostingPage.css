@@ -1453,6 +1453,12 @@ optgroup {
   margin: 0;
 }
 
+.create-job-modal .input.is-invalid,
+.create-job-modal .custom-dropdown.is-invalid .dropdown-trigger {
+  border-color: #dc2626;
+  box-shadow: 0 0 0 2px rgba(220, 38, 38, 0.12);
+}
+
 .create-skills-picker {
   display: flex;
   flex-direction: column;

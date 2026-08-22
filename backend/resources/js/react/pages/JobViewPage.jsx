@@ -58,6 +58,7 @@ function JobViewPage({ job, onBack, onApply, onRequireResume, jobSeekerProfile, 
     status: "idle",
     score: null,
     qualifies: false,
+    allowApplication: false,
     minimumScore: 50,
     message: ""
   })
@@ -310,7 +311,7 @@ function JobViewPage({ job, onBack, onApply, onRequireResume, jobSeekerProfile, 
     const fetchMatch = async () => {
       try {
         const response = await fetch(
-          `http://localhost:5000/job-seekers/${jobSeekerId}/resume/match?jobTitle=${encodeURIComponent(job.title)}`,
+          `http://localhost:5000/job-seekers/${jobSeekerId}/resume/match?jobTitle=${encodeURIComponent(job.title)}&jobId=${encodeURIComponent(job.id || "")}`,
           { signal: controller.signal }
         )
         if (!response.ok) {
@@ -328,6 +329,7 @@ function JobViewPage({ job, onBack, onApply, onRequireResume, jobSeekerProfile, 
           status: "ready",
           score: boostedScore,
           qualifies: boostedScore >= normalizedMinimumScore,
+          allowApplication: Boolean(payload?.allowApplication),
           minimumScore: normalizedMinimumScore,
           message: ""
         })
@@ -337,6 +339,7 @@ function JobViewPage({ job, onBack, onApply, onRequireResume, jobSeekerProfile, 
           status: "error",
           score: null,
           qualifies: false,
+          allowApplication: false,
           minimumScore: 50,
           message: error.message || "Failed to check resume match."
         })
@@ -368,6 +371,7 @@ function JobViewPage({ job, onBack, onApply, onRequireResume, jobSeekerProfile, 
   const resumeMatchScore = Number(resumeMatch.score ?? 0)
   const normalizedResumeMatchScore = Number.isFinite(resumeMatchScore) ? resumeMatchScore : 0
   const resumeMatchQualified = resumeMatchReady && normalizedResumeMatchScore >= resumeMatchMinimumScore
+  const resumeMatchAllowsApplication = resumeMatchReady && Boolean(resumeMatch.allowApplication)
   const resumeMatchError = resumeMatch.status === "error"
   const currentJobId = job?.id != null ? String(job.id) : ""
   const currentJobTitle = String(job?.title || "").trim().toLowerCase()
@@ -381,7 +385,7 @@ function JobViewPage({ job, onBack, onApply, onRequireResume, jobSeekerProfile, 
       .trim()
       .toLowerCase() === currentJobTitle
   })
-  const applyBlockedByMatch = resumeMatchReady && !resumeMatchQualified
+  const applyBlockedByMatch = resumeMatchReady && !resumeMatchQualified && !resumeMatchAllowsApplication
   const applyGateDisabled = Boolean(hasAlreadyApplied || resumeMatchLoading || applyBlockedByMatch || resumeMatchError)
   const skillItems = parseSkills(job?.requiredSkills || job?.required_skills || job?.required_skills_text || "")
 
@@ -397,7 +401,9 @@ function JobViewPage({ job, onBack, onApply, onRequireResume, jobSeekerProfile, 
     } else if (hasAlreadyApplied) {
       nextPopup = { type: "fail", text: "You already applied to this job." }
     } else if (resumeMatchReady) {
-      nextPopup = resumeMatchQualified
+      nextPopup = resumeMatchAllowsApplication && !resumeMatchQualified
+        ? { type: "success", text: "You can apply, but this application will be marked Not Qualified." }
+        : resumeMatchQualified
         ? { type: "success", text: "Your resume matches this job well. You can apply now." }
         : { type: "fail", text: "Your resume does not match this job enough to apply." }
     } else if (resumeMatchError) {
@@ -411,7 +417,7 @@ function JobViewPage({ job, onBack, onApply, onRequireResume, jobSeekerProfile, 
 
     lastQualificationKeyRef.current = nextKey
     setQualificationPopup(nextPopup)
-  }, [job, hasAlreadyApplied, resumeMatch.status, resumeMatch.qualifies, resumeMatch.message, resumeMatchError, resumeMatchQualified, resumeMatchReady])
+  }, [job, hasAlreadyApplied, resumeMatch.status, resumeMatch.qualifies, resumeMatch.allowApplication, resumeMatch.message, resumeMatchError, resumeMatchAllowsApplication, resumeMatchQualified, resumeMatchReady])
 
   if (!job) {
     return (

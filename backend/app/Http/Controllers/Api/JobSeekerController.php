@@ -313,6 +313,7 @@ class JobSeekerController extends Controller
         $jobSeeker = JobSeeker::findOrFail($id);
         $data = $request->validate([
             'jobTitle' => ['nullable', 'string'],
+            'jobId' => ['nullable', 'integer', 'exists:jobs,id'],
         ]);
 
         $resume = $this->getResumeUpload($jobSeeker->id);
@@ -325,13 +326,15 @@ class JobSeekerController extends Controller
             Storage::disk('local')->path($resume->file_path),
             $resume->mime_type,
             $jobTitle,
-            $this->extractExistingSupportingText($jobSeeker->id)
+            $this->extractExistingSupportingText($jobSeeker->id),
+            !empty($data['jobId']) ? (int) $data['jobId'] : null
         );
 
         return response()->json([
             'success' => true,
             'matchScore' => $analysis['overall_score'],
-            'minimumScore' => 50,
+            'minimumScore' => $analysis['application_minimum_score'] ?? 50,
+            'allowApplication' => ($analysis['allow_application'] ?? false) === true,
             'previewText' => $analysis['preview_text'],
             'analysis' => $analysis,
         ]);

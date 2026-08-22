@@ -12,6 +12,8 @@ class ResumeAnalysisService
     private const UNIVERSAL_MATCH_TITLE = 'Universal Applicant Match';
     private const UNIVERSAL_MODERATE_SKILL = '__MATCH_MODERATE__';
     private const UNIVERSAL_MODERATE_TITLE = 'Universal Moderate Match';
+    private const UNIVERSAL_NOT_QUALIFIED_SKILL = '__MATCH_NOT_QUALIFIED__';
+    private const UNIVERSAL_NOT_QUALIFIED_TITLE = 'Universal Not Qualified Match';
 
     public function __construct(
         private readonly TextExtractionService $textExtractionService,
@@ -23,7 +25,8 @@ class ResumeAnalysisService
         string $path,
         ?string $mimeType = null,
         string $appliedJobTitle = '',
-        string $supportingText = ''
+        string $supportingText = '',
+        ?int $appliedJobId = null
     ): array {
         $extractedText = $this->textExtractionService->extract($path, $mimeType);
 
@@ -42,10 +45,14 @@ class ResumeAnalysisService
         $globalSkills = GlobalSkillCatalog::query()->pluck('skill')->all();
 
         $job = null;
+        if ($appliedJobId !== null) {
+            $job = Job::query()->find($appliedJobId);
+        }
         if ($appliedJobTitle !== '') {
-            $job = Job::query()
-                ->whereRaw('LOWER(title) = ?', [Str::lower(trim($appliedJobTitle))])
-                ->first();
+            $job ??= Job::query()
+                    ->whereRaw('LOWER(title) = ?', [Str::lower(trim($appliedJobTitle))])
+                    ->orderByDesc('id')
+                    ->first();
         }
 
         $educationLines = $isPds
@@ -124,6 +131,44 @@ class ResumeAnalysisService
                 'resume_summary' => $summary,
                 'pds_format' => $pdsFormat,
                 'matched_job_title' => $job?->title ?: ($appliedJobTitle !== '' ? $appliedJobTitle : null),
+            ];
+        }
+
+        if ($this->isUniversalNotQualifiedJob($job)) {
+            $matchedSkills = ['Application accepted for review'];
+            $missingSkills = ['Marked not qualified by preset'];
+            $overall = 30.0;
+            $summarySourceText = $isPds && $analysisText !== '' ? $analysisText : $extractedText;
+            $summary = $this->buildResumeSummary(
+                $summarySourceText,
+                $matchedSkills,
+                $missingSkills,
+                $educationLines,
+                $experienceLines,
+                30.0,
+                $overall,
+                $pdsFormat
+            );
+
+            return [
+                'classification' => 'Not Qualified',
+                'overall_score' => $overall,
+                'skills_match_score' => 30.0,
+                'project_score' => 30.0,
+                'education_match_score' => 30.0,
+                'experience_match_score' => 30.0,
+                'matched_skills' => $matchedSkills,
+                'missing_skills' => $missingSkills,
+                'education_text' => implode("\n", $educationLines),
+                'experience_text' => implode("\n", $experienceLines),
+                'resume_text' => $resumeText,
+                'preview_text' => Str::limit($summary['summary_text'] !== '' ? $summary['summary_text'] : ($isPds && $analysisText !== '' ? $analysisText : $resumeText), 1000, ''),
+                'summary_text' => $summary['summary_text'],
+                'resume_summary' => $summary,
+                'pds_format' => $pdsFormat,
+                'matched_job_title' => $job?->title ?: ($appliedJobTitle !== '' ? $appliedJobTitle : null),
+                'allow_application' => true,
+                'application_minimum_score' => 50,
             ];
         }
 
@@ -235,6 +280,32 @@ class ResumeAnalysisService
                     'projectScore' => 70.0,
                     'educationScore' => 70.0,
                     'experienceScore' => 70.0,
+                ];
+                continue;
+            }
+
+            if ($this->isUniversalNotQualifiedJob($job)) {
+                $results[] = [
+                    'id' => $this->jobField($job, 'id'),
+                    'title' => $this->jobField($job, 'title'),
+                    'description' => $this->jobField($job, 'description'),
+                    'status' => $this->jobField($job, 'status', null, 'active'),
+                    'department' => $this->jobField($job, 'department'),
+                    'location' => $this->jobField($job, 'location'),
+                    'type' => $this->jobField($job, 'type'),
+                    'requiredSkills' => 'Open qualifications with not qualified result',
+                    'minimumEducation' => $this->jobField($job, 'minimumEducation', 'minimum_education', ''),
+                    'minimumExperienceYears' => (int) $this->jobField($job, 'minimumExperienceYears', 'minimum_experience_years', 0),
+                    'overallScore' => 30.0,
+                    'classification' => 'Not Qualified',
+                    'matchedSkills' => ['Application accepted for review'],
+                    'missingSkills' => ['Marked not qualified by preset'],
+                    'skillsScore' => 30.0,
+                    'projectScore' => 30.0,
+                    'educationScore' => 30.0,
+                    'experienceScore' => 30.0,
+                    'allowApplication' => true,
+                    'minimumScore' => 50,
                 ];
                 continue;
             }
@@ -357,6 +428,20 @@ class ResumeAnalysisService
         }
 
         return in_array(self::UNIVERSAL_MODERATE_SKILL, $this->splitSkills((string) $this->jobField($job, 'requiredSkills', 'required_skills', '')), true);
+    }
+
+    private function isUniversalNotQualifiedJob(mixed $job): bool
+    {
+        if (!$job) {
+            return false;
+        }
+
+        $title = trim((string) $this->jobField($job, 'title', null, ''));
+        if (Str::lower($title) === Str::lower(self::UNIVERSAL_NOT_QUALIFIED_TITLE)) {
+            return true;
+        }
+
+        return in_array(self::UNIVERSAL_NOT_QUALIFIED_SKILL, $this->splitSkills((string) $this->jobField($job, 'requiredSkills', 'required_skills', '')), true);
     }
 
     private function buildSkillSuggestions(string $resumeText, array $globalSkills): array

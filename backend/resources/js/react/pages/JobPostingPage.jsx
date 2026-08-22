@@ -32,6 +32,7 @@ function JobPostingPage({ uploads = [], isEmployer = false, isJobSeeker = false,
   const [newJobDeadline, setNewJobDeadline] = useState("")
   const [newJobEligibility, setNewJobEligibility] = useState("Open to all qualified applicants")
   const [newRequiredSkills, setNewRequiredSkills] = useState("")
+  const [newUniversalMatchMode, setNewUniversalMatchMode] = useState("")
   const [newMinimumEducation, setNewMinimumEducation] = useState("Bachelor's Degree")
   const [newMinimumExperienceYears, setNewMinimumExperienceYears] = useState("0")
   const [newSalaryMin, setNewSalaryMin] = useState("")
@@ -41,6 +42,7 @@ function JobPostingPage({ uploads = [], isEmployer = false, isJobSeeker = false,
   const [error, setError] = useState("")
   const [createJobStatus, setCreateJobStatus] = useState("")
   const [createJobNotice, setCreateJobNotice] = useState("")
+  const [showJobFormErrors, setShowJobFormErrors] = useState(false)
   const [isSearchOpen, setIsSearchOpen] = useState(false)
   const [isSkillsOpen, setIsSkillsOpen] = useState(false)
   const [skillDraft, setSkillDraft] = useState("")
@@ -60,6 +62,7 @@ function JobPostingPage({ uploads = [], isEmployer = false, isJobSeeker = false,
   const deleteToastTimerRef = useRef(null)
   const isEditingJob = editingJobId != null
   const descriptionRef = useRef(null)
+  const createJobModalRef = useRef(null)
   const jobPositionRef = useRef(null)
   const skillsPickerRef = useRef(null)
   const jobApplicantActionsMenuRef = useRef(null)
@@ -67,6 +70,7 @@ function JobPostingPage({ uploads = [], isEmployer = false, isJobSeeker = false,
 
   useEffect(() => {
     if (!createJobStatus) return
+    if (createJobStatus !== "success") return
     const timer = setTimeout(() => {
       setCreateJobStatus("")
       setCreateJobNotice("")
@@ -99,6 +103,22 @@ function JobPostingPage({ uploads = [], isEmployer = false, isJobSeeker = false,
   const showCreateJobNotice = (status, notice) => {
     setCreateJobStatus(status)
     setCreateJobNotice(notice)
+  }
+
+  const requiredInputClass = (value, extraClass = "") => {
+    const isMissing = String(value ?? "").trim() === ""
+    return `input ${extraClass} ${showJobFormErrors && isMissing ? "is-invalid" : ""}`.trim()
+  }
+
+  const requiredDropdownClass = (value, extraClass = "input-dropdown") => {
+    const isMissing = String(value ?? "").trim() === ""
+    return `${extraClass} ${showJobFormErrors && isMissing ? "is-invalid" : ""}`.trim()
+  }
+
+  const scrollCreateJobModalToTop = () => {
+    window.requestAnimationFrame(() => {
+      createJobModalRef.current?.scrollTo({ top: 0, behavior: "smooth" })
+    })
   }
 
   const showDeleteToast = (message, type = "success", duration = 2600) => {
@@ -645,6 +665,7 @@ function JobPostingPage({ uploads = [], isEmployer = false, isJobSeeker = false,
     setNewJobDeadline(selected.deadline || "")
     setNewJobEligibility(selected.eligibility || "Open to all qualified applicants")
     setNewRequiredSkills(selected.requiredSkills || "")
+    setNewUniversalMatchMode(selected.universalMatchMode || selected.universal_match_mode || "")
     setNewMinimumEducation(selected.minimumEducation || "")
     setNewMinimumExperienceYears(String(selected.minimumExperienceYears ?? 0))
     setNewSalaryMin(selected.salaryMin != null ? String(selected.salaryMin) : "")
@@ -662,6 +683,7 @@ function JobPostingPage({ uploads = [], isEmployer = false, isJobSeeker = false,
     setNewJobDeadline(record.deadline || "")
     setNewJobEligibility(record.eligibility || "Open to all qualified applicants")
     setNewRequiredSkills(record.requiredSkills || "")
+    setNewUniversalMatchMode(record.universalMatchMode || record.universal_match_mode || "")
     setNewMinimumEducation(record.minimumEducation || "")
     setNewMinimumExperienceYears(String(record.minimumExperienceYears ?? 0))
     setNewSalaryMin(record.salaryMin != null ? String(record.salaryMin) : "")
@@ -805,6 +827,7 @@ function JobPostingPage({ uploads = [], isEmployer = false, isJobSeeker = false,
           deadline: job.deadline || null,
           eligibility: job.eligibility || "Open to all qualified applicants",
           requiredSkills: job.requiredSkills || job.required_skills || "",
+          universalMatchMode: job.universalMatchMode || job.universal_match_mode || "",
           minimumEducation: job.minimumEducation || job.minimum_education || "",
           minimumExperienceYears: job.minimumExperienceYears ?? job.minimum_experience_years ?? 0,
           salaryMin: job.salaryMin ?? job.salary_min ?? null,
@@ -884,6 +907,7 @@ function JobPostingPage({ uploads = [], isEmployer = false, isJobSeeker = false,
     setNewJobDeadline("")
     setNewJobEligibility("Open to all qualified applicants")
     setNewRequiredSkills("")
+    setNewUniversalMatchMode("")
     setNewMinimumEducation("")
     setNewMinimumExperienceYears("0")
     setNewSalaryMin("")
@@ -904,6 +928,7 @@ function JobPostingPage({ uploads = [], isEmployer = false, isJobSeeker = false,
     deadline: newJobDeadline,
     eligibility: newJobEligibility,
     requiredSkills: newRequiredSkills,
+    universalMatchMode: newUniversalMatchMode,
     minimumEducation: newMinimumEducation,
     minimumExperienceYears: newMinimumExperienceYears,
     salaryMin: newSalaryMin,
@@ -968,6 +993,7 @@ function JobPostingPage({ uploads = [], isEmployer = false, isJobSeeker = false,
     setNewJobDeadline(draft?.deadline || "")
     setNewJobEligibility(draft?.eligibility || "Open to all qualified applicants")
     setNewRequiredSkills(draft?.requiredSkills || "")
+    setNewUniversalMatchMode(draft?.universalMatchMode || "")
     setNewMinimumEducation(draft?.minimumEducation || "")
     setNewMinimumExperienceYears(String(draft?.minimumExperienceYears ?? 0))
     setNewSalaryMin(draft?.salaryMin != null ? String(draft.salaryMin) : "")
@@ -994,12 +1020,14 @@ function JobPostingPage({ uploads = [], isEmployer = false, isJobSeeker = false,
     clearSavedJobDraft()
     resetJobForm()
     setEditingJobId(null)
+    setShowJobFormErrors(false)
     setIsCreateModalOpen(true)
   }
 
   const openCreateJobModal = () => {
     if (isJobSeeker) return
     setEditingJobId(null)
+    setShowJobFormErrors(false)
     const didLoadDraft = loadSavedJobDraft()
     if (!didLoadDraft) {
       resetJobForm()
@@ -1010,6 +1038,7 @@ function JobPostingPage({ uploads = [], isEmployer = false, isJobSeeker = false,
   const openEditJobModal = (job) => {
     if (!job?.id) return
     setIsUsingSavedJobDraft(false)
+    setShowJobFormErrors(false)
     setEditingJobId(job.id)
     setNewJobTitle(job.title || "")
     setNewJobDescription(job.description || "")
@@ -1023,6 +1052,7 @@ function JobPostingPage({ uploads = [], isEmployer = false, isJobSeeker = false,
     setNewJobDeadline(job.deadline || "")
     setNewJobEligibility(job.eligibility || "Open to all qualified applicants")
     setNewRequiredSkills(job.requiredSkills || "")
+    setNewUniversalMatchMode(job.universalMatchMode || job.universal_match_mode || "")
     setNewMinimumEducation(job.minimumEducation || "")
     setNewMinimumExperienceYears(String(job.minimumExperienceYears ?? 0))
     setNewSalaryMin(job.salaryMin != null ? String(job.salaryMin) : "")
@@ -1038,6 +1068,7 @@ function JobPostingPage({ uploads = [], isEmployer = false, isJobSeeker = false,
     }
     setIsCreateModalOpen(false)
     setEditingJobId(null)
+    setShowJobFormErrors(false)
     setIsUsingSavedJobDraft(false)
     setSkillDraft("")
     setIsSkillsOpen(false)
@@ -1071,7 +1102,9 @@ function JobPostingPage({ uploads = [], isEmployer = false, isJobSeeker = false,
     )
 
     if (hasMissingField) {
+      setShowJobFormErrors(true)
       showCreateJobNotice("fail", "Please fill in all fields before creating the job post.")
+      scrollCreateJobModalToTop()
       return
     }
 
@@ -1081,11 +1114,13 @@ function JobPostingPage({ uploads = [], isEmployer = false, isJobSeeker = false,
 
     if (Number.isNaN(minExp) || minExp < 0) {
       showCreateJobNotice("fail", "Minimum experience must be a valid non-negative number.")
+      scrollCreateJobModalToTop()
       return
     }
 
     if (Number.isNaN(parsedSalaryMin) || parsedSalaryMin < 0 || Number.isNaN(parsedSalaryMax) || parsedSalaryMax < 0) {
       showCreateJobNotice("fail", "Salary grade and salary amount must be valid non-negative numbers.")
+      scrollCreateJobModalToTop()
       return
     }
     const { salaryMin, salaryMax } = normalizeSalaryRange(parsedSalaryMin, parsedSalaryMax)
@@ -1111,6 +1146,7 @@ function JobPostingPage({ uploads = [], isEmployer = false, isJobSeeker = false,
           deadline: newJobDeadline || null,
           eligibility: newJobEligibility,
           requiredSkills: newRequiredSkills.trim(),
+          universalMatchMode: newUniversalMatchMode,
           minimumEducation: newMinimumEducation,
           minimumExperienceYears: minExp,
           salaryMin,
@@ -1157,7 +1193,9 @@ function JobPostingPage({ uploads = [], isEmployer = false, isJobSeeker = false,
     )
 
     if (hasMissingField) {
+      setShowJobFormErrors(true)
       showCreateJobNotice("fail", "Please fill in all fields before saving changes.")
+      scrollCreateJobModalToTop()
       return
     }
 
@@ -1167,11 +1205,13 @@ function JobPostingPage({ uploads = [], isEmployer = false, isJobSeeker = false,
 
     if (Number.isNaN(minExp) || minExp < 0) {
       showCreateJobNotice("fail", "Minimum experience must be a valid non-negative number.")
+      scrollCreateJobModalToTop()
       return
     }
 
     if (Number.isNaN(parsedSalaryMin) || parsedSalaryMin < 0 || Number.isNaN(parsedSalaryMax) || parsedSalaryMax < 0) {
       showCreateJobNotice("fail", "Salary grade and salary amount must be valid non-negative numbers.")
+      scrollCreateJobModalToTop()
       return
     }
     const { salaryMin, salaryMax } = normalizeSalaryRange(parsedSalaryMin, parsedSalaryMax)
@@ -1197,6 +1237,7 @@ function JobPostingPage({ uploads = [], isEmployer = false, isJobSeeker = false,
           deadline: newJobDeadline || null,
           eligibility: newJobEligibility,
           requiredSkills: newRequiredSkills.trim(),
+          universalMatchMode: newUniversalMatchMode,
           minimumEducation: newMinimumEducation,
           minimumExperienceYears: minExp,
           salaryMin,
@@ -1308,13 +1349,22 @@ function JobPostingPage({ uploads = [], isEmployer = false, isJobSeeker = false,
         ) : (
           filteredJobs.map((job) => (
             <article
-              key={job.id ?? `template-${job.title}`}
+              key={`${job.source || "job"}-${job.id ?? job.title}`}
               className="job-card job-card-modern job-card-clickable"
               role="button"
               tabIndex={0}
               onClick={() => {
                 if (isJobSeeker) {
                   onViewJob?.(job)
+                  return
+                }
+                if (job.source === "template") {
+                  setEditingJobId(null)
+                  setShowJobFormErrors(false)
+                  setNewJobTitle(job.title || "")
+                  applyTemplateFromRecord(job)
+                  setIsUsingSavedJobDraft(false)
+                  setIsCreateModalOpen(true)
                   return
                 }
                 openEditJobModal(job)
@@ -1324,6 +1374,15 @@ function JobPostingPage({ uploads = [], isEmployer = false, isJobSeeker = false,
                   e.preventDefault()
                   if (isJobSeeker) {
                     onViewJob?.(job)
+                    return
+                  }
+                  if (job.source === "template") {
+                    setEditingJobId(null)
+                    setShowJobFormErrors(false)
+                    setNewJobTitle(job.title || "")
+                    applyTemplateFromRecord(job)
+                    setIsUsingSavedJobDraft(false)
+                    setIsCreateModalOpen(true)
                     return
                   }
                   openEditJobModal(job)
@@ -1348,12 +1407,13 @@ function JobPostingPage({ uploads = [], isEmployer = false, isJobSeeker = false,
                         type="button"
                         onClick={(e) => {
                           e.stopPropagation()
-                          setActionsJobId((prev) => (prev === job.id ? null : job.id))
+                          const actionKey = `${job.source || "job"}-${job.id}`
+                          setActionsJobId((prev) => (prev === actionKey ? null : actionKey))
                         }}
                       >
                         ...
                       </button>
-                      {actionsJobId === job.id && (
+                      {actionsJobId === `${job.source || "job"}-${job.id}` && (
                         <div className="job-actions-menu" onClick={(e) => e.stopPropagation()}>
                           {isJobSeeker ? (
                             <button
@@ -1367,6 +1427,23 @@ function JobPostingPage({ uploads = [], isEmployer = false, isJobSeeker = false,
                               View Details
                             </button>
                           ) : (
+                            job.source === "template" ? (
+                              <button
+                                type="button"
+                                className="actions-menu-item"
+                                onClick={() => {
+                                  setActionsJobId(null)
+                                  setEditingJobId(null)
+                                  setShowJobFormErrors(false)
+                                  setNewJobTitle(job.title || "")
+                                  applyTemplateFromRecord(job)
+                                  setIsUsingSavedJobDraft(false)
+                                  setIsCreateModalOpen(true)
+                                }}
+                              >
+                                Use Template
+                              </button>
+                            ) : (
                             <>
                               <button
                                 type="button"
@@ -1407,6 +1484,7 @@ function JobPostingPage({ uploads = [], isEmployer = false, isJobSeeker = false,
                                 Delete Post
                               </button>
                             </>
+                            )
                           )}
                         </div>
                       )}
@@ -1613,7 +1691,7 @@ function JobPostingPage({ uploads = [], isEmployer = false, isJobSeeker = false,
           </button>
           <a
             className="actions-menu-item"
-            href={jobApplicantActionsMenu?.item?.id ? `http://localhost:8000/api/uploads/${jobApplicantActionsMenu.item.id}/download` : "#"}
+            href={jobApplicantActionsMenu?.item?.id ? `/api/uploads/${jobApplicantActionsMenu.item.id}/download` : "#"}
             onClick={() => setJobApplicantActionsMenu(null)}
           >
             Download
@@ -1670,7 +1748,7 @@ function JobPostingPage({ uploads = [], isEmployer = false, isJobSeeker = false,
 
       {isCreateModalOpen && !isJobSeeker && (
         <div className="modal-overlay" onClick={closeCreateModal}>
-          <div className="modal-card modal-modern create-job-modal" onClick={(e) => e.stopPropagation()}>
+          <div ref={createJobModalRef} className="modal-card modal-modern create-job-modal" onClick={(e) => e.stopPropagation()}>
             <div className="modal-header create-job-header">
               <div>
                 <h3>{isEditingJob ? "Edit Job Details" : "Job Details"}</h3>
@@ -1718,7 +1796,7 @@ function JobPostingPage({ uploads = [], isEmployer = false, isJobSeeker = false,
                       >
                         <div className="job-position-input">
                           <input
-                            className="input"
+                            className={requiredInputClass(newJobTitle)}
                             type="text"
                             value={newJobTitle}
                             onChange={(e) => {
@@ -1775,7 +1853,7 @@ function JobPostingPage({ uploads = [], isEmployer = false, isJobSeeker = false,
                     <div className="field-group">
                       <label>Department</label>
                       <input
-                        className="input"
+                        className={requiredInputClass(newJobDepartment)}
                         type="text"
                         value={newJobDepartment}
                         onChange={(e) => setNewJobDepartment(e.target.value)}
@@ -1785,7 +1863,7 @@ function JobPostingPage({ uploads = [], isEmployer = false, isJobSeeker = false,
                     <div className="field-group">
                       <label>Job Position Type</label>
                       <CustomDropdown
-                        className="input-dropdown"
+                        className={requiredDropdownClass(newJobPositionType)}
                         options={jobPositionTypeOptions}
                         value={newJobPositionType}
                         onChange={setNewJobPositionType}
@@ -1798,7 +1876,7 @@ function JobPostingPage({ uploads = [], isEmployer = false, isJobSeeker = false,
                     <div className="field-group">
                       <label>Plantilla Item No.</label>
                       <input
-                        className="input"
+                        className={requiredInputClass(newJobItemNo)}
                         type="text"
                         value={newJobItemNo}
                         onChange={(e) => setNewJobItemNo(e.target.value)}
@@ -1808,7 +1886,7 @@ function JobPostingPage({ uploads = [], isEmployer = false, isJobSeeker = false,
                     <div className="field-group">
                       <label>Location</label>
                       <input
-                        className="input create-job-readonly"
+                        className={requiredInputClass(newJobLocation, "create-job-readonly")}
                         type="text"
                         value={newJobLocation}
                         readOnly
@@ -1821,7 +1899,7 @@ function JobPostingPage({ uploads = [], isEmployer = false, isJobSeeker = false,
                     <div className="field-group">
                       <label>Employment Type</label>
                       <CustomDropdown
-                        className="input-dropdown"
+                        className={requiredDropdownClass(newJobType)}
                         options={[
                           { value: "Full-time", label: "Full-time" },
                           { value: "Part-time", label: "Part-time" },
@@ -1837,7 +1915,7 @@ function JobPostingPage({ uploads = [], isEmployer = false, isJobSeeker = false,
                     <div className="field-group">
                       <label>Deadline</label>
                       <input
-                        className="input"
+                        className={requiredInputClass(newJobDeadline)}
                         type="date"
                         value={newJobDeadline}
                         onChange={(e) => setNewJobDeadline(e.target.value)}
@@ -1849,7 +1927,7 @@ function JobPostingPage({ uploads = [], isEmployer = false, isJobSeeker = false,
                     <div className="field-group create-job-status-wrap">
                       <label>Status</label>
                       <CustomDropdown
-                        className="input-dropdown create-job-status"
+                        className={requiredDropdownClass(newJobStatus, "input-dropdown create-job-status")}
                         options={jobStatusOptions}
                         value={newJobStatus}
                         onChange={setNewJobStatus}
@@ -1860,7 +1938,7 @@ function JobPostingPage({ uploads = [], isEmployer = false, isJobSeeker = false,
                     <div className="field-group">
                       <label>Eligibility</label>
                       <CustomDropdown
-                        className="input-dropdown"
+                        className={requiredDropdownClass(newJobEligibility)}
                         options={eligibilityOptions}
                         value={newJobEligibility}
                         onChange={setNewJobEligibility}
@@ -1880,7 +1958,7 @@ function JobPostingPage({ uploads = [], isEmployer = false, isJobSeeker = false,
                   <div className="field-group">
                     <label>Description</label>
                     <textarea
-                      className="input create-job-description"
+                      className={requiredInputClass(newJobDescription, "create-job-description")}
                       rows={4}
                       ref={descriptionRef}
                       value={newJobDescription}
@@ -1907,7 +1985,7 @@ function JobPostingPage({ uploads = [], isEmployer = false, isJobSeeker = false,
                     >
                       <div className="create-skills-input-row">
                         <input
-                          className="input create-skills-input"
+                          className={requiredInputClass(newRequiredSkills, "create-skills-input")}
                           type="text"
                           value={skillDraft}
                           onChange={(e) => {
@@ -1990,7 +2068,7 @@ function JobPostingPage({ uploads = [], isEmployer = false, isJobSeeker = false,
                     <div className="field-group">
                       <label>Minimum Education</label>
                       <CustomDropdown
-                        className="input-dropdown"
+                        className={requiredDropdownClass(newMinimumEducation)}
                         options={educationOptions}
                         value={newMinimumEducation}
                         onChange={setNewMinimumEducation}
@@ -2001,7 +2079,7 @@ function JobPostingPage({ uploads = [], isEmployer = false, isJobSeeker = false,
                     <div className="field-group">
                       <label>Minimum Experience (Years)</label>
                       <input
-                        className="input"
+                        className={requiredInputClass(newMinimumExperienceYears)}
                         type="number"
                         min="0"
                         value={newMinimumExperienceYears}
@@ -2014,7 +2092,7 @@ function JobPostingPage({ uploads = [], isEmployer = false, isJobSeeker = false,
                     <div className="field-group">
                       <label>{salaryLabel.min}</label>
                       <input
-                        className="input"
+                        className={requiredInputClass(newSalaryMin)}
                         type="number"
                         min="0"
                         value={newSalaryMin}
@@ -2026,7 +2104,7 @@ function JobPostingPage({ uploads = [], isEmployer = false, isJobSeeker = false,
                     <div className="field-group">
                       <label>{salaryLabel.max}</label>
                       <input
-                        className="input"
+                        className={requiredInputClass(newSalaryMax)}
                         type="number"
                         min="0"
                         value={newSalaryMax}
@@ -2052,7 +2130,7 @@ function JobPostingPage({ uploads = [], isEmployer = false, isJobSeeker = false,
       )}
 
 
-      {createJobStatus && (
+      {createJobStatus && !isCreateModalOpen && (
         <div className={`toast ${createJobStatus === "success" ? "toast-success" : "toast-fail"}`}>
           {createJobNotice || (createJobStatus === "success" ? "Success" : "Fail")}
         </div>
