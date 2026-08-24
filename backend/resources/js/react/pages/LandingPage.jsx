@@ -159,17 +159,14 @@ function LandingPage({ onLoginClick, onRegisterClick, scrollToSectionId = "" }) 
 
         <div className="landing-about-grid">
           <article className="landing-about-card">
-            <h3>For recruiters</h3>
+            <h3>For Human Resources</h3>
             <p>Review applicants faster.</p>
           </article>
           <article className="landing-about-card">
             <h3>For applicants</h3>
-            <p>Apply with less hassle.</p>
+            <p>Apply with less hassle. Diba! WOW!</p>
           </article>
-          <article className="landing-about-card">
-            <h3>For administrators</h3>
-            <p>Keep records organized.</p>
-          </article>
+
         </div>
       </section>
           

@@ -390,25 +390,39 @@ class UploadController extends Controller
             ->flatMap(fn (ApplicationRating $rating) => array_keys($rating->scores ?? []))
             ->unique()
             ->values();
-        $ratingColumnSpan = 5 + $criteria->count();
+        $ratingColumnSpan = 2 + $ratings->count();
 
         $html = '<html><head><meta charset="UTF-8">';
         $html .= '<style>
+            @page { size: A4 landscape; margin: 0.35in; mso-page-orientation: landscape; }
             body { font-family: Arial, sans-serif; color: #172033; }
-            table { border-collapse: collapse; margin: 0; }
-            th, td { border: 1px solid #b8c4d8; padding: 8px 10px; vertical-align: middle; text-align: center; }
-            .title { background: #0f2f82; color: #ffffff; font-size: 20px; font-weight: 700; }
-            .subtitle { background: #eaf0ff; color: #172033; font-size: 12px; }
-            .section { background: #163d9b; color: #ffffff; font-weight: 700; font-size: 15px; }
-            .label { background: #f3f6fb; color: #172033; font-weight: 700; width: 210px; }
-            .value { width: 390px; mso-number-format:"\@"; }
+            table { border-collapse: collapse; margin: 0; table-layout: fixed; width: 100%; }
+            th, td {
+                border: 1px solid #b8c4d8;
+                padding: 4px 5px;
+                vertical-align: middle;
+                text-align: center;
+                font-size: 10px;
+                line-height: 1.2;
+                white-space: normal;
+                word-wrap: break-word;
+            }
+            .title { background: #0f2f82; color: #ffffff; font-size: 16px; font-weight: 700; }
+            .subtitle { background: #eaf0ff; color: #172033; font-size: 10px; }
+            .section { background: #163d9b; color: #ffffff; font-weight: 700; font-size: 12px; }
+            .label { background: #f3f6fb; color: #172033; font-weight: 700; width: 190px; }
+            .value { width: 330px; mso-number-format:"\@"; }
             .head { background: #dbe6ff; color: #10245a; font-weight: 700; }
             .center { text-align: center; }
             .text { mso-number-format:"\@"; }
             .muted { color: #64748b; }
+            .print-wide { mso-fit-to-page: yes; }
+            .rating-label-col { width: 185px; }
+            .rating-member-col { width: 90px; }
+            .rating-average-col { width: 72px; }
         </style>';
         $html .= '</head><body>';
-        $html .= '<table>';
+        $html .= '<table class="print-wide">';
         $html .= '<colgroup><col style="width:210px"><col style="width:390px"></colgroup>';
         $html .= '<tr><th class="title" colspan="2">Application Rating Summary</th></tr>';
         $html .= '<tr><td class="subtitle" colspan="2">Generated on ' . $this->excelCell(now()->format('F j, Y g:i A')) . '</td></tr>';
@@ -418,36 +432,66 @@ class UploadController extends Controller
             $html .= '<tr><th class="label">' . $this->excelCell($row[0]) . '</th><td class="value text">' . $value . '</td></tr>';
         }
         $html .= '</table><br>';
-        $html .= '<table>';
+        $html .= '<table class="print-wide">';
+        $html .= '<colgroup><col class="rating-label-col">';
+        foreach ($ratings as $rating) {
+            $html .= '<col class="rating-member-col">';
+        }
+        $html .= '<col class="rating-average-col"></colgroup>';
         $html .= '<tr><th class="section" colspan="' . $ratingColumnSpan . '">Board Member Ratings</th></tr>';
         $html .= '<tr>';
-        $html .= '<th class="head">Board Member</th><th class="head">Date Rated</th><th class="head">Total Score</th><th class="head">Percentage</th>';
-        foreach ($criteria as $criterion) {
-            $html .= '<th class="head">' . $this->excelCell($criterion) . '</th>';
-        }
-        $html .= '<th class="head">Remarks</th>';
-        $html .= '</tr>';
+        $html .= '<th class="head">Board Member</th>';
         foreach ($ratings as $rating) {
-            $scores = collect($rating->scores ?? []);
-            $possibleScore = max(1, $scores->count()) * 5;
-            $html .= '<tr>';
-            $html .= '<td class="text">' . $this->excelCell($rating->rater_name ?: 'Board member') . '</td>';
+            $html .= '<th class="head">' . $this->excelCell($rating->rater_name ?: 'Board member') . '</th>';
+        }
+        $html .= '<th class="head">Average</th>';
+        $html .= '</tr>';
+        $html .= '<tr>';
+        $html .= '<th class="label">Date Rated</th>';
+        foreach ($ratings as $rating) {
             $html .= '<td class="text">' . $this->excelCell($rating->created_at?->format('F j, Y g:i A') ?: '-') . '</td>';
-            $html .= '<td class="text">' . $this->excelCell($rating->total_score . '/' . $possibleScore) . '</td>';
-            $html .= '<td class="text">' . $this->excelCell(round((float) $rating->percentage_score, 2) . '%') . '</td>';
-            foreach ($criteria as $criterion) {
+        }
+        $html .= '<td class="muted">-</td>';
+        $html .= '</tr>';
+        foreach ($criteria as $criterion) {
+            $criterionScores = $ratings
+                ->map(fn (ApplicationRating $rating) => collect($rating->scores ?? [])->get($criterion))
+                ->filter(fn ($score) => is_numeric($score));
+            $criterionAverage = $criterionScores->count() > 0
+                ? round((float) $criterionScores->avg(), 2)
+                : '-';
+
+            $html .= '<tr>';
+            $html .= '<th class="label">' . $this->excelCell($criterion) . '</th>';
+            foreach ($ratings as $rating) {
+                $scores = collect($rating->scores ?? []);
                 $html .= '<td class="text">' . $this->excelCell($scores->get($criterion, '-')) . '</td>';
             }
-            $html .= '<td class="text">' . $this->excelCell($rating->remarks ?: '-') . '</td>';
+            $html .= '<td class="text">' . $this->excelCell($criterionAverage) . '</td>';
             $html .= '</tr>';
         }
         $html .= '<tr>';
-        $html .= '<th class="label">Average</th><td class="muted" colspan="2">All board members</td>';
-        $html .= '<td class="text"><strong>' . $this->excelCell($stats['average'] !== null ? $stats['average'] . '%' : '-') . '</strong></td>';
-        if ($criteria->count() > 0) {
-            $html .= '<td class="muted" colspan="' . $criteria->count() . '"></td>';
+        $html .= '<th class="label">Total Score</th>';
+        foreach ($ratings as $rating) {
+            $scores = collect($rating->scores ?? []);
+            $possibleScore = max(1, $scores->count()) * 5;
+            $html .= '<td class="text">' . $this->excelCell($rating->total_score . '/' . $possibleScore) . '</td>';
         }
-        $html .= '<td class="muted"></td>';
+        $html .= '<td class="text"><strong>' . $this->excelCell($stats['average'] !== null ? $stats['average'] . '%' : '-') . '</strong></td>';
+        $html .= '</tr>';
+        $html .= '<tr>';
+        $html .= '<th class="label">Percentage</th>';
+        foreach ($ratings as $rating) {
+            $html .= '<td class="text">' . $this->excelCell(round((float) $rating->percentage_score, 2) . '%') . '</td>';
+        }
+        $html .= '<td class="text"><strong>' . $this->excelCell($stats['average'] !== null ? $stats['average'] . '%' : '-') . '</strong></td>';
+        $html .= '</tr>';
+        $html .= '<tr>';
+        $html .= '<th class="label">Remarks</th>';
+        foreach ($ratings as $rating) {
+            $html .= '<td class="text">' . $this->excelCell($rating->remarks ?: '-') . '</td>';
+        }
+        $html .= '<td class="muted">-</td>';
         $html .= '</tr>';
         $html .= '</table></body></html>';
 

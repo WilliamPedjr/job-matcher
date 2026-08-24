@@ -22,6 +22,7 @@ import bellIcon from './assets/bell-solid-full.svg'
 import brandLogo from './assets/Logo.png'
 import './layouts/SidebarLayout.css'
 import html2canvas from "html2canvas"
+import { jsPDF } from "jspdf"
 
 const jobSeekerPageIntros = {
   dashboard: {
@@ -1135,7 +1136,7 @@ function App() {
     })
   }
 
-  const downloadApplicantSummaryImage = async (item) => {
+  const downloadApplicantSummaryPdf = async (item) => {
     if (!item) return
     const safeName = String(item.name || "applicant")
       .toLowerCase()
@@ -1148,32 +1149,40 @@ function App() {
       const node = summaryRef.current
       if (!node) return
       html2canvas(node, {
-        backgroundColor: "#f1f2f4",
+        backgroundColor: "#ffffff",
         scale: 2,
         useCORS: true
-      }).then((canvas) => {
-        canvas.toBlob((blob) => {
-          if (!blob) return
-          const url = URL.createObjectURL(blob)
-          const anchor = document.createElement("a")
-          anchor.href = url
-          anchor.download = `${safeName || "applicant"}-summary.png`
-          document.body.appendChild(anchor)
-          anchor.click()
-          document.body.removeChild(anchor)
-          URL.revokeObjectURL(url)
-          recordActivity({
-            event: "application.summary_downloaded",
-            description: `Downloaded application summary for ${item.name || "Applicant"}.`,
-            subjectType: "application",
-            subjectId: item.id,
-            subjectName: item.name || "Applicant",
-            metadata: {
-              jobTitle: item.applied_job_title || item.matched_job_title || "-",
-              format: "png"
-            }
-          })
-        }, "image/png")
+      }).then(async (canvas) => {
+        const pdf = new jsPDF({
+          orientation: "portrait",
+          unit: "pt",
+          format: "a4"
+        })
+        const pageWidth = pdf.internal.pageSize.getWidth()
+        const pageHeight = pdf.internal.pageSize.getHeight()
+        const margin = 18
+        const printableWidth = pageWidth - margin * 2
+        const printableHeight = pageHeight - margin * 2
+        const scale = Math.min(printableWidth / canvas.width, printableHeight / canvas.height)
+        const imageWidth = canvas.width * scale
+        const imageHeight = canvas.height * scale
+        const x = margin
+        const y = margin
+        const imageData = canvas.toDataURL("image/jpeg", 0.92)
+        pdf.addImage(imageData, "JPEG", x, y, imageWidth, imageHeight)
+
+        pdf.save(`${safeName || "applicant"}-summary.pdf`)
+        await recordActivity({
+          event: "application.summary_downloaded",
+          description: `Downloaded application summary for ${item.name || "Applicant"}.`,
+          subjectType: "application",
+          subjectId: item.id,
+          subjectName: item.name || "Applicant",
+          metadata: {
+            jobTitle: item.applied_job_title || item.matched_job_title || "-",
+            format: "pdf"
+          }
+        })
       })
     })
   }
@@ -2921,14 +2930,14 @@ function App() {
             position: "fixed",
             left: "-10000px",
             top: 0,
-            width: "1100px",
-            padding: "24px",
-            background: "#f1f2f4",
+            width: "794px",
+            padding: "12px",
+            background: "#ffffff",
             zIndex: -1
           }}
         >
           <div ref={summaryRef}>
-            <section className="candidate-page">
+            <section className="candidate-page candidate-page-export">
               <div className="candidate-head">
                 <div>
                   <h2 className="candidate-name">{summaryItem?.name || "(No name)"}</h2>
@@ -3074,11 +3083,11 @@ function App() {
             type="button"
             className="actions-menu-item"
             onClick={() => {
-              downloadApplicantSummaryImage(actionsMenu.item)
+              downloadApplicantSummaryPdf(actionsMenu.item)
               setActionsMenu(null)
             }}
           >
-            Download Summary (Image)
+            Download Summary (PDF)
           </button>
           <button
             type="button"

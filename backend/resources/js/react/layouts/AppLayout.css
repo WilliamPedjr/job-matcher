@@ -2020,6 +2020,87 @@ optgroup {
   background: #1f2a44;
 }
 
+.candidate-page-export {
+  margin-top: 0;
+  color: #172033;
+  font-size: 12px;
+  line-height: 1.3;
+}
+
+.candidate-page-export .candidate-head {
+  margin-bottom: 10px;
+}
+
+.candidate-page-export .candidate-name {
+  font-size: 28px;
+}
+
+.candidate-page-export .candidate-role {
+  margin-top: 5px;
+}
+
+.candidate-page-export .candidate-layout {
+  grid-template-columns: 1.35fr 1fr;
+  gap: 10px;
+}
+
+.candidate-page-export .candidate-left,
+.candidate-page-export .candidate-right {
+  gap: 8px;
+}
+
+.candidate-page-export .candidate-card {
+  padding: 9px;
+}
+
+.candidate-page-export .candidate-card h3 {
+  margin-bottom: 6px;
+  font-size: 15px;
+}
+
+.candidate-page-export .candidate-card p {
+  margin-top: 3px;
+  margin-bottom: 3px;
+}
+
+.candidate-page-export .card-note {
+  margin-top: -2px;
+}
+
+.candidate-page-export .skills-cloud {
+  gap: 4px;
+}
+
+.candidate-page-export .skill-pill {
+  padding: 4px 7px;
+  font-size: 11px;
+}
+
+.candidate-page-export .status-chip {
+  padding: 5px 9px;
+  margin-bottom: 8px;
+}
+
+.candidate-page-export .overall-box {
+  padding-top: 8px;
+}
+
+.candidate-page-export .overall-score {
+  font-size: 34px;
+}
+
+.candidate-page-export .breakdown-list {
+  gap: 7px;
+}
+
+.candidate-page-export .bar-row {
+  gap: 4px;
+}
+
+.candidate-page-export .bar {
+  height: 6px;
+}
+
 .extracted-block {
   margin-top: 12px;
 }

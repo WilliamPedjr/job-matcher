@@ -588,15 +588,23 @@ function JobPostingPage({ uploads = [], isEmployer = false, isJobSeeker = false,
   }, [newJobTitle, degreeMap])
 
   const educationOptions = useMemo(() => {
+    const extraEducationOptions = [
+      { value: "Doctorate", label: "Doctorate" },
+      { value: "Researcher", label: "Researcher" },
+      { value: "Not Graduate", label: "Not Graduate" }
+    ]
+
     if (!educationMapping) {
       return [
         { value: "Bachelor's Degree", label: "Bachelor's Degree" },
-        { value: "Master's Degree", label: "Master's Degree" }
+        { value: "Master's Degree", label: "Master's Degree" },
+        ...extraEducationOptions
       ]
     }
     return [
       { value: educationMapping.bachelor, label: educationMapping.bachelor },
-      { value: educationMapping.master, label: educationMapping.master }
+      { value: educationMapping.master, label: educationMapping.master },
+      ...extraEducationOptions
     ]
   }, [educationMapping])
 
