@@ -67,7 +67,8 @@ function DashboardPage({
     return (jobGroups[type] || []).reduce((total, job) => total + Number(job.total || 0), 0)
   }
 
-  const allActivity = Array.isArray(activityLogs) ? activityLogs : []
+  const allActivity = (Array.isArray(activityLogs) ? activityLogs : [])
+    .filter((item) => String(item.actorRole || item.actor_role || "").toLowerCase() !== "jobseeker")
   const recentActivity = allActivity.slice(0, 3)
   const activityPageSize = 10
   const activityPageCount = Math.max(1, Math.ceil(allActivity.length / activityPageSize))

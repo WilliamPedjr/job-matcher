@@ -14,6 +14,11 @@ class ActivityLogController extends Controller
     {
         try {
             $logs = ActivityLog::query()
+                ->where(function ($query) {
+                    $query
+                        ->whereNull('actor_role')
+                        ->orWhereRaw('LOWER(actor_role) <> ?', ['jobseeker']);
+                })
                 ->orderByDesc('created_at')
                 ->orderByDesc('id')
                 ->limit(50)

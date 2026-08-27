@@ -428,6 +428,7 @@ function UsersPage({ currentUser = null, onUsersChanged }) {
             <thead>
               <tr>
                 <th>#</th>
+                <th>ID Number</th>
                 <th>Name</th>
                 <th>Position</th>
                 <th>Phone</th>
@@ -440,16 +441,17 @@ function UsersPage({ currentUser = null, onUsersChanged }) {
             <tbody>
               {isLoadingUsers ? (
                 <tr>
-                  <td colSpan={8} className="users-empty">Loading employers...</td>
+                  <td colSpan={9} className="users-empty">Loading employers...</td>
                 </tr>
               ) : filteredEmployers.length === 0 ? (
                 <tr>
-                  <td colSpan={8} className="users-empty">No Personnel users found.</td>
+                  <td colSpan={9} className="users-empty">No Personnel users found.</td>
                 </tr>
               ) : (
                 filteredEmployers.map((user, index) => (
                   <tr key={`employer-${user.id}`}>
                     <td>{index + 1}</td>
+                    <td>{user.idNumber || user.id_number || "-"}</td>
                     <td>
                       <div className="applicant-cell">
                         <strong>{user.companyName || "-"}</strong>
