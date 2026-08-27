@@ -805,6 +805,13 @@ function App() {
   useEffect(() => {
     if (!isAuthenticated) return
     localStorage.setItem("activePage", activePage)
+    window.requestAnimationFrame(() => {
+      const scrollTop = Math.max(
+        window.scrollY || document.documentElement.scrollTop || 0,
+        pageRef.current?.scrollTop || 0
+      )
+      setShowBackToTop(scrollTop > 240)
+    })
   }, [activePage, isAuthenticated])
 
   useEffect(() => {
@@ -889,6 +896,15 @@ function App() {
       pageElement?.removeEventListener("scroll", updateBackToTop)
     }
   }, [])
+
+  const updateBackToTopFromScroll = (event) => {
+    const scrollTop = Math.max(
+      window.scrollY || document.documentElement.scrollTop || 0,
+      event?.currentTarget?.scrollTop || 0,
+      pageRef.current?.scrollTop || 0
+    )
+    setShowBackToTop(scrollTop > 240)
+  }
 
   const scrollBackToTop = () => {
     pageRef.current?.scrollTo({ top: 0, behavior: "smooth" })
@@ -2218,7 +2234,7 @@ function App() {
   // UI rendering
   return (
     <>
-    <main className="page" ref={pageRef}>
+    <main className="page" ref={pageRef} onScroll={updateBackToTopFromScroll}>
       <header className="topbar">
         <button type="button" className="brand" onClick={() => handleTopNav("dashboard")}>
           <img src={brandLogo} alt="LNU-HiRe" />

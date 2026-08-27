@@ -1545,7 +1545,6 @@ function JobPostingPage({ uploads = [], isEmployer = false, isJobSeeker = false,
                     }
                     const matchPercent = Number(match.score)
                     const matchLabel = Number.isFinite(matchPercent)
-                      // ? `${Math.round(matchPercent)}% ${match.qualifies ? "match" : "not match"}`
                       ? `${match.qualifies ? "match" : "not match"}`
                       : (match.qualifies ? "Match" : "Not match")
                     return (
