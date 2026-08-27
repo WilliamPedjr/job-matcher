@@ -3,6 +3,7 @@
 namespace App\Models;
 
 use Illuminate\Database\Eloquent\Factories\HasFactory;
+use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Database\Eloquent\Model;
 
 class Upload extends Model
@@ -59,6 +60,19 @@ class Upload extends Model
         'job_seeker_hidden_at' => 'datetime',
         'evaluation_started_at' => 'datetime',
     ];
+
+    public function scopeApplications(Builder $query): Builder
+    {
+        return $query->where(function (Builder $query) {
+            $query
+                ->whereNotNull('job_id')
+                ->orWhere(function (Builder $query) {
+                    $query
+                        ->whereNotNull('applied_job_title')
+                        ->where('applied_job_title', '<>', '');
+                });
+        });
+    }
 
     public function supportingFiles()
     {

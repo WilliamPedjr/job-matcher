@@ -346,6 +346,8 @@ class JobSeekerController extends Controller
         $data = $request->validate([
             'jobTitles' => ['required', 'array'],
             'jobTitles.*' => ['nullable', 'string'],
+            'jobIds' => ['nullable', 'array'],
+            'jobIds.*' => ['nullable', 'integer', 'exists:jobs,id'],
         ]);
 
         $resume = $this->getResumeUpload($jobSeeker->id);
@@ -354,7 +356,8 @@ class JobSeekerController extends Controller
         }
 
         $matches = [];
-        foreach ($data['jobTitles'] as $jobTitle) {
+        $jobIds = $data['jobIds'] ?? [];
+        foreach ($data['jobTitles'] as $index => $jobTitle) {
             $title = trim((string) $jobTitle);
             if ($title === '') {
                 continue;
@@ -364,14 +367,17 @@ class JobSeekerController extends Controller
                     Storage::disk('local')->path($resume->file_path),
                     $resume->mime_type,
                     $title,
-                    $this->extractExistingSupportingText($jobSeeker->id)
+                    $this->extractExistingSupportingText($jobSeeker->id),
+                    !empty($jobIds[$index]) ? (int) $jobIds[$index] : null
                 );
 
             $matches[] = [
                 'key' => Str::lower($title),
+                'id' => $jobIds[$index] ?? null,
                 'score' => $analysis['overall_score'],
-                'minimumScore' => 50,
-                'qualifies' => $analysis['overall_score'] >= 50,
+                'minimumScore' => $analysis['application_minimum_score'] ?? 50,
+                'allowApplication' => ($analysis['allow_application'] ?? false) === true,
+                'qualifies' => $analysis['overall_score'] >= ($analysis['application_minimum_score'] ?? 50),
             ];
         }
 

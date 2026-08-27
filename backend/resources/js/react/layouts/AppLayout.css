@@ -3142,6 +3142,62 @@ optgroup {
 
 }
 
+.back-to-top {
+  position: fixed !important;
+  right: 24px !important;
+  bottom: 24px !important;
+  z-index: 1200 !important;
+  width: 46px !important;
+  height: 46px !important;
+  min-width: 46px !important;
+  min-height: 46px !important;
+  aspect-ratio: 1 / 1;
+  padding: 0 !important;
+  border: 0;
+  border-radius: 999px;
+  background: #1d2f84;
+  color: #ffffff;
+  box-shadow: 0 14px 28px rgba(15, 23, 42, 0.24);
+  cursor: pointer;
+  display: grid;
+  place-items: center;
+  font-size: 24px;
+  font-weight: 800;
+  line-height: 1;
+  opacity: 0;
+  pointer-events: none;
+  transform: translateY(12px);
+  transition: opacity 180ms ease, transform 180ms ease, background 180ms ease;
+}
+
+.back-to-top.visible {
+  opacity: 1;
+  pointer-events: auto;
+  transform: translateY(0);
+}
+
+.back-to-top:hover,
+.back-to-top:focus-visible {
+  background: #14246d;
+}
+
+.back-to-top:focus-visible {
+  outline: 3px solid rgba(83, 148, 255, 0.45);
+  outline-offset: 3px;
+}
+
+@media (max-width: 640px) {
+  .back-to-top {
+    right: 16px;
+    bottom: 16px;
+    width: 42px;
+    height: 42px;
+    min-width: 42px;
+    min-height: 42px;
+    font-size: 22px;
+  }
+}
+
 @media (max-width: 480px) {
   .topbar {
     padding: 8px 8px;

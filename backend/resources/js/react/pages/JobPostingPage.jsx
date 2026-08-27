@@ -35,6 +35,7 @@ function JobPostingPage({ uploads = [], isEmployer = false, isJobSeeker = false,
   const [newUniversalMatchMode, setNewUniversalMatchMode] = useState("")
   const [newMinimumEducation, setNewMinimumEducation] = useState("Bachelor's Degree")
   const [newMinimumExperienceYears, setNewMinimumExperienceYears] = useState("0")
+  const [newApplicationThresholdScore, setNewApplicationThresholdScore] = useState("50")
   const [newSalaryMin, setNewSalaryMin] = useState("")
   const [newSalaryMax, setNewSalaryMax] = useState("")
   const [isCreatingJob, setIsCreatingJob] = useState(false)
@@ -354,9 +355,12 @@ function JobPostingPage({ uploads = [], isEmployer = false, isJobSeeker = false,
 
     const fetchMatches = async () => {
       try {
-        const titles = jobs
-          .map((job) => String(job.title || "").trim())
-          .filter(Boolean)
+        const matchJobs = jobs
+          .map((job) => ({
+            id: job.id,
+            title: String(job.title || "").trim()
+          }))
+          .filter((job) => job.title)
 
         const response = await fetch(
           `http://localhost:5000/job-seekers/${jobSeekerId}/resume/match/batch`,
@@ -367,7 +371,10 @@ function JobPostingPage({ uploads = [], isEmployer = false, isJobSeeker = false,
               "Accept": "application/json",
             },
             signal: controller.signal,
-            body: JSON.stringify({ jobTitles: titles }),
+            body: JSON.stringify({
+              jobTitles: matchJobs.map((job) => job.title),
+              jobIds: matchJobs.map((job) => job.id)
+            }),
           }
         )
 
@@ -391,7 +398,8 @@ function JobPostingPage({ uploads = [], isEmployer = false, isJobSeeker = false,
             : null
           next[key] = {
             score: scoreWithBonus,
-            qualifies: scoreWithBonus != null ? scoreWithBonus >= normalizedMinimumScore : false
+            qualifies: scoreWithBonus != null ? scoreWithBonus >= normalizedMinimumScore : false,
+            minimumScore: normalizedMinimumScore
           }
         })
         setJobMatches(next)
@@ -589,6 +597,8 @@ function JobPostingPage({ uploads = [], isEmployer = false, isJobSeeker = false,
 
   const educationOptions = useMemo(() => {
     const extraEducationOptions = [
+      { value: "College Graduate", label: "College Graduate" },
+      { value: "High School Graduate", label: "High School Graduate" },
       { value: "Doctorate", label: "Doctorate" },
       { value: "Researcher", label: "Researcher" },
       { value: "Not Graduate", label: "Not Graduate" }
@@ -676,6 +686,7 @@ function JobPostingPage({ uploads = [], isEmployer = false, isJobSeeker = false,
     setNewUniversalMatchMode(selected.universalMatchMode || selected.universal_match_mode || "")
     setNewMinimumEducation(selected.minimumEducation || "")
     setNewMinimumExperienceYears(String(selected.minimumExperienceYears ?? 0))
+    setNewApplicationThresholdScore(String(selected.applicationThresholdScore ?? selected.application_threshold_score ?? 50))
     setNewSalaryMin(selected.salaryMin != null ? String(selected.salaryMin) : "")
     setNewSalaryMax(selected.salaryMax != null ? String(selected.salaryMax) : "")
   }
@@ -694,6 +705,7 @@ function JobPostingPage({ uploads = [], isEmployer = false, isJobSeeker = false,
     setNewUniversalMatchMode(record.universalMatchMode || record.universal_match_mode || "")
     setNewMinimumEducation(record.minimumEducation || "")
     setNewMinimumExperienceYears(String(record.minimumExperienceYears ?? 0))
+    setNewApplicationThresholdScore(String(record.applicationThresholdScore ?? record.application_threshold_score ?? 50))
     setNewSalaryMin(record.salaryMin != null ? String(record.salaryMin) : "")
     setNewSalaryMax(record.salaryMax != null ? String(record.salaryMax) : "")
   }
@@ -838,6 +850,7 @@ function JobPostingPage({ uploads = [], isEmployer = false, isJobSeeker = false,
           universalMatchMode: job.universalMatchMode || job.universal_match_mode || "",
           minimumEducation: job.minimumEducation || job.minimum_education || "",
           minimumExperienceYears: job.minimumExperienceYears ?? job.minimum_experience_years ?? 0,
+          applicationThresholdScore: job.applicationThresholdScore ?? job.application_threshold_score ?? 50,
           salaryMin: job.salaryMin ?? job.salary_min ?? null,
           salaryMax: job.salaryMax ?? job.salary_max ?? null,
           activityEvent: "job.duplicated",
@@ -918,6 +931,7 @@ function JobPostingPage({ uploads = [], isEmployer = false, isJobSeeker = false,
     setNewUniversalMatchMode("")
     setNewMinimumEducation("")
     setNewMinimumExperienceYears("0")
+    setNewApplicationThresholdScore("50")
     setNewSalaryMin("")
     setNewSalaryMax("")
     setSkillDraft("")
@@ -939,6 +953,7 @@ function JobPostingPage({ uploads = [], isEmployer = false, isJobSeeker = false,
     universalMatchMode: newUniversalMatchMode,
     minimumEducation: newMinimumEducation,
     minimumExperienceYears: newMinimumExperienceYears,
+    applicationThresholdScore: newApplicationThresholdScore,
     salaryMin: newSalaryMin,
     salaryMax: newSalaryMax,
     savedAt: new Date().toISOString()
@@ -955,6 +970,7 @@ function JobPostingPage({ uploads = [], isEmployer = false, isJobSeeker = false,
       draft.requiredSkills,
       draft.minimumEducation,
       draft.minimumExperienceYears !== "0" ? draft.minimumExperienceYears : "",
+      draft.applicationThresholdScore !== "50" ? draft.applicationThresholdScore : "",
       draft.salaryMin,
       draft.salaryMax
     ].some((value) => String(value ?? "").trim())
@@ -1004,6 +1020,7 @@ function JobPostingPage({ uploads = [], isEmployer = false, isJobSeeker = false,
     setNewUniversalMatchMode(draft?.universalMatchMode || "")
     setNewMinimumEducation(draft?.minimumEducation || "")
     setNewMinimumExperienceYears(String(draft?.minimumExperienceYears ?? 0))
+    setNewApplicationThresholdScore(String(draft?.applicationThresholdScore ?? 50))
     setNewSalaryMin(draft?.salaryMin != null ? String(draft.salaryMin) : "")
     setNewSalaryMax(draft?.salaryMax != null ? String(draft.salaryMax) : "")
     setSkillDraft("")
@@ -1063,6 +1080,7 @@ function JobPostingPage({ uploads = [], isEmployer = false, isJobSeeker = false,
     setNewUniversalMatchMode(job.universalMatchMode || job.universal_match_mode || "")
     setNewMinimumEducation(job.minimumEducation || "")
     setNewMinimumExperienceYears(String(job.minimumExperienceYears ?? 0))
+    setNewApplicationThresholdScore(String(job.applicationThresholdScore ?? job.application_threshold_score ?? 50))
     setNewSalaryMin(job.salaryMin != null ? String(job.salaryMin) : "")
     setNewSalaryMax(job.salaryMax != null ? String(job.salaryMax) : "")
     setSkillDraft("")
@@ -1525,9 +1543,14 @@ function JobPostingPage({ uploads = [], isEmployer = false, isJobSeeker = false,
                     if (!match || match.score == null) {
                       return <span className="job-chip chip-warning">Match unavailable</span>
                     }
+                    const matchPercent = Number(match.score)
+                    const matchLabel = Number.isFinite(matchPercent)
+                      // ? `${Math.round(matchPercent)}% ${match.qualifies ? "match" : "not match"}`
+                      ? `${match.qualifies ? "match" : "not match"}`
+                      : (match.qualifies ? "Match" : "Not match")
                     return (
                       <span className={`job-chip ${match.qualifies ? "chip-good" : "chip-bad"}`}>
-                        {match.qualifies ? "Match" : "Not match"}
+                        {matchLabel}
                       </span>
                     )
                   })()
@@ -2094,6 +2117,7 @@ function JobPostingPage({ uploads = [], isEmployer = false, isJobSeeker = false,
                         onChange={(e) => setNewMinimumExperienceYears(e.target.value)}
                       />
                     </div>
+
                   </div>
 
                   <div className="modal-grid">

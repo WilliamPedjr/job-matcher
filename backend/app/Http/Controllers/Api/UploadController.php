@@ -44,6 +44,7 @@ class UploadController extends Controller
     public function index(): JsonResponse
     {
         $uploads = Upload::query()
+            ->applications()
             ->with(['supportingFiles', 'ratings', 'jobSeeker', 'job'])
             ->orderByDesc('uploaded_at')
             ->orderByDesc('id')

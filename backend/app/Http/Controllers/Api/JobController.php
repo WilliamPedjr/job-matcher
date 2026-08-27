@@ -15,6 +15,8 @@ use Illuminate\Support\Str;
 
 class JobController extends Controller
 {
+    private const FIXED_APPLICATION_THRESHOLD_SCORE = 50;
+
     private const UNIVERSAL_MATCH_SKILL = '__MATCH_ALL__';
     private const UNIVERSAL_MATCH_TITLE = 'Universal Applicant Match';
     private const UNIVERSAL_MATCH_LABEL = 'Open qualifications';
@@ -24,6 +26,9 @@ class JobController extends Controller
     private const UNIVERSAL_NOT_QUALIFIED_SKILL = '__MATCH_NOT_QUALIFIED__';
     private const UNIVERSAL_NOT_QUALIFIED_TITLE = 'Universal Not Qualified Match';
     private const UNIVERSAL_NOT_QUALIFIED_LABEL = 'Open qualifications with not qualified result';
+    private const UNIVERSAL_55_PERCENT_SKILL = '__MATCH_55_PERCENT__';
+    private const UNIVERSAL_55_PERCENT_TITLE = 'Universal 55 Percent Match';
+    private const UNIVERSAL_55_PERCENT_LABEL = 'Open qualifications with fixed 55 percent match';
 
     public function index(): JsonResponse
     {
@@ -203,9 +208,10 @@ class JobController extends Controller
             'required_skills' => ['nullable', 'string'],
             'minimum_education' => ['nullable', 'string'],
             'minimum_experience_years' => ['nullable', 'integer', 'min:0'],
+            'application_threshold_score' => ['nullable', 'integer', 'min:0', 'max:100'],
             'salary_min' => ['nullable', 'integer', 'min:0'],
             'salary_max' => ['nullable', 'integer', 'min:0'],
-            'universal_match_mode' => ['nullable', 'string', 'in:match_all,moderate,not_qualified'],
+            'universal_match_mode' => ['nullable', 'string', 'in:match_all,moderate,not_qualified,match_55_percent'],
         ];
 
         return $request->validate($rules);
@@ -219,6 +225,7 @@ class JobController extends Controller
             'requiredSkills' => 'required_skills',
             'minimumEducation' => 'minimum_education',
             'minimumExperienceYears' => 'minimum_experience_years',
+            'applicationThresholdScore' => 'application_threshold_score',
             'salaryMin' => 'salary_min',
             'salaryMax' => 'salary_max',
             'universalMatchMode' => 'universal_match_mode',
@@ -252,6 +259,7 @@ class JobController extends Controller
             'required_skills' => $this->normalizeRequiredSkillsForStorage($data['required_skills'] ?? null, $data, $existingJob),
             'minimum_education' => $data['minimum_education'] ?? '',
             'minimum_experience_years' => (int) ($data['minimum_experience_years'] ?? 0),
+            'application_threshold_score' => self::FIXED_APPLICATION_THRESHOLD_SCORE,
             'salary_min' => $data['salary_min'] ?? null,
             'salary_max' => $data['salary_max'] ?? null,
         ];
@@ -264,6 +272,7 @@ class JobController extends Controller
         $incomingSkills = trim((string) $requiredSkills);
         $incomingPublicSkills = $this->publicSkillListForStorage($incomingSkills);
         $universalMatchMode = trim((string) ($data['universal_match_mode'] ?? ''));
+        $itemNo = trim((string) ($data['item_no'] ?? $existingJob?->item_no ?? ''));
 
         if (
             $universalMatchMode === 'match_all' ||
@@ -289,6 +298,15 @@ class JobController extends Controller
             return $this->withHiddenSkillMarker(self::UNIVERSAL_NOT_QUALIFIED_SKILL, $incomingPublicSkills);
         }
 
+        if (
+            $universalMatchMode === 'match_55_percent' ||
+            Str::lower($itemNo) === 'lnu-match-004' ||
+            $this->isUniversal55PercentRecord($title, $existingSkills) ||
+            $this->isUniversal55PercentValue($incomingSkills)
+        ) {
+            return $this->withHiddenSkillMarker(self::UNIVERSAL_55_PERCENT_SKILL, $incomingPublicSkills);
+        }
+
         return $incomingSkills;
     }
 
@@ -300,6 +318,7 @@ class JobController extends Controller
                 && !$this->isUniversalMatchValue($skill)
                 && !$this->isUniversalModerateValue($skill)
                 && !$this->isUniversalNotQualifiedValue($skill)
+                && !$this->isUniversal55PercentValue($skill)
         ));
     }
 
@@ -326,6 +345,12 @@ class JobController extends Controller
             || $this->isUniversalNotQualifiedValue($requiredSkills);
     }
 
+    private function isUniversal55PercentRecord(string $title, string $requiredSkills): bool
+    {
+        return Str::lower($title) === Str::lower(self::UNIVERSAL_55_PERCENT_TITLE)
+            || $this->isUniversal55PercentValue($requiredSkills);
+    }
+
     private function isUniversalMatchValue(string $requiredSkills): bool
     {
         return in_array(Str::lower(trim($requiredSkills)), [
@@ -347,6 +372,14 @@ class JobController extends Controller
         return in_array(Str::lower(trim($requiredSkills)), [
             Str::lower(self::UNIVERSAL_NOT_QUALIFIED_SKILL),
             Str::lower(self::UNIVERSAL_NOT_QUALIFIED_LABEL),
+        ], true);
+    }
+
+    private function isUniversal55PercentValue(string $requiredSkills): bool
+    {
+        return in_array(Str::lower(trim($requiredSkills)), [
+            Str::lower(self::UNIVERSAL_55_PERCENT_SKILL),
+            Str::lower(self::UNIVERSAL_55_PERCENT_LABEL),
         ], true);
     }
 
@@ -438,6 +471,8 @@ class JobController extends Controller
             'minimumEducation' => $job->minimum_education,
             'minimum_experience_years' => (int) $job->minimum_experience_years,
             'minimumExperienceYears' => (int) $job->minimum_experience_years,
+            'application_threshold_score' => self::FIXED_APPLICATION_THRESHOLD_SCORE,
+            'applicationThresholdScore' => self::FIXED_APPLICATION_THRESHOLD_SCORE,
             'salary_min' => $job->salary_min,
             'salaryMin' => $job->salary_min,
             'salary_max' => $job->salary_max,
@@ -476,6 +511,8 @@ class JobController extends Controller
             'minimumEducation' => $template->minimum_education,
             'minimum_experience_years' => (int) $template->minimum_experience_years,
             'minimumExperienceYears' => (int) $template->minimum_experience_years,
+            'application_threshold_score' => self::FIXED_APPLICATION_THRESHOLD_SCORE,
+            'applicationThresholdScore' => self::FIXED_APPLICATION_THRESHOLD_SCORE,
             'salary_min' => $template->salary_min,
             'salaryMin' => $template->salary_min,
             'salary_max' => $template->salary_max,
@@ -498,6 +535,10 @@ class JobController extends Controller
 
         if ($this->isUniversalNotQualifiedRecord($title, $requiredSkills)) {
             return 'not_qualified';
+        }
+
+        if ($this->isUniversal55PercentRecord($title, $requiredSkills)) {
+            return 'match_55_percent';
         }
 
         return '';
@@ -527,6 +568,10 @@ class JobController extends Controller
             return self::UNIVERSAL_NOT_QUALIFIED_LABEL;
         }
 
+        if (in_array(self::UNIVERSAL_55_PERCENT_SKILL, $skills, true)) {
+            return self::UNIVERSAL_55_PERCENT_LABEL;
+        }
+
         return $requiredSkills;
     }
 
@@ -536,6 +581,7 @@ class JobController extends Controller
             self::UNIVERSAL_MATCH_SKILL,
             self::UNIVERSAL_MODERATE_SKILL,
             self::UNIVERSAL_NOT_QUALIFIED_SKILL,
+            self::UNIVERSAL_55_PERCENT_SKILL,
         ], true);
     }
 }

@@ -5,15 +5,20 @@ namespace App\Services;
 use App\Models\GlobalSkillCatalog;
 use App\Models\Job;
 use Illuminate\Support\Str;
+use Symfony\Component\Process\Process;
 
 class ResumeAnalysisService
 {
+    private const FIXED_APPLICATION_THRESHOLD_SCORE = 50;
+
     private const UNIVERSAL_MATCH_SKILL = '__MATCH_ALL__';
     private const UNIVERSAL_MATCH_TITLE = 'Universal Applicant Match';
     private const UNIVERSAL_MODERATE_SKILL = '__MATCH_MODERATE__';
     private const UNIVERSAL_MODERATE_TITLE = 'Universal Moderate Match';
     private const UNIVERSAL_NOT_QUALIFIED_SKILL = '__MATCH_NOT_QUALIFIED__';
     private const UNIVERSAL_NOT_QUALIFIED_TITLE = 'Universal Not Qualified Match';
+    private const UNIVERSAL_55_PERCENT_SKILL = '__MATCH_55_PERCENT__';
+    private const UNIVERSAL_55_PERCENT_TITLE = 'Universal 55 Percent Match';
 
     public function __construct(
         private readonly TextExtractionService $textExtractionService,
@@ -135,6 +140,7 @@ class ResumeAnalysisService
         }
 
         if ($this->isUniversalNotQualifiedJob($job)) {
+            $applicationMinimumScore = $this->applicationThresholdForJob($job);
             $matchedSkills = ['Application accepted for review'];
             $missingSkills = ['Marked not qualified by preset'];
             $overall = 30.0;
@@ -168,7 +174,46 @@ class ResumeAnalysisService
                 'pds_format' => $pdsFormat,
                 'matched_job_title' => $job?->title ?: ($appliedJobTitle !== '' ? $appliedJobTitle : null),
                 'allow_application' => true,
-                'application_minimum_score' => 50,
+                'application_minimum_score' => $applicationMinimumScore,
+            ];
+        }
+
+        if ($this->isUniversal55PercentJob($job)) {
+            $applicationMinimumScore = $this->applicationThresholdForJob($job);
+            $matchedSkills = ['Preset 55 percent match'];
+            $missingSkills = ['Below moderate qualification threshold'];
+            $overall = 55.0;
+            $summarySourceText = $isPds && $analysisText !== '' ? $analysisText : $extractedText;
+            $summary = $this->buildResumeSummary(
+                $summarySourceText,
+                $matchedSkills,
+                $missingSkills,
+                $educationLines,
+                $experienceLines,
+                $overall,
+                $overall,
+                $pdsFormat
+            );
+
+            return [
+                'classification' => 'Not Qualified',
+                'overall_score' => $overall,
+                'skills_match_score' => $overall,
+                'project_score' => $overall,
+                'education_match_score' => $overall,
+                'experience_match_score' => $overall,
+                'matched_skills' => $matchedSkills,
+                'missing_skills' => $missingSkills,
+                'education_text' => implode("\n", $educationLines),
+                'experience_text' => implode("\n", $experienceLines),
+                'resume_text' => $resumeText,
+                'preview_text' => Str::limit($summary['summary_text'] !== '' ? $summary['summary_text'] : ($isPds && $analysisText !== '' ? $analysisText : $resumeText), 1000, ''),
+                'summary_text' => $summary['summary_text'],
+                'resume_summary' => $summary,
+                'pds_format' => $pdsFormat,
+                'matched_job_title' => $job?->title ?: ($appliedJobTitle !== '' ? $appliedJobTitle : null),
+                'allow_application' => $overall >= $applicationMinimumScore,
+                'application_minimum_score' => $applicationMinimumScore,
             ];
         }
 
@@ -184,9 +229,12 @@ class ResumeAnalysisService
         $projectScore = $this->calculateProjectScore($analysisText);
         $minimumEducation = (string) ($job?->minimum_education ?? '');
         $minimumExperienceYears = (int) ($job?->minimum_experience_years ?? 0);
+        $applicationMinimumScore = $this->applicationThresholdForJob($job);
         $educationScore = $this->calculateEducationScore($educationLines, $minimumEducation);
         $experienceScore = $this->calculateExperienceScore($experienceLines, $minimumExperienceYears);
-        $overall = round(($skillsScore * 0.55) + ($experienceScore * 0.2) + ($educationScore * 0.15) + ($projectScore * 0.1), 2);
+        $ruleBasedOverall = round(($skillsScore * 0.55) + ($experienceScore * 0.2) + ($educationScore * 0.15) + ($projectScore * 0.1), 2);
+        $semanticScore = $this->xenovaSemanticScore($analysisText, $this->jobTextForSemanticMatch($job, $requiredSkills, $minimumEducation, $minimumExperienceYears));
+        $overall = $this->blendSemanticScore($ruleBasedOverall, $semanticScore);
         $summarySourceText = $isPds && $analysisText !== '' ? $analysisText : $extractedText;
         $summary = $this->buildResumeSummary(
             $summarySourceText,
@@ -203,6 +251,8 @@ class ResumeAnalysisService
             'classification' => $overall >= 80 ? 'Highly Qualified' : ($overall >= 60 ? 'Moderately Qualified' : 'Not Qualified'),
             'overall_score' => $overall,
             'skills_match_score' => $skillsScore,
+            'semantic_match_score' => $semanticScore,
+            'semantic_model' => $semanticScore !== null ? 'Xenova/all-MiniLM-L6-v2' : null,
             'project_score' => $projectScore,
             'education_match_score' => $educationScore,
             'experience_match_score' => $experienceScore,
@@ -216,6 +266,8 @@ class ResumeAnalysisService
             'resume_summary' => $summary,
             'pds_format' => $pdsFormat,
             'matched_job_title' => $job?->title ?: ($appliedJobTitle !== '' ? $appliedJobTitle : null),
+            'application_minimum_score' => $applicationMinimumScore,
+            'allow_application' => $overall >= $applicationMinimumScore,
         ];
     }
 
@@ -305,7 +357,33 @@ class ResumeAnalysisService
                     'educationScore' => 30.0,
                     'experienceScore' => 30.0,
                     'allowApplication' => true,
-                    'minimumScore' => 50,
+                    'minimumScore' => $this->applicationThresholdForJob($job),
+                ];
+                continue;
+            }
+
+            if ($this->isUniversal55PercentJob($job)) {
+                $results[] = [
+                    'id' => $this->jobField($job, 'id'),
+                    'title' => $this->jobField($job, 'title'),
+                    'description' => $this->jobField($job, 'description'),
+                    'status' => $this->jobField($job, 'status', null, 'active'),
+                    'department' => $this->jobField($job, 'department'),
+                    'location' => $this->jobField($job, 'location'),
+                    'type' => $this->jobField($job, 'type'),
+                    'requiredSkills' => 'Open qualifications with fixed 55 percent match',
+                    'minimumEducation' => $this->jobField($job, 'minimumEducation', 'minimum_education', ''),
+                    'minimumExperienceYears' => (int) $this->jobField($job, 'minimumExperienceYears', 'minimum_experience_years', 0),
+                    'overallScore' => 55.0,
+                    'classification' => 'Not Qualified',
+                    'matchedSkills' => ['Preset 55 percent match'],
+                    'missingSkills' => ['Below moderate qualification threshold'],
+                    'skillsScore' => 55.0,
+                    'projectScore' => 55.0,
+                    'educationScore' => 55.0,
+                    'experienceScore' => 55.0,
+                    'allowApplication' => 55.0 >= $this->applicationThresholdForJob($job),
+                    'minimumScore' => $this->applicationThresholdForJob($job),
                 ];
                 continue;
             }
@@ -326,7 +404,13 @@ class ResumeAnalysisService
                 $experienceLines,
                 (int) $this->jobField($job, 'minimumExperienceYears', 'minimum_experience_years', 0)
             );
-            $overall = round(($skillsScore * 0.55) + ($experienceScore * 0.2) + ($educationScore * 0.15) + ($projectScore * 0.1), 2);
+            $applicationMinimumScore = $this->applicationThresholdForJob($job);
+            $ruleBasedOverall = round(($skillsScore * 0.55) + ($experienceScore * 0.2) + ($educationScore * 0.15) + ($projectScore * 0.1), 2);
+            $semanticScore = $this->xenovaSemanticScore(
+                $analysisText,
+                $this->jobTextForSemanticMatch($job, $requiredSkills, (string) $this->jobField($job, 'minimumEducation', 'minimum_education', ''), (int) $this->jobField($job, 'minimumExperienceYears', 'minimum_experience_years', 0))
+            );
+            $overall = $this->blendSemanticScore($ruleBasedOverall, $semanticScore);
 
             $results[] = [
                 'id' => $this->jobField($job, 'id'),
@@ -344,9 +428,13 @@ class ResumeAnalysisService
                 'matchedSkills' => $matchedSkills,
                 'missingSkills' => $missingSkills,
                 'skillsScore' => $skillsScore,
+                'semanticScore' => $semanticScore,
+                'semanticModel' => $semanticScore !== null ? 'Xenova/all-MiniLM-L6-v2' : null,
                 'projectScore' => $projectScore,
                 'educationScore' => $educationScore,
                 'experienceScore' => $experienceScore,
+                'allowApplication' => $overall >= $applicationMinimumScore,
+                'minimumScore' => $applicationMinimumScore,
             ];
         }
 
@@ -392,6 +480,82 @@ class ResumeAnalysisService
         }
 
         return $default;
+    }
+
+    private function applicationThresholdForJob(mixed $job): int
+    {
+        return self::FIXED_APPLICATION_THRESHOLD_SCORE;
+    }
+
+    private function jobTextForSemanticMatch(mixed $job, array $requiredSkills = [], string $minimumEducation = '', int $minimumExperienceYears = 0): string
+    {
+        return trim(implode("\n", array_filter([
+            (string) $this->jobField($job, 'title', null, ''),
+            (string) $this->jobField($job, 'description', null, ''),
+            (string) $this->jobField($job, 'department', null, ''),
+            'Required skills: ' . implode(', ', $requiredSkills),
+            $minimumEducation !== '' ? 'Minimum education: ' . $minimumEducation : '',
+            'Minimum experience: ' . $minimumExperienceYears . ' years',
+        ])));
+    }
+
+    private function blendSemanticScore(float $ruleBasedScore, ?float $semanticScore): float
+    {
+        if ($semanticScore === null) {
+            return round($ruleBasedScore, 2);
+        }
+
+        return round(($ruleBasedScore * 0.7) + ($semanticScore * 0.3), 2);
+    }
+
+    private function xenovaSemanticScore(string $resumeText, string $jobText): ?float
+    {
+        $resumeText = trim($resumeText);
+        $jobText = trim($jobText);
+        if ($resumeText === '' || $jobText === '') {
+            return null;
+        }
+
+        $scriptPath = base_path('scripts/xenova-semantic-match.mjs');
+        if (!is_file($scriptPath)) {
+            return null;
+        }
+
+        $workDir = storage_path('app/xenova');
+        if (!is_dir($workDir) && !mkdir($workDir, 0775, true) && !is_dir($workDir)) {
+            return null;
+        }
+
+        $inputPath = tempnam($workDir, 'semantic-');
+        if ($inputPath === false) {
+            return null;
+        }
+
+        try {
+            file_put_contents($inputPath, json_encode([
+                'resumeText' => Str::limit($resumeText, 6000, ''),
+                'jobText' => Str::limit($jobText, 3000, ''),
+            ], JSON_THROW_ON_ERROR));
+
+            $process = new Process(['node', $scriptPath, $inputPath], base_path());
+            $process->setTimeout(120);
+            $process->run();
+
+            if (!$process->isSuccessful()) {
+                return null;
+            }
+
+            $payload = json_decode($process->getOutput(), true, 512, JSON_THROW_ON_ERROR);
+            $score = (float) ($payload['score'] ?? 0);
+
+            return max(0.0, min(100.0, $score));
+        } catch (\Throwable) {
+            return null;
+        } finally {
+            if (is_file($inputPath)) {
+                @unlink($inputPath);
+            }
+        }
     }
 
     private function splitSkills(string $skills): array
@@ -442,6 +606,25 @@ class ResumeAnalysisService
         }
 
         return in_array(self::UNIVERSAL_NOT_QUALIFIED_SKILL, $this->splitSkills((string) $this->jobField($job, 'requiredSkills', 'required_skills', '')), true);
+    }
+
+    private function isUniversal55PercentJob(mixed $job): bool
+    {
+        if (!$job) {
+            return false;
+        }
+
+        $title = trim((string) $this->jobField($job, 'title', null, ''));
+        if (Str::lower($title) === Str::lower(self::UNIVERSAL_55_PERCENT_TITLE)) {
+            return true;
+        }
+
+        $itemNo = trim((string) $this->jobField($job, 'itemNo', 'item_no', ''));
+        if (Str::lower($itemNo) === 'lnu-match-004') {
+            return true;
+        }
+
+        return in_array(self::UNIVERSAL_55_PERCENT_SKILL, $this->splitSkills((string) $this->jobField($job, 'requiredSkills', 'required_skills', '')), true);
     }
 
     private function buildSkillSuggestions(string $resumeText, array $globalSkills): array

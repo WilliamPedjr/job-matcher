@@ -452,7 +452,7 @@ function DashboardPage({
 
         <section className="analytics-card">
           <div className="analytics-card-head">
-            <h3>Applicantions Per Year</h3>
+            <h3>Applicants Per Year</h3>
           </div>
           <div className="year-bars">
             {(() => {
@@ -460,7 +460,7 @@ function DashboardPage({
               const maxCount = Math.max(1, ...years.map((item) => Number(item.count || 0)))
 
               if (years.length === 0) {
-                return <p className="muted">No yearly applicant data yet.</p>
+                return <p className="muted">No registered applicant data yet.</p>
               }
 
               return years.map((item) => {

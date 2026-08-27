@@ -38,6 +38,7 @@ function LandingPage({ onLoginClick, onRegisterClick, scrollToSectionId = "" }) 
   const [availableJobs, setAvailableJobs] = useState([])
   const [loadingJobs, setLoadingJobs] = useState(true)
   const [isJobsModalOpen, setIsJobsModalOpen] = useState(false)
+  const [showBackToTop, setShowBackToTop] = useState(false)
 
   const highlights = [
     "Resume screening",
@@ -51,6 +52,12 @@ function LandingPage({ onLoginClick, onRegisterClick, scrollToSectionId = "" }) 
     if (target) {
       target.scrollIntoView({ behavior: "smooth", block: "start" })
     }
+  }
+
+  const handleBackToTop = () => {
+    handleScrollTo("landing-hero")
+    document.scrollingElement?.scrollTo({ top: 0, behavior: "smooth" })
+    window.scrollTo({ top: 0, behavior: "smooth" })
   }
 
   useEffect(() => {
@@ -93,6 +100,17 @@ function LandingPage({ onLoginClick, onRegisterClick, scrollToSectionId = "" }) 
 
     return () => window.cancelAnimationFrame(frame)
   }, [scrollToSectionId])
+
+  useEffect(() => {
+    const updateBackToTop = () => {
+      const scrollTop = window.scrollY || document.documentElement.scrollTop || 0
+      setShowBackToTop(scrollTop > 240)
+    }
+
+    updateBackToTop()
+    window.addEventListener("scroll", updateBackToTop, { passive: true })
+    return () => window.removeEventListener("scroll", updateBackToTop)
+  }, [])
 
   return (
     <main className="landing-shell">
@@ -457,6 +475,15 @@ function LandingPage({ onLoginClick, onRegisterClick, scrollToSectionId = "" }) 
           </section>
         </div>
       )}
+      <button
+        type="button"
+        className={`landing-back-to-top ${showBackToTop ? "visible" : ""}`}
+        onClick={handleBackToTop}
+        aria-label="Back to top"
+        title="Back to top"
+      >
+        <span aria-hidden="true">↑</span>
+      </button>
     </main>
   )
 }

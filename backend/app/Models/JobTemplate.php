@@ -28,6 +28,7 @@ class JobTemplate extends Model
         'required_skills',
         'minimum_education',
         'minimum_experience_years',
+        'application_threshold_score',
         'salary_min',
         'salary_max',
     ];

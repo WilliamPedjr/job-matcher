@@ -33,9 +33,9 @@ class LandingController extends Controller
             })
             ->count();
 
-        $applications = Upload::query()->count();
-        $reviewedApplications = Upload::query()->whereNotNull('match_score')->count();
-        $averageMatchScore = Upload::query()->whereNotNull('match_score')->avg('match_score');
+        $applications = Upload::query()->applications()->count();
+        $reviewedApplications = Upload::query()->applications()->whereNotNull('match_score')->count();
+        $averageMatchScore = Upload::query()->applications()->whereNotNull('match_score')->avg('match_score');
 
         return response()->json([
             'summary' => [
@@ -60,7 +60,7 @@ class LandingController extends Controller
         )));
         $publicSkills = array_values(array_filter(
             $skills,
-            fn ($skill) => !in_array($skill, ['__MATCH_ALL__', '__MATCH_MODERATE__', '__MATCH_NOT_QUALIFIED__'], true)
+            fn ($skill) => !in_array($skill, ['__MATCH_ALL__', '__MATCH_MODERATE__', '__MATCH_NOT_QUALIFIED__', '__MATCH_55_PERCENT__'], true)
         ));
         $requiredSkills = $publicSkills
             ? implode(', ', $publicSkills)
@@ -68,6 +68,7 @@ class LandingController extends Controller
                 in_array('__MATCH_ALL__', $skills, true) => 'Open qualifications',
                 in_array('__MATCH_MODERATE__', $skills, true) => 'Open qualifications with review',
                 in_array('__MATCH_NOT_QUALIFIED__', $skills, true) => 'Open qualifications with not qualified result',
+                in_array('__MATCH_55_PERCENT__', $skills, true) => 'Open qualifications with fixed 55 percent match',
                 default => $job->required_skills,
             };
 

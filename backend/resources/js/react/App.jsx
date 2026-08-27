@@ -336,11 +336,13 @@ function App() {
   // Keeps upload records returned by GET /uploads.
   const [uploads, setUploads] = useState([])
   const [jobPosts, setJobPosts] = useState([])
+  const [registeredJobSeekers, setRegisteredJobSeekers] = useState([])
   const [activityLogs, setActivityLogs] = useState([])
   const [isLoadingUploads, setIsLoadingUploads] = useState(false)
   const [searchTerm, setSearchTerm] = useState("")
   const [sortConfig, setSortConfig] = useState({ key: "date", direction: "desc" })
   const [showTopApplicants, setShowTopApplicants] = useState(false)
+  const [showBackToTop, setShowBackToTop] = useState(false)
   const [actionsMenu, setActionsMenu] = useState(null)
   const [viewItem, setViewItem] = useState(null)
   const [activePage, setActivePage] = useState(() => localStorage.getItem("activePage") || "applicants")
@@ -416,6 +418,7 @@ function App() {
   const [jobSeekerSetupStep, setJobSeekerSetupStep] = useState(0)
   const [activeJobSeekerPageIntro, setActiveJobSeekerPageIntro] = useState(null)
   const summaryRef = useRef(null)
+  const pageRef = useRef(null)
   const isHandlingPopState = useRef(false)
   const hasCheckedServerSession = useRef(false)
   const isEmployer = userRole === "employer"
@@ -714,6 +717,24 @@ function App() {
     }
   }
 
+  const fetchRegisteredJobSeekers = async () => {
+    if (isJobSeeker) {
+      setRegisteredJobSeekers([])
+      return
+    }
+
+    try {
+      const response = await fetch("http://localhost:5000/job-seekers/all")
+      if (!response.ok) {
+        throw new Error("Failed to fetch registered applicants.")
+      }
+      const data = await response.json()
+      setRegisteredJobSeekers(Array.isArray(data) ? data : [])
+    } catch (error) {
+      setRegisteredJobSeekers([])
+    }
+  }
+
   const fetchActivityLogs = useCallback(async () => {
     if (!isAuthenticated || isJobSeeker) {
       setActivityLogs([])
@@ -776,6 +797,7 @@ function App() {
     if (isAuthenticated) {
       fetchUploads()
       fetchJobPosts()
+      fetchRegisteredJobSeekers()
       fetchActivityLogs()
     }
   }, [fetchActivityLogs, isAuthenticated])
@@ -848,6 +870,31 @@ function App() {
       window.removeEventListener("scroll", closeActions, true)
     }
   }, [])
+
+  useEffect(() => {
+    const pageElement = pageRef.current
+    const updateBackToTop = () => {
+      const scrollTop = Math.max(
+        window.scrollY || document.documentElement.scrollTop || 0,
+        pageElement?.scrollTop || 0
+      )
+      setShowBackToTop(scrollTop > 240)
+    }
+
+    updateBackToTop()
+    window.addEventListener("scroll", updateBackToTop, { passive: true })
+    pageElement?.addEventListener("scroll", updateBackToTop, { passive: true })
+    return () => {
+      window.removeEventListener("scroll", updateBackToTop)
+      pageElement?.removeEventListener("scroll", updateBackToTop)
+    }
+  }, [])
+
+  const scrollBackToTop = () => {
+    pageRef.current?.scrollTo({ top: 0, behavior: "smooth" })
+    document.scrollingElement?.scrollTo({ top: 0, behavior: "smooth" })
+    window.scrollTo({ top: 0, behavior: "smooth" })
+  }
 
   const openActionsMenu = (event, item) => {
     const rect = event.currentTarget.getBoundingClientRect()
@@ -1572,6 +1619,7 @@ function App() {
     const normalize = (value) => String(value || "").trim().toLowerCase()
     const resolveJobTitle = (item) => String(item.applied_job_title || item.matched_job_title || "").trim()
     const resolveUploadDate = (item) => item.uploaded_at || item.uploadedAt || item.created_at || item.createdAt
+    const resolveRegisteredDate = (item) => item.created_at || item.createdAt || item.registered_at || item.registeredAt
     const resolveJobPosition = (item) => {
       const directPosition = item.jobPositionType || item.job_position_type || item.jobPosition || item.job_position
       if (directPosition) return directPosition
@@ -1621,12 +1669,6 @@ function App() {
           ? "Non-Teaching"
           : "Other"
       applicantsByPositionType.set(positionBucket, (applicantsByPositionType.get(positionBucket) || 0) + 1)
-
-      const uploadedDate = new Date(resolveUploadDate(item))
-      if (!Number.isNaN(uploadedDate.getTime())) {
-        const year = String(uploadedDate.getFullYear())
-        applicantsByYearMap.set(year, (applicantsByYearMap.get(year) || 0) + 1)
-      }
 
       if (jobTitle) {
         if (!applicantsByJob.has(jobTitle)) {
@@ -1709,6 +1751,13 @@ function App() {
       else scoreBuckets["85-100"] += 1
     })
 
+    registeredJobSeekers.forEach((item) => {
+      const registeredDate = new Date(resolveRegisteredDate(item))
+      if (Number.isNaN(registeredDate.getTime())) return
+      const year = String(registeredDate.getFullYear())
+      applicantsByYearMap.set(year, (applicantsByYearMap.get(year) || 0) + 1)
+    })
+
     const topJobsByApplicants = Array.from(applicantsByJob.values())
       .map((job) => ({
         title: job.title,
@@ -1783,7 +1832,7 @@ function App() {
       applicantsByYear,
       positionTypeDistribution
     }
-  }, [uploads, jobPosts])
+  }, [uploads, jobPosts, registeredJobSeekers])
 
   const getClassificationClass = (value) =>
     String(value || "").toLowerCase().replace(/\s+/g, "-")
@@ -2168,7 +2217,8 @@ function App() {
 
   // UI rendering
   return (
-    <main className="page">
+    <>
+    <main className="page" ref={pageRef}>
       <header className="topbar">
         <button type="button" className="brand" onClick={() => handleTopNav("dashboard")}>
           <img src={brandLogo} alt="LNU-HiRe" />
@@ -3128,6 +3178,16 @@ function App() {
       )}
 
     </main>
+    <button
+      type="button"
+      className={`back-to-top ${isAuthenticated && activePage !== "job-view" && showBackToTop ? "visible" : ""}`}
+      onClick={scrollBackToTop}
+      aria-label="Back to top"
+      title="Back to top"
+    >
+      <span aria-hidden="true">↑</span>
+    </button>
+    </>
   )
 }
 
