@@ -1923,9 +1923,7 @@ function JobPostingPage({ uploads = [], isEmployer = false, isJobSeeker = false,
                         placeholder="Teaching"
                       />
                     </div>
-                  </div>
 
-                  <div className="modal-grid">
                     <div className="field-group">
                       <label>Plantilla Item No.</label>
                       <input
@@ -1933,17 +1931,6 @@ function JobPostingPage({ uploads = [], isEmployer = false, isJobSeeker = false,
                         type="text"
                         value={newJobItemNo}
                         onChange={(e) => setNewJobItemNo(e.target.value)}
-                      />
-                    </div>
-
-                    <div className="field-group">
-                      <label>Location</label>
-                      <input
-                        className={requiredInputClass(newJobLocation, "create-job-readonly")}
-                        type="text"
-                        value={newJobLocation}
-                        readOnly
-                        aria-readonly="true"
                       />
                     </div>
                   </div>
