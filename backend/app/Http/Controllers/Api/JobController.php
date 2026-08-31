@@ -9,6 +9,7 @@ use App\Models\GlobalSkillCatalog;
 use App\Models\Job;
 use App\Models\JobTemplate;
 use App\Models\JobSkillCatalog;
+use App\Models\Upload;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 use Illuminate\Support\Str;
@@ -447,6 +448,15 @@ class JobController extends Controller
             ->all();
         $requiredSkills = $this->publicRequiredSkills($job->required_skills);
         $universalMatchMode = $this->universalMatchModeForRecord((string) $job->title, (string) $job->required_skills);
+        $applicants = Upload::query()
+            ->applications()
+            ->where(function ($query) use ($job) {
+                $query
+                    ->where('job_id', $job->id)
+                    ->orWhereRaw('LOWER(applied_job_title) = ?', [Str::lower((string) $job->title)])
+                    ->orWhereRaw('LOWER(matched_job_title) = ?', [Str::lower((string) $job->title)]);
+            })
+            ->count();
 
         return [
             'id' => $job->id,
@@ -477,6 +487,9 @@ class JobController extends Controller
             'salaryMin' => $job->salary_min,
             'salary_max' => $job->salary_max,
             'salaryMax' => $job->salary_max,
+            'applicants' => $applicants,
+            'applicant_count' => $applicants,
+            'applicantCount' => $applicants,
             'skills' => $skills,
             'universal_match_mode' => $universalMatchMode,
             'universalMatchMode' => $universalMatchMode,
