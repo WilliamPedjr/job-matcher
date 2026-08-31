@@ -20,7 +20,7 @@ Route::get('/', function () {
 });
 
 Route::post('/auth/verify-recaptcha', [AuthController::class, 'verifyRecaptcha']);
-Route::middleware('api-session')->group(function () {
+Route::middleware('api-session')->withoutMiddleware(['throttle:api'])->group(function () {
     Route::get('/auth/session', [AuthController::class, 'session']);
     Route::post('/auth/logout', [AuthController::class, 'logout']);
     Route::post('/staff/register', [AuthController::class, 'staffRegister']);

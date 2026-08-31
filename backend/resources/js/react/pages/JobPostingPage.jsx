@@ -424,6 +424,8 @@ function JobPostingPage({ uploads = [], isEmployer = false, isJobSeeker = false,
       const query = searchTerm.trim().toLowerCase()
       const status = String(job.status || "active").toLowerCase()
 
+      if (isJobSeeker && status === "closed") return false
+
       const matchesStatus = statusFilter === "all" ? true : status === statusFilter
       if (!matchesStatus) return false
 
@@ -446,6 +448,19 @@ function JobPostingPage({ uploads = [], isEmployer = false, isJobSeeker = false,
       return haystack.includes(query)
     })
   }, [jobs, searchTerm, statusFilter, jobPositionTypeFilter, isJobSeeker, matchFilter, jobMatches])
+
+  const fifoJobs = useMemo(() => {
+    return [...filteredJobs].sort((a, b) => {
+      const aId = Number(a.id)
+      const bId = Number(b.id)
+      if (Number.isFinite(aId) && Number.isFinite(bId)) {
+        return aId - bId
+      }
+      if (Number.isFinite(aId)) return -1
+      if (Number.isFinite(bId)) return 1
+      return String(a.title || "").localeCompare(String(b.title || ""))
+    })
+  }, [filteredJobs])
 
   const jobCategoryGroups = useMemo(() => {
     const map = new Map()
@@ -765,6 +780,12 @@ function JobPostingPage({ uploads = [], isEmployer = false, isJobSeeker = false,
     { value: "active", label: "Active" },
     { value: "closed", label: "Closed" }
   ]
+
+  useEffect(() => {
+    if (isJobSeeker && statusFilter === "closed") {
+      setStatusFilter("all")
+    }
+  }, [isJobSeeker, statusFilter])
 
   const matchOptions = [
     { value: "all", label: "All" },
@@ -1340,13 +1361,15 @@ function JobPostingPage({ uploads = [], isEmployer = false, isJobSeeker = false,
             </div>
           )}
         </div>
-        <CustomDropdown
-          className="jobs-filter"
-          options={statusOptions}
-          value={statusFilter}
-          onChange={setStatusFilter}
-          placeholder="All Status"
-        />
+        {!isJobSeeker && (
+          <CustomDropdown
+            className="jobs-filter"
+            options={statusOptions}
+            value={statusFilter}
+            onChange={setStatusFilter}
+            placeholder="All Status"
+          />
+        )}
         <CustomDropdown
           className="jobs-filter"
           options={jobPositionTypeFilterOptions}
@@ -1365,241 +1388,241 @@ function JobPostingPage({ uploads = [], isEmployer = false, isJobSeeker = false,
         )}
       </div>
 
-      <div className="jobs-grid">
+      <div className="table-wrap jobs-table-wrap">
         {isLoading ? (
-          <p className="muted">Loading jobs...</p>
+          <p className="muted jobs-table-message">Loading jobs...</p>
         ) : error ? (
-          <p className="muted">{error}</p>
-        ) : filteredJobs.length === 0 ? (
-          <p className="muted">No jobs found.</p>
+          <p className="muted jobs-table-message">{error}</p>
+        ) : fifoJobs.length === 0 ? (
+          <p className="muted jobs-table-message">No jobs found.</p>
         ) : (
-          filteredJobs.map((job) => (
-            <article
-              key={`${job.source || "job"}-${job.id ?? job.title}`}
-              className="job-card job-card-modern job-card-clickable"
-              role="button"
-              tabIndex={0}
-              onClick={() => {
-                if (isJobSeeker) {
-                  onViewJob?.(job)
-                  return
-                }
-                if (job.source === "template") {
-                  setEditingJobId(null)
-                  setShowJobFormErrors(false)
-                  setNewJobTitle(job.title || "")
-                  applyTemplateFromRecord(job)
-                  setIsUsingSavedJobDraft(false)
-                  setIsCreateModalOpen(true)
-                  return
-                }
-                openEditJobModal(job)
-              }}
-              onKeyDown={(e) => {
-                if (e.key === "Enter" || e.key === " ") {
-                  e.preventDefault()
-                  if (isJobSeeker) {
-                    onViewJob?.(job)
-                    return
-                  }
-                  if (job.source === "template") {
-                    setEditingJobId(null)
-                    setShowJobFormErrors(false)
-                    setNewJobTitle(job.title || "")
-                    applyTemplateFromRecord(job)
-                    setIsUsingSavedJobDraft(false)
-                    setIsCreateModalOpen(true)
-                    return
-                  }
-                  openEditJobModal(job)
-                }
-              }}
-            >
-              <div className="job-card-head">
-                <div>
-                  <h2 className={`job-title-text ${isJobSeeker ? "" : "job-title-admin"}`.trim()}>
-                    {job.title}
-                  </h2>
-                  <p className="job-card-dept">{job.department || "-"}</p>
-                </div>
-                <div className="job-card-actions">
-                  <span className={`job-status ${String(job.status || "active").toLowerCase()}`}>
-                    {String(job.status || "active").toLowerCase()}
-                  </span>
-                  {job.id != null && (
-                    <>
-                      <button
-                        className="job-more"
-                        type="button"
-                        onClick={(e) => {
-                          e.stopPropagation()
-                          const actionKey = `${job.source || "job"}-${job.id}`
-                          setActionsJobId((prev) => (prev === actionKey ? null : actionKey))
-                        }}
-                      >
-                        ...
-                      </button>
-                      {actionsJobId === `${job.source || "job"}-${job.id}` && (
-                        <div className="job-actions-menu" onClick={(e) => e.stopPropagation()}>
-                          {isJobSeeker ? (
-                            <button
-                              type="button"
-                              className="actions-menu-item"
-                              onClick={() => {
-                                setActionsJobId(null)
-                                onViewJob?.(job)
-                              }}
-                            >
-                              View Details
-                            </button>
-                          ) : (
-                            job.source === "template" ? (
-                              <button
-                                type="button"
-                                className="actions-menu-item"
-                                onClick={() => {
-                                  setActionsJobId(null)
-                                  setEditingJobId(null)
-                                  setShowJobFormErrors(false)
-                                  setNewJobTitle(job.title || "")
-                                  applyTemplateFromRecord(job)
-                                  setIsUsingSavedJobDraft(false)
-                                  setIsCreateModalOpen(true)
-                                }}
-                              >
-                                Use Template
-                              </button>
-                            ) : (
-                            <>
-                              <button
-                                type="button"
-                                className="actions-menu-item"
-                                onClick={() => {
-                                  setActionsJobId(null)
-                                  openEditJobModal(job)
-                                }}
-                              >
-                                Edit Details
-                              </button>
-                              <button
-                                type="button"
-                                className="actions-menu-item"
-                                onClick={() => duplicateJobPost(job)}
-                              >
-                                Duplicate Post
-                              </button>
-                              <button
-                                type="button"
-                                className="actions-menu-item"
-                                onClick={() => updateJobStatus(job.id, "active")}
-                              >
-                                Set Active
-                              </button>
-                              <button
-                                type="button"
-                                className="actions-menu-item"
-                                onClick={() => updateJobStatus(job.id, "closed")}
-                              >
-                                Set Closed
-                              </button>
-                              <button
-                                type="button"
-                                className="actions-menu-item danger"
-                                onClick={() => deleteJobPost(job.id)}
-                              >
-                                Delete Post
-                              </button>
-                            </>
-                            )
-                          )}
-                        </div>
-                      )}
-                    </>
-                  )}
-                </div>
-              </div>
+          <table className="records-table jobs-table">
+            <thead>
+              <tr>
+                <th className="jobs-order-col">#</th>
+                <th className="jobs-title-col">Job Position</th>
+                <th className="jobs-dept-col">Department</th>
+                <th className="jobs-type-col">Type</th>
+                <th className="jobs-deadline-col">Deadline</th>
+                {isJobSeeker && <th className="jobs-match-col">Match</th>}
+                {!isJobSeeker && <th className="jobs-applicants-col">Applicants</th>}
+                <th className="jobs-status-col">Status</th>
+                {!isJobSeeker && <th className="actions-col jobs-actions-col">Actions</th>}
+              </tr>
+            </thead>
+            <tbody>
+              {fifoJobs.map((job, index) => {
+                const actionKey = `${job.source || "job"}-${job.id}`
+                const jobPosition = job.jobPosition || job.job_position || "-"
+                const itemNo = job.itemNo || job.item_no || ""
+                const deadline = job.deadline
+                  ? new Date(job.deadline).toLocaleDateString(undefined, { month: "short", day: "numeric", year: "numeric" })
+                  : "-"
+                const skills = parseSkills(job.requiredSkills || job.required_skills || "")
+                const matchKey = String(job.title || "").trim().toLowerCase()
+                const match = matchKey ? jobMatches[matchKey] : null
+                let matchContent = null
 
-              <div className="job-card-chips">
-                {job.itemNo || job.item_no ? <span className="job-chip">Item {job.itemNo || job.item_no}</span> : null}
-                {job.jobPosition || job.job_position ? <span className="job-chip chip-outline">{job.jobPosition || job.job_position}</span> : null}
-                <span className="job-chip">{job.location || "-"}</span>
-                <span className="job-chip chip-outline">{job.type || "-"}</span>
-                {job.deadline ? <span className="job-chip chip-outline">Deadline {new Date(job.deadline).toLocaleDateString(undefined, { month: "short", day: "numeric", year: "numeric" })}</span> : null}
-                {job.eligibility ? <span className="job-chip chip-outline">{job.eligibility}</span> : null}
-                {job.source === "template" && <span className="job-chip chip-muted">template</span>}
-                {isJobSeeker && (
-                  (() => {
-                    const key = String(job.title || "").trim().toLowerCase()
-                    const match = key ? jobMatches[key] : null
-                    if (!jobSeekerResume) {
-                      return <span className="job-chip chip-warning">Upload resume to see match</span>
-                    }
-                    if (jobMatchStatus === "loading") {
-                      return <span className="job-chip chip-muted">Checking match...</span>
-                    }
-                    if (jobMatchStatus === "error") {
-                      return <span className="job-chip chip-warning">Match unavailable</span>
-                    }
-                    if (!match || match.score == null) {
-                      return <span className="job-chip chip-warning">Match unavailable</span>
-                    }
-                    const matchPercent = Number(match.score)
-                    const matchLabel = Number.isFinite(matchPercent)
-                      ? `${match.qualifies ? "match" : "not match"}`
-                      : (match.qualifies ? "Match" : "Not match")
-                    return (
+                if (isJobSeeker) {
+                  if (!jobSeekerResume) {
+                    matchContent = <span className="job-chip chip-warning">Upload resume</span>
+                  } else if (jobMatchStatus === "loading") {
+                    matchContent = <span className="job-chip chip-muted">Checking</span>
+                  } else if (jobMatchStatus === "error" || !match || match.score == null) {
+                    matchContent = <span className="job-chip chip-warning">Unavailable</span>
+                  } else {
+                    matchContent = (
                       <span className={`job-chip ${match.qualifies ? "chip-good" : "chip-bad"}`}>
-                        {matchLabel}
+                        {match.qualifies ? "match" : "not match"}
                       </span>
                     )
-                  })()
-                )}
-              </div>
+                  }
+                }
 
-              <p className="job-description">{job.description}</p>
-
-              {isJobSeeker && parseSkills(job.requiredSkills || job.required_skills || "").length > 0 && (
-                <div className="job-card-skill-preview">
-                  {/* <span className="job-card-skill-label">Needed skills</span> */}
-                  <div className="job-card-chips job-card-skill-chips">
-                    {parseSkills(job.requiredSkills || job.required_skills || "").slice(0, 5).map((skill) => (
-                      <span key={`${job.id ?? job.title}-${skill}`} className="job-chip chip-outline">
-                        {skill}
-                      </span>
-                    ))}
-                  </div>
-                </div>
-              )}
-
-              {isJobSeeker && (
-                <div className="job-card-footer">
-                  {/* <button
-                    type="button"
-                    className="btn job-apply-btn"
-                    onClick={(e) => {
-                      e.stopPropagation()
-                      handleApplyJob(job)
+                return (
+                  <tr
+                    key={`${job.source || "job"}-${job.id ?? job.title}`}
+                    className="job-table-row"
+                    role="button"
+                    tabIndex={0}
+                    onClick={() => {
+                      if (isJobSeeker) {
+                        onViewJob?.(job)
+                        return
+                      }
+                      if (job.source === "template") {
+                        setEditingJobId(null)
+                        setShowJobFormErrors(false)
+                        setNewJobTitle(job.title || "")
+                        applyTemplateFromRecord(job)
+                        setIsUsingSavedJobDraft(false)
+                        setIsCreateModalOpen(true)
+                        return
+                      }
+                      openEditJobModal(job)
+                    }}
+                    onKeyDown={(e) => {
+                      if (e.key !== "Enter" && e.key !== " ") return
+                      e.preventDefault()
+                      if (isJobSeeker) {
+                        onViewJob?.(job)
+                        return
+                      }
+                      if (job.source === "template") {
+                        setEditingJobId(null)
+                        setShowJobFormErrors(false)
+                        setNewJobTitle(job.title || "")
+                        applyTemplateFromRecord(job)
+                        setIsUsingSavedJobDraft(false)
+                        setIsCreateModalOpen(true)
+                        return
+                      }
+                      openEditJobModal(job)
                     }}
                   >
-                    Apply
-                  </button> */}
-                </div>
-              )}
-
-              {!isJobSeeker && (
-                <button
-                  className="job-applicants job-applicants-bottom"
-                  type="button"
-                  onClick={(e) => {
-                    e.stopPropagation()
-                    setSelectedJobTitle(job.title)
-                  }}
-                >
-                  {Number(job.applicants || 0)} Applicants
-                </button>
-              )}
-            </article>
-          ))
+                    <td className="jobs-order-cell">{index + 1}</td>
+                    <td>
+                      <button
+                        type="button"
+                        className="job-table-title"
+                        onClick={() => {
+                          if (isJobSeeker) {
+                            onViewJob?.(job)
+                            return
+                          }
+                          if (job.source === "template") {
+                            setEditingJobId(null)
+                            setShowJobFormErrors(false)
+                            setNewJobTitle(job.title || "")
+                            applyTemplateFromRecord(job)
+                            setIsUsingSavedJobDraft(false)
+                            setIsCreateModalOpen(true)
+                            return
+                          }
+                          openEditJobModal(job)
+                        }}
+                      >
+                        {job.title || "-"}
+                      </button>
+                      <div className="job-table-subtext">
+                        {itemNo ? `Item ${itemNo} · ` : ""}
+                        {jobPosition}
+                        {job.source === "template" ? " · template" : ""}
+                      </div>
+                      {isJobSeeker && skills.length > 0 && (
+                        <div className="job-table-skills">
+                          {skills.slice(0, 3).join(", ")}
+                        </div>
+                      )}
+                    </td>
+                    <td className="jobs-dept-cell">{job.department || "-"}</td>
+                    <td className="jobs-type-cell">{job.type || "-"}</td>
+                    <td className="jobs-deadline-cell">{deadline}</td>
+                    {isJobSeeker && <td className="jobs-match-cell">{matchContent}</td>}
+                    {!isJobSeeker && (
+                      <td className="jobs-applicants-cell">
+                        <button
+                          className="job-applicants"
+                          type="button"
+                          onClick={(e) => {
+                            e.stopPropagation()
+                            setSelectedJobTitle(job.title)
+                          }}
+                        >
+                          {Number(job.applicants || 0)}
+                        </button>
+                      </td>
+                    )}
+                    <td className="jobs-status-cell">
+                      <span className={`job-status ${String(job.status || "active").toLowerCase()}`}>
+                        {String(job.status || "active").toLowerCase()}
+                      </span>
+                    </td>
+                    {!isJobSeeker && (
+                      <td className="actions-cell job-table-actions">
+                        {job.id != null && (
+                          <>
+                            <button
+                              className="job-more"
+                              type="button"
+                              onClick={(e) => {
+                                e.stopPropagation()
+                                setActionsJobId((prev) => (prev === actionKey ? null : actionKey))
+                              }}
+                            >
+                              ...
+                            </button>
+                            {actionsJobId === actionKey && (
+                              <div className="job-actions-menu" onClick={(e) => e.stopPropagation()}>
+                                {job.source === "template" ? (
+                                  <button
+                                    type="button"
+                                    className="actions-menu-item"
+                                    onClick={() => {
+                                      setActionsJobId(null)
+                                      setEditingJobId(null)
+                                      setShowJobFormErrors(false)
+                                      setNewJobTitle(job.title || "")
+                                      applyTemplateFromRecord(job)
+                                      setIsUsingSavedJobDraft(false)
+                                      setIsCreateModalOpen(true)
+                                    }}
+                                  >
+                                    Use Template
+                                  </button>
+                                ) : (
+                                  <>
+                                    <button
+                                      type="button"
+                                      className="actions-menu-item"
+                                      onClick={() => {
+                                        setActionsJobId(null)
+                                        openEditJobModal(job)
+                                      }}
+                                    >
+                                      Edit Details
+                                    </button>
+                                    <button
+                                      type="button"
+                                      className="actions-menu-item"
+                                      onClick={() => duplicateJobPost(job)}
+                                    >
+                                      Duplicate Post
+                                    </button>
+                                    <button
+                                      type="button"
+                                      className="actions-menu-item"
+                                      onClick={() => updateJobStatus(job.id, "active")}
+                                    >
+                                      Set Active
+                                    </button>
+                                    <button
+                                      type="button"
+                                      className="actions-menu-item"
+                                      onClick={() => updateJobStatus(job.id, "closed")}
+                                    >
+                                      Set Closed
+                                    </button>
+                                    <button
+                                      type="button"
+                                      className="actions-menu-item danger"
+                                      onClick={() => deleteJobPost(job.id)}
+                                    >
+                                      Delete Post
+                                    </button>
+                                  </>
+                                )}
+                              </div>
+                            )}
+                          </>
+                        )}
+                      </td>
+                    )}
+                  </tr>
+                )
+              })}
+            </tbody>
+          </table>
         )}
       </div>
 
