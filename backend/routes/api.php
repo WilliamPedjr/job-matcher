@@ -42,7 +42,8 @@ Route::put('/job-seekers/{id}', [JobSeekerController::class, 'update']);
 Route::put('/job-seekers/{id}/admin', [JobSeekerController::class, 'updateAdmin']);
 Route::delete('/job-seekers/{id}', [JobSeekerController::class, 'destroy']);
 Route::get('/job-seekers/{id}/resume', [JobSeekerController::class, 'resume']);
-Route::post('/job-seekers/{id}/resume', [JobSeekerController::class, 'storeResume']);
+Route::post('/job-seekers/{id}/resume', [JobSeekerController::class, 'storeResume'])
+    ->withoutMiddleware(['throttle:api']);
 Route::get('/job-seekers/{id}/resume/download', [JobSeekerController::class, 'downloadResume']);
 Route::delete('/job-seekers/{id}/resume', [JobSeekerController::class, 'deleteResume']);
 Route::get('/job-seekers/{id}/resume/match', [JobSeekerController::class, 'resumeMatch'])
@@ -50,7 +51,8 @@ Route::get('/job-seekers/{id}/resume/match', [JobSeekerController::class, 'resum
 Route::post('/job-seekers/{id}/resume/match/batch', [JobSeekerController::class, 'resumeMatchBatch'])
     ->withoutMiddleware(['throttle:api']);
 Route::get('/job-seekers/{id}/supporting', [JobSeekerController::class, 'supportingFiles']);
-Route::post('/job-seekers/{id}/supporting', [JobSeekerController::class, 'storeSupportingFiles']);
+Route::post('/job-seekers/{id}/supporting', [JobSeekerController::class, 'storeSupportingFiles'])
+    ->withoutMiddleware(['throttle:api']);
 Route::get('/job-seekers/{id}/supporting/{supportId}/download', [JobSeekerController::class, 'downloadSupportingFile']);
 Route::delete('/job-seekers/{id}/supporting/{supportId}', [JobSeekerController::class, 'deleteSupportingFile']);
 Route::post('/job-seekers/{id}/education', [JobSeekerController::class, 'storeEducation']);
@@ -82,7 +84,8 @@ Route::get('/skills/catalog', [SkillController::class, 'catalog']);
 Route::get('/landing-summary', [LandingController::class, 'summary']);
 Route::post('/pds/extract', [PdsController::class, 'extract']);
 Route::post('/upload', [UploadController::class, 'store']);
-Route::get('/uploads', [UploadController::class, 'index']);
+Route::get('/uploads', [UploadController::class, 'index'])
+    ->withoutMiddleware(['throttle:api']);
 Route::get('/uploads/{id}', [UploadController::class, 'show']);
 Route::put('/uploads/{id}/reanalyze', [UploadController::class, 'reanalyze']);
 Route::get('/uploads/{id}/download', [UploadController::class, 'download']);

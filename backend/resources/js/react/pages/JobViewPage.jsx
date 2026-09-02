@@ -34,7 +34,6 @@ function formatExperienceYears(value) {
 }
 
 function JobViewPage({ job, onBack, onApply, onRequireResume, jobSeekerProfile, jobSeekerResume, jobSeekerSupporting, jobSeekerId, applications = [] }) {
-  const APPLICATION_MATCH_BONUS_PERCENT = 10
   const [isApplyModalOpen, setIsApplyModalOpen] = useState(false)
   const [applicantName, setApplicantName] = useState("")
   const [applicantEmail, setApplicantEmail] = useState("")
@@ -324,11 +323,10 @@ function JobViewPage({ job, onBack, onApply, onRequireResume, jobSeekerProfile, 
         const minimumScore = Number(payload?.minimumScore ?? 50)
         const normalizedMinimumScore = Number.isFinite(minimumScore) ? minimumScore : 50
         const normalizedRawScore = Number.isFinite(rawScore) ? rawScore : 0
-        const boostedScore = Math.min(100, normalizedRawScore + APPLICATION_MATCH_BONUS_PERCENT)
         setResumeMatch({
           status: "ready",
-          score: boostedScore,
-          qualifies: boostedScore >= normalizedMinimumScore,
+          score: normalizedRawScore,
+          qualifies: normalizedRawScore >= normalizedMinimumScore,
           allowApplication: Boolean(payload?.allowApplication),
           minimumScore: normalizedMinimumScore,
           message: ""
@@ -371,7 +369,6 @@ function JobViewPage({ job, onBack, onApply, onRequireResume, jobSeekerProfile, 
   const resumeMatchScore = Number(resumeMatch.score ?? 0)
   const normalizedResumeMatchScore = Number.isFinite(resumeMatchScore) ? resumeMatchScore : 0
   const resumeMatchQualified = resumeMatchReady && normalizedResumeMatchScore >= resumeMatchMinimumScore
-  const resumeMatchAllowsApplication = resumeMatchReady && Boolean(resumeMatch.allowApplication)
   const resumeMatchError = resumeMatch.status === "error"
   const currentJobId = job?.id != null ? String(job.id) : ""
   const currentJobTitle = String(job?.title || "").trim().toLowerCase()
@@ -385,7 +382,7 @@ function JobViewPage({ job, onBack, onApply, onRequireResume, jobSeekerProfile, 
       .trim()
       .toLowerCase() === currentJobTitle
   })
-  const applyBlockedByMatch = resumeMatchReady && !resumeMatchQualified && !resumeMatchAllowsApplication
+  const applyBlockedByMatch = resumeMatchReady && !resumeMatchQualified
   const applyGateDisabled = Boolean(hasAlreadyApplied || resumeMatchLoading || applyBlockedByMatch || resumeMatchError)
   const skillItems = parseSkills(job?.requiredSkills || job?.required_skills || job?.required_skills_text || "")
 
@@ -401,9 +398,7 @@ function JobViewPage({ job, onBack, onApply, onRequireResume, jobSeekerProfile, 
     } else if (hasAlreadyApplied) {
       nextPopup = { type: "fail", text: "You already applied to this job." }
     } else if (resumeMatchReady) {
-      nextPopup = resumeMatchAllowsApplication && !resumeMatchQualified
-        ? { type: "success", text: "You can apply, but this application will be marked Not Qualified." }
-        : resumeMatchQualified
+      nextPopup = resumeMatchQualified
         ? { type: "success", text: "Your resume matches this job well. You can apply now." }
         : { type: "fail", text: "Your resume does not match this job enough to apply." }
     } else if (resumeMatchError) {
@@ -417,7 +412,7 @@ function JobViewPage({ job, onBack, onApply, onRequireResume, jobSeekerProfile, 
 
     lastQualificationKeyRef.current = nextKey
     setQualificationPopup(nextPopup)
-  }, [job, hasAlreadyApplied, resumeMatch.status, resumeMatch.qualifies, resumeMatch.allowApplication, resumeMatch.message, resumeMatchError, resumeMatchAllowsApplication, resumeMatchQualified, resumeMatchReady])
+  }, [job, hasAlreadyApplied, resumeMatch.status, resumeMatch.qualifies, resumeMatch.message, resumeMatchError, resumeMatchQualified, resumeMatchReady])
 
   if (!job) {
     return (
@@ -490,7 +485,7 @@ function JobViewPage({ job, onBack, onApply, onRequireResume, jobSeekerProfile, 
             <strong>{job.type || "-"}</strong>
           </div>
           <div className="job-view-info-item">
-            <span>Deadline</span>
+            <span>Post Deadline</span>
             <strong>{job.deadline ? new Date(job.deadline).toLocaleDateString(undefined, { month: "long", day: "numeric", year: "numeric" }) : "-"}</strong>
           </div>
           <div className="job-view-info-item">

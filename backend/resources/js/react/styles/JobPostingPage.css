@@ -1102,6 +1102,10 @@ optgroup {
   gap: 16px;
 }
 
+.jobs-panel-modern.jobs-menu-open {
+  padding-bottom: 240px;
+}
+
 .jobs-hero {
   display: flex;
   align-items: flex-end;
@@ -1356,6 +1360,15 @@ optgroup {
 .job-table-actions .job-actions-menu {
   top: calc(100% - 4px);
   right: 12px;
+}
+
+.job-table-actions .job-actions-menu.job-actions-menu-floating {
+  position: fixed;
+  right: auto;
+  width: 236px;
+  min-width: 236px;
+  z-index: 1000;
+  transform-origin: top left;
 }
 
 .job-applicants-modal {

@@ -1,7 +1,6 @@
 import React, { useEffect, useMemo, useRef, useState } from 'react'
 import '../styles/RatingsPage.css'
 import ApplicantViewPage from './ApplicantViewPage'
-import CustomDropdown from '../components/CustomDropdown'
 import { getArchiveActorHeaders } from '../utils/archiveActor'
 
 function formatInterviewDate(value) {
@@ -38,7 +37,6 @@ const defaultRatingCriteria = [
 ]
 
 const ratingCriteriaStorageKey = 'ratingsCriteria'
-const boardMembersStorageKey = 'ratingsBoardMembers'
 
 function loadRatingCriteria() {
   if (typeof window === 'undefined') return defaultRatingCriteria
@@ -63,40 +61,12 @@ const ratingBands = [
   { label: 'Unsatisfactory', range: '10 & below', value: 1 }
 ]
 
-const defaultBoardMembers = [
-  'Dr. Solomon Faller Jr.',
-  'Jasmin Graeles',
-  'Prof. Drake Ortega Jr.',
-  'Josisor Conchada',
-  'Prof. Jose Ismael Galamia',
-  'Dr. Joyce Magtolis',
-  'Cesar Blanco'
-]
-
-function loadBoardMembers() {
-  if (typeof window === 'undefined') return defaultBoardMembers
-  try {
-    const stored = window.localStorage.getItem(boardMembersStorageKey)
-    const parsed = stored ? JSON.parse(stored) : null
-    if (Array.isArray(parsed)) {
-      const cleaned = parsed.map((item) => String(item || '').trim()).filter(Boolean)
-      if (cleaned.length > 0) return Array.from(new Set(cleaned))
-    }
-  } catch {
-    // Use defaults when local storage is unavailable or invalid.
-  }
-  return defaultBoardMembers
-}
-
 function RatingsPage({ uploads = [], isLoading = false, currentUser = null, onRatingsChanged }) {
   const [searchTerm, setSearchTerm] = useState('')
   const [positionFilter, setPositionFilter] = useState('all')
   const [criteriaEditorOpen, setCriteriaEditorOpen] = useState(false)
   const [ratingCriteria, setRatingCriteria] = useState(loadRatingCriteria)
   const [criteriaDraft, setCriteriaDraft] = useState(() => loadRatingCriteria())
-  const [boardMembers, setBoardMembers] = useState(loadBoardMembers)
-  const [boardMembersDraft, setBoardMembersDraft] = useState(() => loadBoardMembers())
-  const [newBoardMemberName, setNewBoardMemberName] = useState('')
   const [selectedApplicant, setSelectedApplicant] = useState(null)
   const [ratingStarted, setRatingStarted] = useState(false)
   const [ratingScores, setRatingScores] = useState({})
@@ -183,8 +153,6 @@ function RatingsPage({ uploads = [], isLoading = false, currentUser = null, onRa
 
   const openCriteriaEditor = () => {
     setCriteriaDraft(ratingCriteria)
-    setBoardMembersDraft(boardMembers)
-    setNewBoardMemberName('')
     setCriteriaEditorOpen(true)
   }
 
@@ -199,20 +167,8 @@ function RatingsPage({ uploads = [], isLoading = false, currentUser = null, onRa
       showRatingNotice('fail', 'Criteria names must be unique.')
       return
     }
-    const cleanedBoardMembers = boardMembersDraft.map((item) => String(item || '').trim()).filter(Boolean)
-    if (cleanedBoardMembers.length === 0) {
-      showRatingNotice('fail', 'Please add at least one board member.')
-      return
-    }
-    const uniqueBoardMembers = Array.from(new Set(cleanedBoardMembers.map((item) => item.toLowerCase())))
-    if (uniqueBoardMembers.length !== cleanedBoardMembers.length) {
-      showRatingNotice('fail', 'Board member names must be unique.')
-      return
-    }
     setRatingCriteria(cleaned)
-    setBoardMembers(cleanedBoardMembers)
     window.localStorage.setItem(ratingCriteriaStorageKey, JSON.stringify(cleaned))
-    window.localStorage.setItem(boardMembersStorageKey, JSON.stringify(cleanedBoardMembers))
     try {
       await fetch('http://localhost:5000/activity-logs', {
         method: 'POST',
@@ -227,15 +183,12 @@ function RatingsPage({ uploads = [], isLoading = false, currentUser = null, onRa
           subjectName: 'Rating form',
           metadata: {
             before: {
-              criteria: ratingCriteria,
-              boardMembers
+              criteria: ratingCriteria
             },
             after: {
-              criteria: cleaned,
-              boardMembers: cleanedBoardMembers
+              criteria: cleaned
             },
-            criteriaCount: cleaned.length,
-            boardMemberCount: cleanedBoardMembers.length
+            criteriaCount: cleaned.length
           }
         })
       })
@@ -249,19 +202,6 @@ function RatingsPage({ uploads = [], isLoading = false, currentUser = null, onRa
 
   const resetCriteriaDraft = () => {
     setCriteriaDraft(defaultRatingCriteria)
-    setBoardMembersDraft(defaultBoardMembers)
-    setNewBoardMemberName('')
-  }
-
-  const addBoardMemberDraft = () => {
-    const name = newBoardMemberName.trim()
-    if (!name) return
-    if (boardMembersDraft.some((member) => member.toLowerCase() === name.toLowerCase())) {
-      showRatingNotice('fail', 'Board member already exists.')
-      return
-    }
-    setBoardMembersDraft((prev) => [...prev, name])
-    setNewBoardMemberName('')
   }
 
   const openActionsMenu = (event, item) => {
@@ -279,12 +219,13 @@ function RatingsPage({ uploads = [], isLoading = false, currentUser = null, onRa
 
   const saveRating = async () => {
     if (!selectedApplicant?.id) return
-    if (!selectedBoardMember) {
-      showRatingNotice('fail', 'Please select a board member before saving.')
+    const boardMemberName = selectedBoardMember.trim()
+    if (!boardMemberName) {
+      showRatingNotice('fail', 'Please enter a board member name before saving.')
       return
     }
-    if (hasBoardMemberRated(selectedApplicant, selectedBoardMember)) {
-      showRatingNotice('fail', `${selectedBoardMember} has already rated this applicant.`)
+    if (hasBoardMemberRated(selectedApplicant, boardMemberName)) {
+      showRatingNotice('fail', `${boardMemberName} has already rated this applicant.`)
       return
     }
     const missingScore = ratingCriteria.some((criterion) => !ratingScores[criterion])
@@ -306,9 +247,8 @@ function RatingsPage({ uploads = [], isLoading = false, currentUser = null, onRa
           ...getArchiveActorHeaders(currentUser)
         },
         body: JSON.stringify({
-          raterName: selectedBoardMember,
+          raterName: boardMemberName,
           raterEmail: '',
-          boardMembers,
           scores,
           remarks: ratingRemarks.trim()
         })
@@ -330,12 +270,13 @@ function RatingsPage({ uploads = [], isLoading = false, currentUser = null, onRa
   }
 
   const requestSaveRating = () => {
-    if (!selectedBoardMember) {
-      showRatingNotice('fail', 'Please select a board member before saving.')
+    const boardMemberName = selectedBoardMember.trim()
+    if (!boardMemberName) {
+      showRatingNotice('fail', 'Please enter a board member name before saving.')
       return
     }
-    if (hasBoardMemberRated(selectedApplicant, selectedBoardMember)) {
-      showRatingNotice('fail', `${selectedBoardMember} has already rated this applicant.`)
+    if (hasBoardMemberRated(selectedApplicant, boardMemberName)) {
+      showRatingNotice('fail', `${boardMemberName} has already rated this applicant.`)
       return
     }
     const missingScore = ratingCriteria.some((criterion) => !ratingScores[criterion])
@@ -521,46 +462,6 @@ function RatingsPage({ uploads = [], isLoading = false, currentUser = null, onRa
           ))}
         </div>
 
-        <div className="ratings-criteria-card">
-          <div className="ratings-settings-section-head">
-            <h3>Board Members</h3>
-            <span>{boardMembersDraft.length} members</span>
-          </div>
-          <div className="ratings-board-editor-add">
-            <input
-              type="text"
-              value={newBoardMemberName}
-              placeholder="Board member name"
-              onChange={(event) => setNewBoardMemberName(event.target.value)}
-              onKeyDown={(event) => {
-                if (event.key === 'Enter') {
-                  event.preventDefault()
-                  addBoardMemberDraft()
-                }
-              }}
-            />
-            <button type="button" className="btn" onClick={addBoardMemberDraft}>
-              Add
-            </button>
-          </div>
-          <div className="ratings-board-editor-list">
-            {boardMembersDraft.map((member, index) => (
-              <div key={`${member}-${index}`} className="ratings-board-editor-row">
-                <span>{member}</span>
-                <button
-                  type="button"
-                  className="ratings-board-delete-btn"
-                  onClick={() => {
-                    setBoardMembersDraft((prev) => prev.filter((_, memberIndex) => memberIndex !== index))
-                  }}
-                >
-                  Delete
-                </button>
-              </div>
-            ))}
-          </div>
-        </div>
-
         <div className="ratings-form-footer">
           <button type="button" className="btn btn-secondary" onClick={resetCriteriaDraft}>
             Reset Defaults
@@ -666,12 +567,12 @@ function RatingsPage({ uploads = [], isLoading = false, currentUser = null, onRa
 
             <div className="ratings-board-block">
               <span className="ratings-board-label">Board Members</span>
-              <CustomDropdown
-                className="ratings-board-dropdown"
-                options={boardMembers.map((member) => ({ value: member, label: member }))}
+              <input
+                className="ratings-board-input"
+                type="text"
                 value={selectedBoardMember}
-                onChange={setSelectedBoardMember}
-                placeholder="Board Members"
+                onChange={(event) => setSelectedBoardMember(event.target.value)}
+                placeholder="Enter board member name"
               />
               {selectedBoardMemberAlreadyRated && (
                 <p className="ratings-board-warning">

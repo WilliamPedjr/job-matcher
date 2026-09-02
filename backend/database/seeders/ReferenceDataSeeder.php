@@ -25,6 +25,38 @@ class ReferenceDataSeeder extends Seeder
 
         if (File::exists($jobsPath)) {
             $jobs = json_decode(File::get($jobsPath), true) ?: [];
+            $seedIds = collect($jobs)
+                ->map(fn ($seed, $index) => $seed['id'] ?? $index + 1)
+                ->map(fn ($id) => (int) $id)
+                ->all();
+            $seedTitles = collect($jobs)
+                ->pluck('title')
+                ->filter()
+                ->map(fn ($title) => trim((string) $title))
+                ->all();
+            $previousSeedTitles = [
+                'Frontend Developer',
+                'Backend Developer',
+                'Full Stack Developer',
+                'UI/UX Designer',
+                'QA Tester',
+                'Database Administrator',
+                'HR Recruitment Assistant',
+                'IT Support Specialist',
+            ];
+
+            if ($seedIds) {
+                Job::query()
+                    ->where('source', 'template')
+                    ->whereNotIn('template_id', $seedIds)
+                    ->delete();
+            }
+
+            if (Schema::hasTable('job_templates')) {
+                JobTemplate::query()
+                    ->whereIn('title', array_diff($previousSeedTitles, $seedTitles))
+                    ->delete();
+            }
 
             foreach ($jobs as $index => $seed) {
                 if (empty($seed['title']) || empty($seed['description'])) {
@@ -40,6 +72,7 @@ class ReferenceDataSeeder extends Seeder
                             ? strtolower((string) ($seed['status'] ?? 'active'))
                             : 'active',
                         'department' => $seed['department'] ?? 'Information Technology',
+                        'job_position' => $seed['jobPosition'] ?? $seed['job_position'] ?? null,
                         'item_no' => $seed['itemNo'] ?? $seed['item_no'] ?? null,
                         'location' => $seed['location'] ?? 'Manila, Philippines',
                         'type' => $seed['type'] ?? 'Full-time',
@@ -59,6 +92,7 @@ class ReferenceDataSeeder extends Seeder
                         [
                             'description' => trim((string) ($seed['description'] ?? '')),
                             'department' => $seed['department'] ?? 'Information Technology',
+                            'job_position' => $seed['jobPosition'] ?? $seed['job_position'] ?? null,
                             'item_no' => $seed['itemNo'] ?? $seed['item_no'] ?? null,
                             'location' => $seed['location'] ?? 'Leyte Normal University',
                             'type' => $seed['type'] ?? 'Full-time',
@@ -73,8 +107,21 @@ class ReferenceDataSeeder extends Seeder
                     );
                 }
 
-                $skills = preg_split('/[,;\n|]+/', (string) ($seed['requiredSkills'] ?? '')) ?: [];
-                foreach (array_values(array_filter(array_map('trim', $skills))) as $skill) {
+                $skills = array_values(array_filter(array_map(
+                    'trim',
+                    preg_split('/[,;\n|]+/', (string) ($seed['requiredSkills'] ?? '')) ?: []
+                )));
+
+                JobSkillCatalog::query()
+                    ->where('job_id', $job->id)
+                    ->when(
+                        $skills,
+                        fn ($query) => $query->whereNotIn('skill', $skills),
+                        fn ($query) => $query
+                    )
+                    ->delete();
+
+                foreach ($skills as $skill) {
                     JobSkillCatalog::query()->firstOrCreate([
                         'job_id' => $job->id,
                         'skill' => $skill,

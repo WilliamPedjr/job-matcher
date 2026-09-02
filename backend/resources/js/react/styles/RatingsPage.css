@@ -190,61 +190,6 @@
   outline: 0;
 }
 
-.ratings-board-editor-add {
-  grid-column: 1 / -1;
-  display: grid;
-  grid-template-columns: minmax(0, 1fr) auto;
-  gap: 10px;
-}
-
-.ratings-board-editor-add input {
-  width: 100%;
-  min-height: 44px;
-  border: 1px solid #d9e1ec;
-  border-radius: 6px;
-  background: #ffffff;
-  color: #172033;
-  padding: 0 12px;
-  font-size: 14px;
-  font-weight: 700;
-}
-
-.ratings-board-editor-list {
-  grid-column: 1 / -1;
-  display: grid;
-  gap: 8px;
-}
-
-.ratings-board-editor-row {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  gap: 12px;
-  min-height: 42px;
-  border: 1px solid #e2e8f0;
-  border-radius: 6px;
-  background: #f8fafc;
-  padding: 8px 10px;
-}
-
-.ratings-board-editor-row span {
-  color: #172033;
-  font-size: 14px;
-  font-weight: 800;
-}
-
-.ratings-board-delete-btn {
-  border: 1px solid #fecaca;
-  border-radius: 6px;
-  background: #fff5f5;
-  color: #b42318;
-  cursor: pointer;
-  min-height: 30px;
-  padding: 5px 10px;
-  font-size: 12px;
-  font-weight: 900;
-}
-
 .ratings-form-header {
   display: flex;
   align-items: flex-start;
@@ -392,11 +337,13 @@
   text-transform: uppercase;
 }
 
-.ratings-board-dropdown {
+.ratings-board-dropdown,
+.ratings-board-input {
   width: 100%;
 }
 
-.ratings-board-dropdown .dropdown-trigger {
+.ratings-board-dropdown .dropdown-trigger,
+.ratings-board-input {
   width: 100%;
   min-height: 54px;
   border: 2px solid #24324a;
@@ -411,7 +358,8 @@
 }
 
 .ratings-board-dropdown .dropdown-trigger.open,
-.ratings-board-dropdown .dropdown-trigger:focus-visible {
+.ratings-board-dropdown .dropdown-trigger:focus-visible,
+.ratings-board-input:focus {
   border-color: #112b82;
   box-shadow: 0 0 0 3px rgba(29, 78, 216, 0.14);
   outline: 0;

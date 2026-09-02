@@ -21,18 +21,8 @@ use Illuminate\Support\Str;
 
 class UploadController extends Controller
 {
-    private const APPLICATION_MATCH_BONUS_PERCENT = 10;
     private const APPLICATION_MINIMUM_MATCH_SCORE = 50;
-
-    private const BOARD_MEMBERS = [
-        'Dr. Solomon Faller Jr.',
-        'Jasmin Graeles',
-        'Prof. Drake Ortega Jr.',
-        'Josisor Conchada',
-        'Prof. Jose Ismael Galamia',
-        'Dr. Joyce Magtolis',
-        'Cesar Blanco',
-    ];
+    private const MINIMUM_RATED_BOARD_MEMBER_COUNT = 4;
 
     public function __construct(
         private readonly ResumeAnalysisService $resumeAnalysisService,
@@ -66,6 +56,10 @@ class UploadController extends Controller
             'supportingTypes' => ['nullable'],
             'supportingFiles' => ['nullable'],
             'jobSeekerId' => ['nullable', 'integer'],
+            'baseMatchScore' => ['nullable', 'numeric', 'min:0', 'max:100'],
+            'totalMatchScore' => ['nullable', 'numeric', 'min:0', 'max:100'],
+            'matchScore' => ['nullable', 'numeric', 'min:0', 'max:100'],
+            'matchBonusPercentage' => ['nullable', 'numeric', 'min:0', 'max:100'],
         ]);
 
         /** @var UploadedFile $file */
@@ -122,15 +116,21 @@ class UploadController extends Controller
             ];
         }
 
-        $effectiveMatchScore = min(100, (float) ($analysis['overall_score'] ?? 0) + self::APPLICATION_MATCH_BONUS_PERCENT);
+        $effectiveMatchScore = (float) ($analysis['overall_score'] ?? 0);
+        $providedMatchScore = $data['totalMatchScore'] ?? $data['matchScore'] ?? null;
+        if ($providedMatchScore !== null) {
+            $effectiveMatchScore = min(100, (float) $providedMatchScore);
+        }
         $minimumMatchScore = (float) ($analysis['application_minimum_score'] ?? self::APPLICATION_MINIMUM_MATCH_SCORE);
-        $allowApplication = ($analysis['allow_application'] ?? false) === true;
-        if ($appliedJobTitle !== '' && !$allowApplication && $effectiveMatchScore < $minimumMatchScore) {
+        if ($appliedJobTitle !== '' && $effectiveMatchScore < $minimumMatchScore) {
             Storage::disk('local')->delete($stored['path']);
             return response()->json([
                 'message' => 'Your resume does not match this job enough to apply.',
             ], 422);
         }
+        $finalClassification = $effectiveMatchScore >= 80
+            ? 'Highly Qualified'
+            : ($effectiveMatchScore >= $minimumMatchScore ? 'Moderately Qualified' : 'Not Qualified');
 
         $jobSeeker = null;
         if (!empty($data['jobSeekerId'])) {
@@ -193,8 +193,8 @@ class UploadController extends Controller
             'saved_name' => $stored['saved_name'],
             'file_path' => $stored['path'],
             'mime_type' => $stored['mime_type'],
-            'classification' => $analysis['classification'],
-            'match_score' => $analysis['overall_score'],
+            'classification' => $finalClassification,
+            'match_score' => $effectiveMatchScore,
             'project_score' => $analysis['project_score'] ?? $analysis['skills_match_score'] ?? 0,
             'matched_job_title' => $analysis['matched_job_title'],
             'matched_skills' => $analysis['matched_skills'],
@@ -364,7 +364,7 @@ class UploadController extends Controller
     public function exportRatingSummary(Request $request, int $id): mixed
     {
         $upload = Upload::query()->with(['ratings', 'jobSeeker'])->findOrFail($id);
-        if (Str::lower((string) $upload->evaluation_status) !== 'rated') {
+        if (Str::lower((string) $upload->evaluation_status) !== 'rated' && !$this->hasMinimumBoardMemberRatings($upload)) {
             return response()->json([
                 'message' => 'Rating summary can only be exported after the application is rated.',
             ], 422);
@@ -580,8 +580,7 @@ class UploadController extends Controller
         ]);
 
         $upload->load('ratings');
-        $boardMembers = $this->cleanBoardMembers($data['boardMembers'] ?? []);
-        $upload->evaluation_status = $this->allBoardMembersRated($upload, $boardMembers) ? 'rated' : 'for_evaluation';
+        $upload->evaluation_status = $this->hasMinimumBoardMemberRatings($upload) ? 'rated' : 'for_evaluation';
         if (!$upload->evaluation_started_at) {
             $upload->evaluation_started_at = now();
         }
@@ -740,6 +739,10 @@ class UploadController extends Controller
         if ($pdsFormat !== null) {
             $resumeSummary['pds'] = $pdsFormat;
         }
+        $ratingStats = $this->ratingStats($upload);
+        $evaluationStatus = $this->hasMinimumBoardMemberRatings($upload)
+            ? 'rated'
+            : $upload->evaluation_status;
 
         return [
             'id' => $upload->id,
@@ -790,17 +793,17 @@ class UploadController extends Controller
             'experience_json' => $upload->experience_json,
             'job_seeker_hidden' => $upload->job_seeker_hidden,
             'job_seeker_hidden_at' => $upload->job_seeker_hidden_at,
-            'evaluation_status' => $upload->evaluation_status,
-            'evaluationStatus' => $upload->evaluation_status,
+            'evaluation_status' => $evaluationStatus,
+            'evaluationStatus' => $evaluationStatus,
             'evaluation_started_at' => $upload->evaluation_started_at?->toISOString(),
             'evaluationStartedAt' => $upload->evaluation_started_at?->toISOString(),
             'ratings' => $this->serializeRatings($upload),
-            'rating_count' => $this->ratingStats($upload)['count'],
-            'ratingCount' => $this->ratingStats($upload)['count'],
-            'average_rating_score' => $this->ratingStats($upload)['average'],
-            'averageRatingScore' => $this->ratingStats($upload)['average'],
-            'rating_label' => $this->ratingStats($upload)['label'],
-            'ratingLabel' => $this->ratingStats($upload)['label'],
+            'rating_count' => $ratingStats['count'],
+            'ratingCount' => $ratingStats['count'],
+            'average_rating_score' => $ratingStats['average'],
+            'averageRatingScore' => $ratingStats['average'],
+            'rating_label' => $ratingStats['label'],
+            'ratingLabel' => $ratingStats['label'],
             'hidden' => $upload->job_seeker_hidden,
             'uploaded_at' => $uploadedAt,
             'updatedAt' => $uploadedAt,
@@ -852,32 +855,17 @@ class UploadController extends Controller
         ])->values()->all();
     }
 
-    private function allBoardMembersRated(Upload $upload, array $boardMembers = []): bool
+    private function hasMinimumBoardMemberRatings(Upload $upload): bool
     {
-        $requiredBoardMembers = count($boardMembers) > 0 ? $boardMembers : self::BOARD_MEMBERS;
         $ratings = $upload->relationLoaded('ratings')
             ? $upload->ratings
             : $upload->ratings()->get();
 
-        $ratedNames = $ratings
+        return $ratings
             ->map(fn (ApplicationRating $rating) => $this->normalizeBoardMemberName($rating->rater_name))
             ->filter()
             ->unique()
-            ->values();
-
-        return collect($requiredBoardMembers)
-            ->map(fn (string $name) => $this->normalizeBoardMemberName($name))
-            ->every(fn (string $name) => $ratedNames->contains($name));
-    }
-
-    private function cleanBoardMembers(array $boardMembers): array
-    {
-        return collect($boardMembers)
-            ->map(fn ($name) => trim((string) $name))
-            ->filter()
-            ->unique(fn (string $name) => Str::lower($name))
-            ->values()
-            ->all();
+            ->count() >= self::MINIMUM_RATED_BOARD_MEMBER_COUNT;
     }
 
     private function excelCell(mixed $value): string

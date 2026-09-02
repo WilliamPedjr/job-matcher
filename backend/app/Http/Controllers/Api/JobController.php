@@ -13,6 +13,7 @@ use App\Models\Upload;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 use Illuminate\Support\Str;
+use Illuminate\Validation\ValidationException;
 
 class JobController extends Controller
 {
@@ -61,6 +62,7 @@ class JobController extends Controller
     {
         $data = $this->validateJob($request);
         $payload = $this->normalizeJobPayload($data);
+        $this->ensureUniqueJobIdentity($payload);
         $job = Job::create($payload);
         $job->closeIfDeadlineIsMet();
         $this->syncSkills($job->id, $payload['required_skills'] ?? '');
@@ -87,6 +89,7 @@ class JobController extends Controller
         $job = Job::findOrFail($id);
         $data = $this->validateJob($request, true);
         $payload = $this->normalizeJobPayload($data, false, $job);
+        $this->ensureUniqueJobIdentity($payload, $job->id);
         $job->fill($payload);
         $job->save();
         $job->closeIfDeadlineIsMet();
@@ -264,6 +267,32 @@ class JobController extends Controller
             'salary_min' => $data['salary_min'] ?? null,
             'salary_max' => $data['salary_max'] ?? null,
         ];
+    }
+
+    private function ensureUniqueJobIdentity(array $payload, ?int $ignoreJobId = null): void
+    {
+        $title = trim((string) ($payload['title'] ?? ''));
+        $itemNo = trim((string) ($payload['item_no'] ?? ''));
+        $jobPosition = trim((string) ($payload['job_position'] ?? ''));
+
+        if ($title === '' || $itemNo === '' || $jobPosition === '') {
+            return;
+        }
+
+        $exists = Job::query()
+            ->when($ignoreJobId, fn ($query) => $query->whereKeyNot($ignoreJobId))
+            ->whereRaw('LOWER(title) = ?', [Str::lower($title)])
+            ->whereRaw('LOWER(item_no) = ?', [Str::lower($itemNo)])
+            ->whereRaw('LOWER(job_position) = ?', [Str::lower($jobPosition)])
+            ->exists();
+
+        if (!$exists) {
+            return;
+        }
+
+        throw ValidationException::withMessages([
+            'item_no' => 'A job post with the same title, Plantilla Item No., and job position already exists.',
+        ]);
     }
 
     private function normalizeRequiredSkillsForStorage(?string $requiredSkills, array $data, ?Job $existingJob = null): string

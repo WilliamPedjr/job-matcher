@@ -56,7 +56,6 @@ function HelpPage({
   jobSeekerResume = null,
   jobSeekerSupporting = [],
   jobSeekerApplications = [],
-  onOpenSetupGuide,
   onGoToPage
 }) {
   if (!isJobSeeker) {
@@ -105,9 +104,9 @@ function HelpPage({
   return (
     <section className="help-page" aria-label="Job seeker help">
       <div className="help-hero">
-        <div>
-          <span className="help-kicker">Job Seeker Help</span>
-          <h2>Follow the setup walkthrough</h2>
+          <div>
+            <span className="help-kicker">Job Seeker Help</span>
+          <h2>Follow your setup checklist</h2>
           <p>Start with your Profile, prepare your documents, then discover where to browse jobs and track applications.</p>
           <div className="help-progress" aria-label={`${completedCount} of ${jobSeekerSetupItems.length} setup steps completed`}>
             <span>{completedCount}/{jobSeekerSetupItems.length} done</span>
@@ -116,9 +115,6 @@ function HelpPage({
             </div>
           </div>
         </div>
-        <button type="button" className="btn help-hero-btn" onClick={onOpenSetupGuide}>
-          Open Setup Guide
-        </button>
       </div>
 
       <div className="help-grid">

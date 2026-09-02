@@ -5,7 +5,6 @@ import CustomDropdown from '../components/CustomDropdown'
 import { getArchiveActorHeaders } from '../utils/archiveActor'
 
 function JobPostingPage({ uploads = [], isEmployer = false, isJobSeeker = false, currentUser = null, jobSeekerId, jobSeekerResume, onViewApplicant, onDeleteApplicant, onJobsChanged, onViewJob }) {
-  const APPLICATION_MATCH_BONUS_PERCENT = 10
   const JOB_FORM_DRAFT_KEY = "lnu-hire-job-form-draft"
   const [jobs, setJobs] = useState([])
   const [templates, setTemplates] = useState([])
@@ -16,6 +15,8 @@ function JobPostingPage({ uploads = [], isEmployer = false, isJobSeeker = false,
   const [selectedJobTitle, setSelectedJobTitle] = useState("")
   const [modalSortConfig, setModalSortConfig] = useState({ key: "date", direction: "desc" })
   const [actionsJobId, setActionsJobId] = useState(null)
+  const [actionsJobMenu, setActionsJobMenu] = useState(null)
+  const [isPositioningJobActionsMenu, setIsPositioningJobActionsMenu] = useState(false)
   const [isCreateModalOpen, setIsCreateModalOpen] = useState(false)
   const [editingJobId, setEditingJobId] = useState(null)
   const [newJobTitle, setNewJobTitle] = useState("")
@@ -122,6 +123,13 @@ function JobPostingPage({ uploads = [], isEmployer = false, isJobSeeker = false,
     })
   }
 
+  const apiErrorMessage = (payload, fallback) => {
+    const firstError = payload?.errors && Object.values(payload.errors)
+      .flat()
+      .find(Boolean)
+    return firstError || payload?.message || fallback
+  }
+
   const showDeleteToast = (message, type = "success", duration = 2600) => {
     if (deleteToastTimerRef.current) {
       window.clearTimeout(deleteToastTimerRef.current)
@@ -184,10 +192,69 @@ function JobPostingPage({ uploads = [], isEmployer = false, isJobSeeker = false,
 
   useEffect(() => {
     if (actionsJobId == null) return
-    const onDocClick = () => setActionsJobId(null)
+    const closeMenu = () => {
+      setActionsJobId(null)
+      setActionsJobMenu(null)
+      setIsPositioningJobActionsMenu(false)
+    }
+    const onDocClick = () => closeMenu()
+    const onScrollOrResize = () => closeMenu()
     document.addEventListener("click", onDocClick)
-    return () => document.removeEventListener("click", onDocClick)
+    document.addEventListener("scroll", onScrollOrResize, true)
+    window.addEventListener("resize", onScrollOrResize)
+    return () => {
+      document.removeEventListener("click", onDocClick)
+      document.removeEventListener("scroll", onScrollOrResize, true)
+      window.removeEventListener("resize", onScrollOrResize)
+    }
   }, [actionsJobId])
+
+  const getJobActionsMenuPosition = (button) => {
+    const rect = button.getBoundingClientRect()
+    const menuWidth = 236
+    const viewportWidth = window.innerWidth || document.documentElement.clientWidth
+
+    return {
+      top: rect.bottom + 8,
+      left: Math.min(
+        Math.max(12, rect.left),
+        Math.max(12, viewportWidth - menuWidth - 12)
+      )
+    }
+  }
+
+  const openJobActionsMenu = (event, job, actionKey) => {
+    event.stopPropagation()
+    if (actionsJobId === actionKey) {
+      setActionsJobId(null)
+      setActionsJobMenu(null)
+      setIsPositioningJobActionsMenu(false)
+      return
+    }
+
+    const button = event.currentTarget
+    const menuHeight = job.source === "template" ? 48 : 176
+    setActionsJobId(null)
+    setActionsJobMenu(null)
+    setIsPositioningJobActionsMenu(true)
+
+    window.requestAnimationFrame(() => {
+      const rect = button.getBoundingClientRect()
+      const viewportHeight = window.innerHeight || document.documentElement.clientHeight
+      const overflow = rect.bottom + 8 + menuHeight + 12 - viewportHeight
+      const scrollContainer = button.closest(".page") || document.scrollingElement
+
+      if (overflow > 0 && scrollContainer) {
+        scrollContainer.scrollBy({ top: overflow, behavior: "auto" })
+      }
+
+      window.requestAnimationFrame(() => {
+        setActionsJobId(actionKey)
+        setActionsJobMenu(getJobActionsMenuPosition(button))
+        setIsPositioningJobActionsMenu(false)
+      })
+    })
+  }
 
   useEffect(() => {
     if (!jobApplicantActionsMenu) return
@@ -393,12 +460,10 @@ function JobPostingPage({ uploads = [], isEmployer = false, isJobSeeker = false,
           const score = Number(item.score)
           const minimumScore = Number(item.minimumScore ?? 50)
           const normalizedMinimumScore = Number.isFinite(minimumScore) ? minimumScore : 50
-          const scoreWithBonus = Number.isFinite(score)
-            ? Math.min(100, score + APPLICATION_MATCH_BONUS_PERCENT)
-            : null
+          const normalizedScore = Number.isFinite(score) ? score : null
           next[key] = {
-            score: scoreWithBonus,
-            qualifies: scoreWithBonus != null ? scoreWithBonus >= normalizedMinimumScore : false,
+            score: normalizedScore,
+            qualifies: normalizedScore != null ? normalizedScore >= normalizedMinimumScore : false,
             minimumScore: normalizedMinimumScore
           }
         })
@@ -462,13 +527,20 @@ function JobPostingPage({ uploads = [], isEmployer = false, isJobSeeker = false,
     })
   }, [filteredJobs])
 
+  const normalizeJobPositionType = (value) => (
+    String(value || "").trim().toLowerCase().replace(/\s+/g, "-")
+  )
+
   const jobCategoryGroups = useMemo(() => {
     const map = new Map()
+    const selectedType = normalizeJobPositionType(newJobPositionType)
     const sources = [
       ...templates.map((item) => ({ ...item, source: "template" })),
       ...jobs.map((item) => ({ ...item, source: "job" }))
     ]
     sources.forEach((item) => {
+      const itemType = normalizeJobPositionType(item.jobPosition || item.job_position)
+      if (selectedType && itemType !== selectedType) return
       const title = String(item.title || "").trim()
       if (!title) return
       const department = String(item.department || "Other").trim() || "Other"
@@ -483,7 +555,7 @@ function JobPostingPage({ uploads = [], isEmployer = false, isJobSeeker = false,
         titles: Array.from(titles).sort((a, b) => a.localeCompare(b))
       }))
       .sort((a, b) => a.department.localeCompare(b.department))
-  }, [jobs, templates])
+  }, [jobs, newJobPositionType, templates])
 
   const filteredJobCategoryGroups = useMemo(() => {
     const query = newJobTitle.trim().toLowerCase()
@@ -538,11 +610,6 @@ function JobPostingPage({ uploads = [], isEmployer = false, isJobSeeker = false,
       .filter(Boolean)
   }
 
-  const formatMatchScore = (score) => {
-    const value = Number(score)
-    return Number.isFinite(value) ? `${value.toFixed(2)}%` : "-"
-  }
-
   const templateByTitle = useMemo(() => {
     const map = new Map()
     const sources = [
@@ -577,10 +644,13 @@ function JobPostingPage({ uploads = [], isEmployer = false, isJobSeeker = false,
   }, [newJobTitle, templateByTitle])
 
   const degreeMap = useMemo(() => ({
-    "Frontend Developer": { bachelor: "Bachelor's Degree in Computer Science", master: "Master's Degree in Computer Science" },
-    "Backend Developer": { bachelor: "Bachelor's Degree in Computer Science", master: "Master's Degree in Computer Science" },
-    "Accounting Staff": { bachelor: "BS Accountancy", master: "Master's Degree in Accountancy" },
-    "Administrative Staff": { bachelor: "Bachelor's Degree in Business Administration", master: "Master's Degree in Business Administration" },
+    "Chief Administrative Officer": { bachelor: "Bachelor's Degree relevant to the job with Master's Degree", master: "Master's Degree relevant to the job" },
+    "Administrative Officer III": { bachelor: "Bachelor's Degree relevant to the job", master: "Master's Degree relevant to the job" },
+    "Senior Administrative Assistant I": { bachelor: "Completion of two years studies in college", master: "Bachelor's Degree" },
+    "Accountant I": { bachelor: "BS Accountancy", master: "Master's Degree in Accountancy" },
+    "Administrative Officer II": { bachelor: "Bachelor's Degree relevant to the job", master: "Master's Degree relevant to the job" },
+    "Administrative Officer I": { bachelor: "Bachelor's Degree relevant to the job", master: "Master's Degree relevant to the job" },
+    "Administrative Aide III (Utility Worker II A)": { bachelor: "Must be able to read and write", master: "High School Graduate" },
     "English Instructor": { bachelor: "BSEd major in English", master: "Master's Degree in English Education" },
     "Math Instructor": { bachelor: "BSEd major in Mathematics", master: "Master's Degree in Mathematics Education" },
     "Social Studies Instructor": { bachelor: "BSEd major in Social Studies", master: "Master's Degree in Social Studies Education" },
@@ -684,6 +754,21 @@ function JobPostingPage({ uploads = [], isEmployer = false, isJobSeeker = false,
       .filter((token) => token.toLowerCase().includes(query))
       .slice(0, 8)
   }, [searchSuggestions, searchTerm])
+
+  const handleJobPositionTypeChange = (nextType) => {
+    const nextTypeKey = normalizeJobPositionType(nextType)
+    const selectedTemplate = templateByTitle.get(newJobTitle.trim().toLowerCase())
+    const selectedTemplateTypeKey = normalizeJobPositionType(selectedTemplate?.jobPosition || selectedTemplate?.job_position)
+    setNewJobPositionType(nextType)
+    setExpandedDepartments({})
+    setIsJobPositionOpen(false)
+
+    if (newJobTitle.trim() && selectedTemplateTypeKey && selectedTemplateTypeKey !== nextTypeKey) {
+      setNewJobTitle("")
+      setNewJobDepartment("")
+      setNewJobItemNo("")
+    }
+  }
 
 
   const applyTemplate = (templateId) => {
@@ -797,13 +882,6 @@ function JobPostingPage({ uploads = [], isEmployer = false, isJobSeeker = false,
     { value: "all", label: "All Positions" },
     { value: "teaching", label: "Teaching" },
     { value: "non-teaching", label: "Non-Teaching" }
-  ]
-
-  const eligibilityOptions = [
-    { value: "Open to all qualified applicants", label: "Open to all qualified applicants" },
-    { value: "Internal applicants only", label: "Internal applicants only" },
-    { value: "External applicants only", label: "External applicants only" },
-    { value: "Licensed applicants only", label: "Licensed applicants only" }
   ]
 
   const jobStatusOptions = [
@@ -1203,7 +1281,7 @@ function JobPostingPage({ uploads = [], isEmployer = false, isJobSeeker = false,
 
       if (!response.ok) {
         const payload = await response.json().catch(() => null)
-        throw new Error(payload?.message || "Failed to create job post.")
+        throw new Error(apiErrorMessage(payload, "Failed to create job post."))
       }
 
       clearSavedJobDraft()
@@ -1294,7 +1372,7 @@ function JobPostingPage({ uploads = [], isEmployer = false, isJobSeeker = false,
 
       if (!response.ok) {
         const payload = await response.json().catch(() => null)
-        throw new Error(payload?.message || "Failed to update job post.")
+        throw new Error(apiErrorMessage(payload, "Failed to update job post."))
       }
 
       closeCreateModal({ saveDraft: false })
@@ -1310,7 +1388,7 @@ function JobPostingPage({ uploads = [], isEmployer = false, isJobSeeker = false,
   }
 
   return (
-    <section className="jobs-panel jobs-panel-modern">
+    <section className={`jobs-panel jobs-panel-modern ${actionsJobId || isPositioningJobActionsMenu ? "jobs-menu-open" : ""}`}>
       <div className="jobs-hero">
         <div>
           <p className="jobs-kicker">Job Posting</p>
@@ -1403,7 +1481,7 @@ function JobPostingPage({ uploads = [], isEmployer = false, isJobSeeker = false,
                 <th className="jobs-title-col">Job Position</th>
                 <th className="jobs-dept-col">Department</th>
                 <th className="jobs-type-col">Type</th>
-                <th className="jobs-deadline-col">Deadline</th>
+                <th className="jobs-deadline-col">Post Deadline</th>
                 {isJobSeeker && <th className="jobs-match-col">Match</th>}
                 {!isJobSeeker && <th className="jobs-applicants-col">Applicants</th>}
                 <th className="jobs-status-col">Status</th>
@@ -1413,8 +1491,6 @@ function JobPostingPage({ uploads = [], isEmployer = false, isJobSeeker = false,
             <tbody>
               {fifoJobs.map((job, index) => {
                 const actionKey = `${job.source || "job"}-${job.id}`
-                const jobPosition = job.jobPosition || job.job_position || "-"
-                const itemNo = job.itemNo || job.item_no || ""
                 const deadline = job.deadline
                   ? new Date(job.deadline).toLocaleDateString(undefined, { month: "short", day: "numeric", year: "numeric" })
                   : "-"
@@ -1504,11 +1580,6 @@ function JobPostingPage({ uploads = [], isEmployer = false, isJobSeeker = false,
                       >
                         {job.title || "-"}
                       </button>
-                      <div className="job-table-subtext">
-                        {itemNo ? `Item ${itemNo} · ` : ""}
-                        {jobPosition}
-                        {job.source === "template" ? " · template" : ""}
-                      </div>
                       {isJobSeeker && skills.length > 0 && (
                         <div className="job-table-skills">
                           {skills.slice(0, 3).join(", ")}
@@ -1546,14 +1617,17 @@ function JobPostingPage({ uploads = [], isEmployer = false, isJobSeeker = false,
                               className="job-more"
                               type="button"
                               onClick={(e) => {
-                                e.stopPropagation()
-                                setActionsJobId((prev) => (prev === actionKey ? null : actionKey))
+                                openJobActionsMenu(e, job, actionKey)
                               }}
                             >
                               ...
                             </button>
-                            {actionsJobId === actionKey && (
-                              <div className="job-actions-menu" onClick={(e) => e.stopPropagation()}>
+                            {actionsJobId === actionKey && actionsJobMenu && (
+                              <div
+                                className="job-actions-menu job-actions-menu-floating"
+                                style={{ top: `${actionsJobMenu.top}px`, left: `${actionsJobMenu.left}px` }}
+                                onClick={(e) => e.stopPropagation()}
+                              >
                                 {job.source === "template" ? (
                                   <button
                                     type="button"
@@ -1581,13 +1655,6 @@ function JobPostingPage({ uploads = [], isEmployer = false, isJobSeeker = false,
                                       }}
                                     >
                                       Edit Details
-                                    </button>
-                                    <button
-                                      type="button"
-                                      className="actions-menu-item"
-                                      onClick={() => duplicateJobPost(job)}
-                                    >
-                                      Duplicate Post
                                     </button>
                                     <button
                                       type="button"
@@ -1841,6 +1908,17 @@ function JobPostingPage({ uploads = [], isEmployer = false, isJobSeeker = false,
 
                   <div className="modal-grid">
                     <div className="field-group">
+                      <label>Job Position Type</label>
+                      <CustomDropdown
+                        className={requiredDropdownClass(newJobPositionType)}
+                        options={jobPositionTypeOptions}
+                        value={newJobPositionType}
+                        onChange={handleJobPositionTypeChange}
+                        placeholder="Teaching"
+                      />
+                    </div>
+
+                    <div className="field-group">
                       <label>Job Position</label>
                       <div
                         ref={jobPositionRef}
@@ -1914,17 +1992,6 @@ function JobPostingPage({ uploads = [], isEmployer = false, isJobSeeker = false,
                     </div>
 
                     <div className="field-group">
-                      <label>Job Position Type</label>
-                      <CustomDropdown
-                        className={requiredDropdownClass(newJobPositionType)}
-                        options={jobPositionTypeOptions}
-                        value={newJobPositionType}
-                        onChange={setNewJobPositionType}
-                        placeholder="Teaching"
-                      />
-                    </div>
-
-                    <div className="field-group">
                       <label>Plantilla Item No.</label>
                       <input
                         className={requiredInputClass(newJobItemNo)}
@@ -1953,7 +2020,7 @@ function JobPostingPage({ uploads = [], isEmployer = false, isJobSeeker = false,
                     </div>
 
                     <div className="field-group">
-                      <label>Deadline</label>
+                      <label>Post Deadline</label>
                       <input
                         className={requiredInputClass(newJobDeadline)}
                         type="date"
@@ -1977,12 +2044,12 @@ function JobPostingPage({ uploads = [], isEmployer = false, isJobSeeker = false,
 
                     <div className="field-group">
                       <label>Eligibility</label>
-                      <CustomDropdown
-                        className={requiredDropdownClass(newJobEligibility)}
-                        options={eligibilityOptions}
+                      <input
+                        className={requiredInputClass(newJobEligibility)}
+                        type="text"
                         value={newJobEligibility}
-                        onChange={setNewJobEligibility}
-                        placeholder="Select eligibility"
+                        onChange={(e) => setNewJobEligibility(e.target.value)}
+                        placeholder="Enter eligibility"
                       />
                     </div>
                   </div>
