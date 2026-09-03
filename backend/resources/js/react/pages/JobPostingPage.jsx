@@ -72,7 +72,6 @@ function JobPostingPage({ uploads = [], isEmployer = false, isJobSeeker = false,
 
   useEffect(() => {
     if (!createJobStatus) return
-    if (createJobStatus !== "success") return
     const timer = setTimeout(() => {
       setCreateJobStatus("")
       setCreateJobNotice("")
@@ -894,6 +893,21 @@ function JobPostingPage({ uploads = [], isEmployer = false, isJobSeeker = false,
     { value: "Non-Teaching", label: "Non-Teaching" }
   ]
 
+  const normalizeJobIdentityValue = (value) => (
+    String(value || "").trim().replace(/\s+/g, " ").toLowerCase()
+  )
+
+  const findDuplicateJobPost = (itemNo, ignoredJobId = null) => {
+    const normalizedItemNo = normalizeJobIdentityValue(itemNo)
+    if (!normalizedItemNo) return null
+
+    return jobs.find((job) => {
+      const sameJob = ignoredJobId != null && String(job.id) === String(ignoredJobId)
+      if (sameJob) return false
+      return normalizeJobIdentityValue(job.itemNo || job.item_no) === normalizedItemNo
+    }) || null
+  }
+
   const updateJobStatus = async (jobId, status) => {
     try {
       const response = await fetch(`http://localhost:5000/jobs/${jobId}/status`, {
@@ -912,60 +926,6 @@ function JobPostingPage({ uploads = [], isEmployer = false, isJobSeeker = false,
       await onJobsChanged?.()
     } catch (err) {
       setError(err.message || "Failed to update job status.")
-    }
-  }
-
-  const duplicateJobPost = async (job) => {
-    if (!job) return
-    setActionsJobId(null)
-    const baseTitle = String(job.title || "Job Post").replace(/\s+Copy(?:\s+\d+)?$/i, "").trim() || "Job Post"
-    const existingTitles = new Set(jobs.map((item) => String(item.title || "").trim().toLowerCase()))
-    let duplicateTitle = `${baseTitle} Copy`
-    let copyNumber = 2
-    while (existingTitles.has(duplicateTitle.toLowerCase())) {
-      duplicateTitle = `${baseTitle} Copy ${copyNumber}`
-      copyNumber += 1
-    }
-
-    try {
-      const response = await fetch("http://localhost:5000/jobs", {
-        method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-          ...getArchiveActorHeaders(currentUser)
-        },
-        body: JSON.stringify({
-          title: duplicateTitle,
-          description: job.description || "",
-          department: job.department || "",
-          jobPosition: job.jobPosition || job.job_position || "Teaching",
-          itemNo: "",
-          location: job.location || defaultJobLocation,
-          type: job.type || "Full-time",
-          status: "closed",
-          deadline: job.deadline || null,
-          eligibility: job.eligibility || "Open to all qualified applicants",
-          requiredSkills: job.requiredSkills || job.required_skills || "",
-          universalMatchMode: job.universalMatchMode || job.universal_match_mode || "",
-          minimumEducation: job.minimumEducation || job.minimum_education || "",
-          minimumExperienceYears: job.minimumExperienceYears ?? job.minimum_experience_years ?? 0,
-          applicationThresholdScore: job.applicationThresholdScore ?? job.application_threshold_score ?? 50,
-          salaryMin: job.salaryMin ?? job.salary_min ?? null,
-          salaryMax: job.salaryMax ?? job.salary_max ?? null,
-          activityEvent: "job.duplicated",
-          sourceJobId: job.id,
-          sourceJobTitle: job.title || ""
-        })
-      })
-      const payload = await response.json().catch(() => null)
-      if (!response.ok) {
-        throw new Error(payload?.message || "Failed to duplicate job post.")
-      }
-      await fetchJobs({ silent: true })
-      await onJobsChanged?.()
-      showCreateJobNotice("success", "Job post duplicated with empty item number.")
-    } catch (err) {
-      showCreateJobNotice("fail", err.message || "Failed to duplicate job post.")
     }
   }
 
@@ -1249,6 +1209,12 @@ function JobPostingPage({ uploads = [], isEmployer = false, isJobSeeker = false,
       return
     }
     const { salaryMin, salaryMax } = normalizeSalaryRange(parsedSalaryMin, parsedSalaryMax)
+    const duplicateJob = findDuplicateJobPost(newJobItemNo)
+    if (duplicateJob) {
+      showCreateJobNotice("fail", "This Plantilla Item No. is already used by another job post.")
+      scrollCreateJobModalToTop()
+      return
+    }
 
     setIsCreatingJob(true)
     setError("")
@@ -1340,6 +1306,12 @@ function JobPostingPage({ uploads = [], isEmployer = false, isJobSeeker = false,
       return
     }
     const { salaryMin, salaryMax } = normalizeSalaryRange(parsedSalaryMin, parsedSalaryMax)
+    const duplicateJob = findDuplicateJobPost(newJobItemNo, editingJobId)
+    if (duplicateJob) {
+      showCreateJobNotice("fail", "This Plantilla Item No. is already used by another job post.")
+      scrollCreateJobModalToTop()
+      return
+    }
 
     setIsCreatingJob(true)
     setError("")

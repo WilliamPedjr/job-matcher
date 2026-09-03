@@ -51,7 +51,7 @@ class AuthController extends Controller
         return response()->json([
             'authenticated' => false,
             'user' => null,
-        ], 401);
+        ]);
     }
 
     public function verifyRecaptcha(Request $request, RecaptchaService $recaptchaService): JsonResponse

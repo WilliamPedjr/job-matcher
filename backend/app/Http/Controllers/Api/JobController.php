@@ -271,19 +271,15 @@ class JobController extends Controller
 
     private function ensureUniqueJobIdentity(array $payload, ?int $ignoreJobId = null): void
     {
-        $title = trim((string) ($payload['title'] ?? ''));
         $itemNo = trim((string) ($payload['item_no'] ?? ''));
-        $jobPosition = trim((string) ($payload['job_position'] ?? ''));
 
-        if ($title === '' || $itemNo === '' || $jobPosition === '') {
+        if ($itemNo === '') {
             return;
         }
 
         $exists = Job::query()
             ->when($ignoreJobId, fn ($query) => $query->whereKeyNot($ignoreJobId))
-            ->whereRaw('LOWER(title) = ?', [Str::lower($title)])
             ->whereRaw('LOWER(item_no) = ?', [Str::lower($itemNo)])
-            ->whereRaw('LOWER(job_position) = ?', [Str::lower($jobPosition)])
             ->exists();
 
         if (!$exists) {
@@ -291,7 +287,7 @@ class JobController extends Controller
         }
 
         throw ValidationException::withMessages([
-            'item_no' => 'A job post with the same title, Plantilla Item No., and job position already exists.',
+            'item_no' => 'A job post with this Plantilla Item No. already exists.',
         ]);
     }
 
