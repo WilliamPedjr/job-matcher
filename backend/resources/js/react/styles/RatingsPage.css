@@ -815,6 +815,12 @@
   background: #f8fafc;
 }
 
+.demonstration-observer-field {
+  grid-column: 1 / -1;
+  justify-self: end;
+  width: min(360px, 100%);
+}
+
 
 .ratings-header {
   display: flex;

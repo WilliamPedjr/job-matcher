@@ -110,7 +110,8 @@ const demonstrationDetailDefaults = {
   matterLesson: '',
   date: '',
   time: '',
-  room: ''
+  room: '',
+  observer: ''
 }
 
 const boardTypeOptions = [
@@ -359,6 +360,7 @@ function RatingsPage({ uploads = [], isLoading = false, currentUser = null, onRa
             .map(([key, value]) => `${key}: ${String(value).trim()}`),
           `Mean: ${demonstrationMean ? demonstrationMean.toFixed(2) : '-'}`,
           `Descriptive Rating: ${getDemonstrationDescription(demonstrationMean)}`,
+          demonstrationDetails.observer ? `Observer: ${demonstrationDetails.observer}` : '',
           ratingRemarks.trim()
         ].filter(Boolean).join('\n')
       : [
@@ -829,6 +831,17 @@ function RatingsPage({ uploads = [], isLoading = false, currentUser = null, onRa
                 <label>
                   <span>Descriptive Rating</span>
                   <input value={getDemonstrationDescription(demonstrationMean)} readOnly />
+                </label>
+                <label className="demonstration-observer-field">
+                  <span>Observer</span>
+                  <input
+                    type="text"
+                    value={demonstrationDetails.observer}
+                    onChange={(event) => setDemonstrationDetails((prev) => ({
+                      ...prev,
+                      observer: event.target.value
+                    }))}
+                  />
                 </label>
               </div>
             </div>
