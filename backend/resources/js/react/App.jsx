@@ -2333,7 +2333,7 @@ function App() {
                         <thead>
                           <tr>
                             <th>Job Title</th>
-                            <th>Department</th>
+                            <th>College/Office</th>
                             <th>Date Applied</th>
                             <th>Status</th>
                           </tr>

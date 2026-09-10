@@ -541,13 +541,15 @@ class UploadController extends Controller
             'boardMembers' => ['nullable', 'array'],
             'boardMembers.*' => ['nullable', 'string', 'max:255'],
             'scores' => ['required', 'array'],
-            'scores.*' => ['required', 'integer', 'min:1', 'max:5'],
+            'scores.*' => ['required', 'integer', 'min:0', 'max:5'],
             'remarks' => ['nullable', 'string', 'max:1000'],
         ]);
 
         $scores = array_map('intval', $data['scores']);
         $totalScore = array_sum($scores);
-        $percentageScore = round(($totalScore / 50) * 100, 2);
+        $ratedScoreCount = count(array_filter($scores, fn (int $score) => $score > 0));
+        $possibleScore = max(1, $ratedScoreCount) * 5;
+        $percentageScore = round(($totalScore / $possibleScore) * 100, 2);
         $raterName = trim((string) ($data['raterName'] ?? ''));
         $raterEmail = Str::lower(trim((string) ($data['raterEmail'] ?? '')));
 

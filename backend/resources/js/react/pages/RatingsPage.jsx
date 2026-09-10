@@ -1,6 +1,7 @@
 import React, { useEffect, useMemo, useRef, useState } from 'react'
 import '../styles/RatingsPage.css'
 import ApplicantViewPage from './ApplicantViewPage'
+import CustomDropdown from '../components/CustomDropdown'
 import { getArchiveActorHeaders } from '../utils/archiveActor'
 
 function formatInterviewDate(value) {
@@ -61,6 +62,93 @@ const ratingBands = [
   { label: 'Unsatisfactory', range: '10 & below', value: 1 }
 ]
 
+const demonstrationSections = [
+  {
+    key: 'teacher',
+    label: 'A. Teacher',
+    criteria: [
+      'Mastery of Subject',
+      'Organization of Lesson',
+      'Class Management',
+      'Methods and Techniques',
+      'Personality / Grooming',
+      'Awareness of Current Issues',
+      'Promotion of desirable value habits',
+      'Communication Skills',
+      'Use of instructional materials'
+    ]
+  },
+  {
+    key: 'student',
+    label: 'B. Student',
+    criteria: [
+      'Student-teacher interaction',
+      'Preparedness',
+      'Communication skills',
+      'Awareness of current issues'
+    ]
+  },
+  {
+    key: 'learning-environment',
+    label: 'C. Learning Environment',
+    criteria: [
+      'Free from distraction',
+      'Ventilation',
+      'Lighting',
+      'Adequacy of facilities',
+      'Housekeeping (orderliness & cleanliness)'
+    ]
+  }
+]
+
+const demonstrationRatingColumns = [5, 4, 3, 2, 1, 'NA']
+
+const demonstrationDetailDefaults = {
+  teacher: '',
+  subject: '',
+  building: '',
+  matterLesson: '',
+  date: '',
+  time: '',
+  room: ''
+}
+
+const boardTypeOptions = [
+  { value: 'personnel-selection-board', label: 'Personnel Selection Board' },
+  { value: 'faculty-selection-board', label: 'Faculty Selection Board' }
+]
+
+function getDefaultBoardType(currentUser) {
+  const role = String(currentUser?.role || '').trim().toLowerCase()
+  return role === 'faculty' ? 'faculty-selection-board' : 'personnel-selection-board'
+}
+
+function getBoardTypeLabel(value) {
+  return boardTypeOptions.find((option) => option.value === value)?.label || 'Personnel Selection Board'
+}
+
+function getDemonstrationCriterionKey(sectionKey, criterion) {
+  return `${sectionKey}: ${criterion}`
+}
+
+function getDemonstrationDescription(mean) {
+  if (!mean) return '-'
+  if (mean >= 4.5) return 'Outstanding'
+  if (mean >= 3.5) return 'Very Good'
+  if (mean >= 2.5) return 'Good'
+  if (mean >= 1.5) return 'Fair'
+  return 'Poor'
+}
+
+function getSavedRatingFormType(rating) {
+  const remarks = String(rating?.remarks || '').toLowerCase()
+  const scoreKeys = Object.keys(rating?.scores || {})
+  if (remarks.includes('applicant demonstration form') || scoreKeys.some((key) => key.includes(': '))) {
+    return 'demonstration'
+  }
+  return 'interview'
+}
+
 function RatingsPage({ uploads = [], isLoading = false, currentUser = null, onRatingsChanged }) {
   const [searchTerm, setSearchTerm] = useState('')
   const [positionFilter, setPositionFilter] = useState('all')
@@ -69,7 +157,9 @@ function RatingsPage({ uploads = [], isLoading = false, currentUser = null, onRa
   const [criteriaDraft, setCriteriaDraft] = useState(() => loadRatingCriteria())
   const [selectedApplicant, setSelectedApplicant] = useState(null)
   const [ratingStarted, setRatingStarted] = useState(false)
+  const [ratingFormType, setRatingFormType] = useState('interview')
   const [ratingScores, setRatingScores] = useState({})
+  const [demonstrationDetails, setDemonstrationDetails] = useState(demonstrationDetailDefaults)
   const [ratingRemarks, setRatingRemarks] = useState('')
   const [actionsMenu, setActionsMenu] = useState(null)
   const [confirmRatingAction, setConfirmRatingAction] = useState(null)
@@ -77,6 +167,7 @@ function RatingsPage({ uploads = [], isLoading = false, currentUser = null, onRa
   const [cancelledIds, setCancelledIds] = useState([])
   const [ratingNotice, setRatingNotice] = useState(null)
   const [selectedBoardMember, setSelectedBoardMember] = useState('')
+  const [selectedBoardType, setSelectedBoardType] = useState(() => getDefaultBoardType(currentUser))
   const ratingNoticeTimer = useRef(null)
 
   const evaluationUploads = useMemo(() => (
@@ -139,6 +230,10 @@ function RatingsPage({ uploads = [], isLoading = false, currentUser = null, onRa
       window.clearTimeout(ratingNoticeTimer.current)
     }
   }, [])
+
+  useEffect(() => {
+    setSelectedBoardType((current) => current || getDefaultBoardType(currentUser))
+  }, [currentUser])
 
   const showRatingNotice = (type, message) => {
     if (ratingNoticeTimer.current) {
@@ -213,9 +308,25 @@ function RatingsPage({ uploads = [], isLoading = false, currentUser = null, onRa
     })
   }
 
+  const demonstrationCriteria = useMemo(() => (
+    demonstrationSections.flatMap((section) => (
+      section.criteria.map((criterion) => getDemonstrationCriterionKey(section.key, criterion))
+    ))
+  ), [])
+
+  const activeRatingCriteria = ratingFormType === 'demonstration' ? demonstrationCriteria : ratingCriteria
+  const activeMaxScore = activeRatingCriteria.length * 5
   const totalRatingScore = useMemo(() => (
-    ratingCriteria.reduce((total, criterion) => total + Number(ratingScores[criterion] || 0), 0)
-  ), [ratingScores])
+    activeRatingCriteria.reduce((total, criterion) => total + Number(ratingScores[criterion] || 0), 0)
+  ), [activeRatingCriteria, ratingScores])
+  const demonstrationApplicableScores = useMemo(() => (
+    demonstrationCriteria
+      .map((criterion) => Number(ratingScores[criterion]))
+      .filter((score) => score > 0)
+  ), [demonstrationCriteria, ratingScores])
+  const demonstrationMean = demonstrationApplicableScores.length
+    ? demonstrationApplicableScores.reduce((total, score) => total + score, 0) / demonstrationApplicableScores.length
+    : 0
 
   const saveRating = async () => {
     if (!selectedApplicant?.id) return
@@ -228,16 +339,32 @@ function RatingsPage({ uploads = [], isLoading = false, currentUser = null, onRa
       showRatingNotice('fail', `${boardMemberName} has already rated this applicant.`)
       return
     }
-    const missingScore = ratingCriteria.some((criterion) => !ratingScores[criterion])
+    const missingScore = activeRatingCriteria.some((criterion) => ratingScores[criterion] === undefined)
     if (missingScore) {
       showRatingNotice('fail', 'Please complete all rating criteria before saving.')
       return
     }
 
-    const scores = ratingCriteria.reduce((payload, criterion) => ({
+    const scores = activeRatingCriteria.reduce((payload, criterion) => ({
       ...payload,
       [criterion]: Number(ratingScores[criterion])
     }), {})
+
+    const demonstrationSummary = ratingFormType === 'demonstration'
+      ? [
+          'Applicant Demonstration Form',
+          `Board Type: ${getBoardTypeLabel(selectedBoardType)}`,
+          ...Object.entries(demonstrationDetails)
+            .filter(([, value]) => String(value || '').trim())
+            .map(([key, value]) => `${key}: ${String(value).trim()}`),
+          `Mean: ${demonstrationMean ? demonstrationMean.toFixed(2) : '-'}`,
+          `Descriptive Rating: ${getDemonstrationDescription(demonstrationMean)}`,
+          ratingRemarks.trim()
+        ].filter(Boolean).join('\n')
+      : [
+          `Board Type: ${getBoardTypeLabel(selectedBoardType)}`,
+          ratingRemarks.trim()
+        ].filter(Boolean).join('\n')
 
     try {
       const response = await fetch(`http://localhost:5000/uploads/${selectedApplicant.id}/ratings`, {
@@ -249,8 +376,9 @@ function RatingsPage({ uploads = [], isLoading = false, currentUser = null, onRa
         body: JSON.stringify({
           raterName: boardMemberName,
           raterEmail: '',
+          boardType: selectedBoardType,
           scores,
-          remarks: ratingRemarks.trim()
+          remarks: demonstrationSummary
         })
       })
       const payload = await response.json().catch(() => null)
@@ -259,8 +387,11 @@ function RatingsPage({ uploads = [], isLoading = false, currentUser = null, onRa
       }
       setSelectedApplicant(payload)
       setRatingScores({})
+      setDemonstrationDetails(demonstrationDetailDefaults)
       setRatingRemarks('')
       setSelectedBoardMember('')
+      setSelectedBoardType(getDefaultBoardType(currentUser))
+      setRatingFormType('interview')
       setRatingStarted(false)
       onRatingsChanged?.()
       showRatingNotice('success', 'Rating saved successfully.')
@@ -279,7 +410,7 @@ function RatingsPage({ uploads = [], isLoading = false, currentUser = null, onRa
       showRatingNotice('fail', `${boardMemberName} has already rated this applicant.`)
       return
     }
-    const missingScore = ratingCriteria.some((criterion) => !ratingScores[criterion])
+    const missingScore = activeRatingCriteria.some((criterion) => ratingScores[criterion] === undefined)
     if (missingScore) {
       showRatingNotice('fail', 'Please complete all rating criteria before saving.')
       return
@@ -305,8 +436,11 @@ function RatingsPage({ uploads = [], isLoading = false, currentUser = null, onRa
         setSelectedApplicant(null)
         setRatingStarted(false)
         setRatingScores({})
+        setDemonstrationDetails(demonstrationDetailDefaults)
         setRatingRemarks('')
         setSelectedBoardMember('')
+        setSelectedBoardType(getDefaultBoardType(currentUser))
+        setRatingFormType('interview')
       }
       onRatingsChanged?.()
       showRatingNotice(
@@ -482,6 +616,7 @@ function RatingsPage({ uploads = [], isLoading = false, currentUser = null, onRa
     const ratingLabel = selectedApplicant.ratingLabel || selectedApplicant.rating_label || 'No rating'
     const ratingCount = Number(selectedApplicant.ratingCount || selectedApplicant.rating_count || applicantRatings.length || 0)
     const canOpenRatingForm = ratingStarted
+    const isDemonstrationForm = ratingFormType === 'demonstration'
     const interviewDate = formatInterviewDate(selectedApplicant.uploaded_at || selectedApplicant.updated_at || selectedApplicant.updatedAt)
     const selectedBoardMemberAlreadyRated = hasBoardMemberRated(selectedApplicant, selectedBoardMember)
     const saveRatingConfirmNode = confirmSaveRating ? (
@@ -501,8 +636,10 @@ function RatingsPage({ uploads = [], isLoading = false, currentUser = null, onRa
           <div className="ratings-save-confirm-summary">
             <span>Board Member</span>
             <strong>{selectedBoardMember || '-'}</strong>
+            <span>Board Type</span>
+            <strong>{getBoardTypeLabel(selectedBoardType)}</strong>
             <span>Total Score</span>
-            <strong>{totalRatingScore}/50</strong>
+            <strong>{totalRatingScore}/{activeMaxScore}</strong>
           </div>
           <div className="modal-actions">
             <button type="button" className="btn btn-secondary" onClick={closeSaveConfirmation}>
@@ -525,7 +662,7 @@ function RatingsPage({ uploads = [], isLoading = false, currentUser = null, onRa
 
     if (canOpenRatingForm) {
       return (
-        <section className="ratings-form-page" aria-label="Interview rating form">
+        <section className="ratings-form-page" aria-label={isDemonstrationForm ? 'Applicant demonstration form' : 'Interview rating form'}>
           {ratingNoticeNode}
           {saveRatingConfirmNode}
           <div className="ratings-form-header">
@@ -535,17 +672,20 @@ function RatingsPage({ uploads = [], isLoading = false, currentUser = null, onRa
                 className="ratings-back-link"
                 onClick={() => {
           setSelectedBoardMember('')
+          setSelectedBoardType(getDefaultBoardType(currentUser))
+          setDemonstrationDetails(demonstrationDetailDefaults)
           setRatingRemarks('')
+          setRatingFormType('interview')
           setRatingStarted(false)
                 }}
               >
                 Back to Applicant Summary
               </button>
-              <h2>Interview Rating Form</h2>
+              <h2>{isDemonstrationForm ? 'Applicant Demonstration Form' : 'Interview Rating Form'}</h2>
             </div>
             <div className="ratings-total-box">
               <span>Total Score</span>
-              <strong>{totalRatingScore}/50</strong>
+              <strong>{totalRatingScore}/{activeMaxScore}</strong>
             </div>
           </div>
 
@@ -566,7 +706,14 @@ function RatingsPage({ uploads = [], isLoading = false, currentUser = null, onRa
             </dl>
 
             <div className="ratings-board-block">
-              <span className="ratings-board-label">Board Members</span>
+              <span className="ratings-board-label">Selection Board</span>
+              <CustomDropdown
+                className="ratings-board-dropdown"
+                options={boardTypeOptions}
+                value={selectedBoardType}
+                onChange={setSelectedBoardType}
+                placeholder="Select board type"
+              />
               <input
                 className="ratings-board-input"
                 type="text"
@@ -582,55 +729,160 @@ function RatingsPage({ uploads = [], isLoading = false, currentUser = null, onRa
             </div>
           </div>
 
-          <div className="ratings-form-shell">
-            <div className="ratings-form-scroll">
-              <table className="ratings-form-table">
-                <thead>
-                  <tr>
-                    <th className="ratings-form-criteria-head" rowSpan={2}>Criteria</th>
-                    <th className="ratings-form-score-head" colSpan={ratingBands.length}>Rate / Score</th>
-                  </tr>
-                  <tr>
-                    {ratingBands.map((band) => (
-                      <th key={band.value}>
-                        <span>{band.label}</span>
-                        <small>({band.range})</small>
-                      </th>
-                    ))}
-                  </tr>
-                </thead>
-                <tbody>
-                  {ratingCriteria.map((criterion, index) => (
-                    <tr key={criterion}>
-                      <td className="ratings-form-criterion">
-                        <span>{index + 1}.</span>
-                        <strong>{criterion}</strong>
-                      </td>
-                      {ratingBands.map((band) => (
-                        <td key={`${criterion}-${band.value}`} className="ratings-radio-cell">
-                          <label className="ratings-radio-choice">
-                            <input
-                              type="radio"
-                              name={`rating-${index}`}
-                              value={band.value}
-                              checked={Number(ratingScores[criterion] || 0) === band.value}
-                              onChange={() => {
-                                setRatingScores((prev) => ({
-                                  ...prev,
-                                  [criterion]: band.value
-                                }))
-                              }}
-                            />
-                            <span aria-hidden="true" />
-                          </label>
-                        </td>
+          {isDemonstrationForm ? (
+            <div className="demonstration-form-shell">
+              <div className="demonstration-form-title">
+                <h3>Applicant's Demonstration Form</h3>
+                <span>Instructor / Lecture / Demo</span>
+              </div>
+              <div className="demonstration-meta-grid">
+                {[
+                  ['teacher', 'Teacher'],
+                  ['date', 'Date'],
+                  ['subject', 'Subject'],
+                  ['time', 'Time'],
+                  ['building', 'Building'],
+                  ['room', 'Room'],
+                  ['matterLesson', 'Subject Matter / Lesson']
+                ].map(([key, label]) => (
+                  <label key={key} className={key === 'matterLesson' ? 'wide' : ''}>
+                    <span>{label}</span>
+                    <input
+                      type={key === 'date' ? 'date' : key === 'time' ? 'time' : 'text'}
+                      value={demonstrationDetails[key]}
+                      onChange={(event) => setDemonstrationDetails((prev) => ({
+                        ...prev,
+                        [key]: event.target.value
+                      }))}
+                    />
+                  </label>
+                ))}
+              </div>
+              <div className="demonstration-table-scroll">
+                <table className="demonstration-rating-table">
+                  <thead>
+                    <tr>
+                      <th className="demonstration-section-head">Criteria</th>
+                      <th colSpan={demonstrationRatingColumns.length}>Rating</th>
+                    </tr>
+                    <tr>
+                      <th />
+                      {demonstrationRatingColumns.map((value) => (
+                        <th key={value}>{value}</th>
                       ))}
                     </tr>
-                  ))}
-                </tbody>
-              </table>
+                  </thead>
+                  <tbody>
+                    {demonstrationSections.map((section) => (
+                      <React.Fragment key={section.key}>
+                        <tr className="demonstration-section-row">
+                          <td colSpan={demonstrationRatingColumns.length + 1}>{section.label}</td>
+                        </tr>
+                        {section.criteria.map((criterion, index) => {
+                          const criterionKey = getDemonstrationCriterionKey(section.key, criterion)
+                          return (
+                            <tr key={criterionKey}>
+                              <td className="demonstration-criterion">
+                                <span>{index + 1}</span>
+                                <strong>{criterion}</strong>
+                              </td>
+                              {demonstrationRatingColumns.map((value) => (
+                                <td key={`${criterionKey}-${value}`} className="ratings-radio-cell">
+                                  <label className="ratings-radio-choice">
+                                    <input
+                                      type="radio"
+                                      name={`demo-${criterionKey}`}
+                                      value={value}
+                                      checked={Number(ratingScores[criterionKey] ?? -1) === (value === 'NA' ? 0 : value)}
+                                      onChange={() => {
+                                        setRatingScores((prev) => ({
+                                          ...prev,
+                                          [criterionKey]: value === 'NA' ? 0 : value
+                                        }))
+                                      }}
+                                    />
+                                    <span aria-hidden="true" />
+                                  </label>
+                                </td>
+                              ))}
+                            </tr>
+                          )
+                        })}
+                        <tr className="demonstration-subtotal-row">
+                          <td>Total</td>
+                          <td colSpan={demonstrationRatingColumns.length}>
+                            {section.criteria.reduce((total, criterion) => (
+                              total + Number(ratingScores[getDemonstrationCriterionKey(section.key, criterion)] || 0)
+                            ), 0)}
+                          </td>
+                        </tr>
+                      </React.Fragment>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+              <div className="demonstration-overall-grid">
+                <label>
+                  <span>Overall Rating</span>
+                  <input value={demonstrationMean ? demonstrationMean.toFixed(2) : ''} readOnly />
+                </label>
+                <label>
+                  <span>Descriptive Rating</span>
+                  <input value={getDemonstrationDescription(demonstrationMean)} readOnly />
+                </label>
+              </div>
             </div>
-          </div>
+          ) : (
+            <div className="ratings-form-shell">
+              <div className="ratings-form-scroll">
+                <table className="ratings-form-table">
+                  <thead>
+                    <tr>
+                      <th className="ratings-form-criteria-head" rowSpan={2}>Criteria</th>
+                      <th className="ratings-form-score-head" colSpan={ratingBands.length}>Rate / Score</th>
+                    </tr>
+                    <tr>
+                      {ratingBands.map((band) => (
+                        <th key={band.value}>
+                          <span>{band.label}</span>
+                          <small>({band.range})</small>
+                        </th>
+                      ))}
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {ratingCriteria.map((criterion, index) => (
+                      <tr key={criterion}>
+                        <td className="ratings-form-criterion">
+                          <span>{index + 1}.</span>
+                          <strong>{criterion}</strong>
+                        </td>
+                        {ratingBands.map((band) => (
+                          <td key={`${criterion}-${band.value}`} className="ratings-radio-cell">
+                            <label className="ratings-radio-choice">
+                              <input
+                                type="radio"
+                                name={`rating-${index}`}
+                                value={band.value}
+                                checked={Number(ratingScores[criterion] || 0) === band.value}
+                                onChange={() => {
+                                  setRatingScores((prev) => ({
+                                    ...prev,
+                                    [criterion]: band.value
+                                  }))
+                                }}
+                              />
+                              <span aria-hidden="true" />
+                            </label>
+                          </td>
+                        ))}
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+            </div>
+          )}
 
           <label className="ratings-remarks-field">
             <span>Remarks <small>(Optional)</small></span>
@@ -649,7 +901,10 @@ function RatingsPage({ uploads = [], isLoading = false, currentUser = null, onRa
               className="btn btn-secondary"
               onClick={() => {
                 setSelectedBoardMember('')
+                setSelectedBoardType(getDefaultBoardType(currentUser))
+                setDemonstrationDetails(demonstrationDetailDefaults)
                 setRatingRemarks('')
+                setRatingFormType('interview')
                 setRatingStarted(false)
               }}
             >
@@ -687,11 +942,16 @@ function RatingsPage({ uploads = [], isLoading = false, currentUser = null, onRa
           </div>
           {applicantRatings.length > 0 && (
             <div className="ratings-rater-list">
-              {applicantRatings.map((rating) => (
-                <span key={rating.id}>
-                  {rating.raterName || rating.rater_name || 'Board member'} · {Number(rating.totalScore ?? rating.total_score ?? 0)}/50 · {Number(rating.percentageScore ?? rating.percentage_score ?? 0).toFixed(0)}%
-                </span>
-              ))}
+              {applicantRatings.map((rating) => {
+                const savedFormType = getSavedRatingFormType(rating)
+                const savedScores = rating.scores || {}
+                const savedMaxScore = Math.max(1, Object.values(savedScores).filter((score) => Number(score) > 0).length) * 5
+                return (
+                  <span key={rating.id} className={`ratings-rater-chip ${savedFormType}`}>
+                    {rating.raterName || rating.rater_name || 'Board member'} · {Number(rating.totalScore ?? rating.total_score ?? 0)}/{savedMaxScore} · {Number(rating.percentageScore ?? rating.percentage_score ?? 0).toFixed(0)}%
+                  </span>
+                )
+              })}
             </div>
           )}
         </section>
@@ -702,22 +962,45 @@ function RatingsPage({ uploads = [], isLoading = false, currentUser = null, onRa
             setSelectedApplicant(null)
             setRatingStarted(false)
             setRatingScores({})
+            setDemonstrationDetails(demonstrationDetailDefaults)
             setRatingRemarks('')
             setSelectedBoardMember('')
+            setSelectedBoardType(getDefaultBoardType(currentUser))
+            setRatingFormType('interview')
           }}
           headerActions={(
-          <button
-            type="button"
-            className="ratings-start-btn"
-            onClick={() => {
-              setRatingScores({})
-              setRatingRemarks('')
-              setSelectedBoardMember('')
-              setRatingStarted(true)
-            }}
-          >
-            Start Rating
-          </button>
+          <div className="ratings-start-actions">
+            <button
+              type="button"
+              className="ratings-start-btn"
+              onClick={() => {
+                setRatingFormType('interview')
+                setRatingScores({})
+                setDemonstrationDetails(demonstrationDetailDefaults)
+                setRatingRemarks('')
+                setSelectedBoardMember('')
+                setSelectedBoardType(getDefaultBoardType(currentUser))
+                setRatingStarted(true)
+              }}
+            >
+              Start Interview Rating
+            </button>
+            <button
+              type="button"
+              className="ratings-start-btn ratings-start-demo-btn"
+              onClick={() => {
+                setRatingFormType('demonstration')
+                setRatingScores({})
+                setDemonstrationDetails(demonstrationDetailDefaults)
+                setRatingRemarks('')
+                setSelectedBoardMember('')
+                setSelectedBoardType(getDefaultBoardType(currentUser))
+                setRatingStarted(true)
+              }}
+            >
+              Start Demonstration
+            </button>
+          </div>
           )}
         />
       </section>
@@ -844,8 +1127,11 @@ function RatingsPage({ uploads = [], isLoading = false, currentUser = null, onRa
               setSelectedApplicant(actionsMenu.item)
               setRatingStarted(false)
               setRatingScores({})
+              setDemonstrationDetails(demonstrationDetailDefaults)
               setRatingRemarks('')
               setSelectedBoardMember('')
+              setSelectedBoardType(getDefaultBoardType(currentUser))
+              setRatingFormType('interview')
               setActionsMenu(null)
             }}
           >

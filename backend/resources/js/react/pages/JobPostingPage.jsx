@@ -1451,7 +1451,7 @@ function JobPostingPage({ uploads = [], isEmployer = false, isJobSeeker = false,
               <tr>
                 <th className="jobs-order-col">#</th>
                 <th className="jobs-title-col">Job Position</th>
-                <th className="jobs-dept-col">Department</th>
+                <th className="jobs-dept-col">College/Office</th>
                 <th className="jobs-type-col">Type</th>
                 <th className="jobs-deadline-col">Post Deadline</th>
                 {isJobSeeker && <th className="jobs-match-col">Match</th>}
@@ -1954,7 +1954,7 @@ function JobPostingPage({ uploads = [], isEmployer = false, isJobSeeker = false,
                     </div>
                     </div>
                     <div className="field-group">
-                      <label>Department</label>
+                      <label>College/Office</label>
                       <input
                         className={requiredInputClass(newJobDepartment)}
                         type="text"
