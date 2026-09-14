@@ -66,6 +66,7 @@ class JobController extends Controller
         $job = Job::create($payload);
         $job->closeIfDeadlineIsMet();
         $this->syncSkills($job->id, $payload['required_skills'] ?? '');
+        $this->storeJobAsTemplateIfMissing($job);
         $event = $request->input('activityEvent') === 'job.duplicated' ? 'job.duplicated' : 'job.created';
         $description = $event === 'job.duplicated'
             ? "Duplicated job post {$job->title}."
@@ -97,6 +98,7 @@ class JobController extends Controller
         if (array_key_exists('required_skills', $payload)) {
             $this->syncSkills($job->id, $payload['required_skills'] ?? '');
         }
+        $this->storeJobAsTemplateIfMissing($job);
 
         ActivityLog::record('job.updated', "Edited job details for {$job->title}.", $request, [
             'subject_type' => 'job',
@@ -288,6 +290,40 @@ class JobController extends Controller
 
         throw ValidationException::withMessages([
             'item_no' => 'A job post with this Plantilla Item No. already exists.',
+        ]);
+    }
+
+    private function storeJobAsTemplateIfMissing(Job $job): ?JobTemplate
+    {
+        $title = trim((string) $job->title);
+        if ($title === '') {
+            return null;
+        }
+
+        $exists = JobTemplate::query()
+            ->whereRaw('LOWER(title) = ?', [Str::lower($title)])
+            ->exists();
+
+        if ($exists) {
+            return null;
+        }
+
+        return JobTemplate::create([
+            'title' => $title,
+            'description' => $job->description,
+            'department' => $job->department,
+            'job_position' => $job->job_position,
+            'item_no' => $job->item_no,
+            'location' => $job->location,
+            'type' => $job->type,
+            'deadline' => $job->deadline,
+            'eligibility' => $job->eligibility,
+            'required_skills' => $job->required_skills,
+            'minimum_education' => $job->minimum_education,
+            'minimum_experience_years' => $job->minimum_experience_years,
+            'application_threshold_score' => $job->application_threshold_score,
+            'salary_min' => $job->salary_min,
+            'salary_max' => $job->salary_max,
         ]);
     }
 

@@ -245,6 +245,7 @@ function buildJobSeekerProfile(payload) {
       email: profile.email || payload.email || "",
       username: profile.username || "",
       phone: profile.phone || "",
+      status: profile.status || payload.status || "",
     }
   }
 
@@ -255,6 +256,7 @@ function buildJobSeekerProfile(payload) {
     email: payload.email || "",
     username: payload.username || "",
     phone: payload.phone || "",
+    status: payload.status || "",
   }
 }
 
@@ -322,7 +324,7 @@ function App() {
   const [rememberMe, setRememberMe] = useState(false)
   const [loginMode, setLoginMode] = useState(() => localStorage.getItem("loginMode") || "staff")
   const [isRegistering, setIsRegistering] = useState(false)
-  const [isViewingLanding, setIsViewingLanding] = useState(true)
+  const [isViewingLanding, setIsViewingLanding] = useState(() => window.location.pathname !== "/app-login")
   const [jobSeekerProfile, setJobSeekerProfile] = useState(() => {
     const stored = localStorage.getItem("jobSeekerProfile")
     if (!stored) return null
@@ -446,6 +448,34 @@ function App() {
   const handleJobSeekerResumeUpdate = useCallback((resume) => {
     setJobSeekerResume(resume || null)
   }, [])
+
+  useEffect(() => {
+    if (!isAuthenticated || !isJobSeeker || !resolvedJobSeekerId) return
+    let cancelled = false
+
+    const refreshJobSeekerProfile = async () => {
+      try {
+        const response = await fetch(`http://localhost:5000/job-seekers/${resolvedJobSeekerId}`, {
+          headers: { Accept: "application/json" },
+          credentials: "same-origin",
+        })
+        const payload = await response.json().catch(() => null)
+        if (cancelled || !response.ok || !payload) return
+
+        const refreshedProfile = normalizeJobSeekerProfile(payload)
+        setJobSeekerProfile(refreshedProfile)
+        localStorage.setItem("jobSeekerProfile", JSON.stringify(refreshedProfile))
+      } catch {
+        // Keep the current session profile when the refresh endpoint is unavailable.
+      }
+    }
+
+    refreshJobSeekerProfile()
+
+    return () => {
+      cancelled = true
+    }
+  }, [isAuthenticated, isJobSeeker, resolvedJobSeekerId])
 
   const handleJobSeekerSupportingUpdate = useCallback((files) => {
     setJobSeekerSupporting(Array.isArray(files) ? files : [])
@@ -876,10 +906,12 @@ function App() {
           ? JSON.stringify({
               identifier: loginEmail.trim(),
               password: loginPassword,
+              remember: rememberMe,
             })
           : JSON.stringify({
               email: loginEmail.trim(),
               password: loginPassword,
+              remember: rememberMe,
             }),
       })
       if (!response.ok) {
@@ -2333,7 +2365,7 @@ function App() {
                         <thead>
                           <tr>
                             <th>Job Title</th>
-                            <th>College/Office</th>
+                            <th>Department/Units</th>
                             <th>Date Applied</th>
                             <th>Status</th>
                           </tr>

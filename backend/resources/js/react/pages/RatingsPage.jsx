@@ -38,6 +38,7 @@ const defaultRatingCriteria = [
 ]
 
 const ratingCriteriaStorageKey = 'ratingsCriteria'
+const boardMembersStorageKey = 'ratingsBoardMembers'
 
 function loadRatingCriteria() {
   if (typeof window === 'undefined') return defaultRatingCriteria
@@ -52,6 +53,20 @@ function loadRatingCriteria() {
     // Use defaults when local storage is unavailable or invalid.
   }
   return defaultRatingCriteria
+}
+
+function loadBoardMembers() {
+  if (typeof window === 'undefined') return []
+  try {
+    const stored = window.localStorage.getItem(boardMembersStorageKey)
+    const parsed = stored ? JSON.parse(stored) : null
+    if (Array.isArray(parsed)) {
+      return Array.from(new Set(parsed.map((item) => String(item || '').trim()).filter(Boolean)))
+    }
+  } catch {
+    // Use an empty list when local storage is unavailable or invalid.
+  }
+  return []
 }
 
 const ratingBands = [
@@ -142,6 +157,10 @@ function getDemonstrationDescription(mean) {
 }
 
 function getSavedRatingFormType(rating) {
+  const formType = String(rating?.formType || rating?.form_type || '').toLowerCase()
+  if (formType === 'demonstration') return 'demonstration'
+  if (formType === 'interview') return 'interview'
+
   const remarks = String(rating?.remarks || '').toLowerCase()
   const scoreKeys = Object.keys(rating?.scores || {})
   if (remarks.includes('applicant demonstration form') || scoreKeys.some((key) => key.includes(': '))) {
@@ -156,6 +175,9 @@ function RatingsPage({ uploads = [], isLoading = false, currentUser = null, onRa
   const [criteriaEditorOpen, setCriteriaEditorOpen] = useState(false)
   const [ratingCriteria, setRatingCriteria] = useState(loadRatingCriteria)
   const [criteriaDraft, setCriteriaDraft] = useState(() => loadRatingCriteria())
+  const [boardMembers, setBoardMembers] = useState(loadBoardMembers)
+  const [boardMembersDraft, setBoardMembersDraft] = useState(() => loadBoardMembers())
+  const [boardMembersPage, setBoardMembersPage] = useState(1)
   const [selectedApplicant, setSelectedApplicant] = useState(null)
   const [ratingStarted, setRatingStarted] = useState(false)
   const [ratingFormType, setRatingFormType] = useState('interview')
@@ -168,8 +190,10 @@ function RatingsPage({ uploads = [], isLoading = false, currentUser = null, onRa
   const [cancelledIds, setCancelledIds] = useState([])
   const [ratingNotice, setRatingNotice] = useState(null)
   const [selectedBoardMember, setSelectedBoardMember] = useState('')
+  const [isBoardMemberOpen, setIsBoardMemberOpen] = useState(false)
   const [selectedBoardType, setSelectedBoardType] = useState(() => getDefaultBoardType(currentUser))
   const ratingNoticeTimer = useRef(null)
+  const boardMemberRef = useRef(null)
 
   const evaluationUploads = useMemo(() => (
     uploads.filter((item) => ['for_evaluation', 'rated'].includes(getEvaluationStatus(item)))
@@ -236,6 +260,18 @@ function RatingsPage({ uploads = [], isLoading = false, currentUser = null, onRa
     setSelectedBoardType((current) => current || getDefaultBoardType(currentUser))
   }, [currentUser])
 
+  useEffect(() => {
+    if (!isBoardMemberOpen) return
+    const onDocClick = (event) => {
+      if (!boardMemberRef.current) return
+      if (!boardMemberRef.current.contains(event.target)) {
+        setIsBoardMemberOpen(false)
+      }
+    }
+    document.addEventListener('mousedown', onDocClick)
+    return () => document.removeEventListener('mousedown', onDocClick)
+  }, [isBoardMemberOpen])
+
   const showRatingNotice = (type, message) => {
     if (ratingNoticeTimer.current) {
       window.clearTimeout(ratingNoticeTimer.current)
@@ -249,6 +285,8 @@ function RatingsPage({ uploads = [], isLoading = false, currentUser = null, onRa
 
   const openCriteriaEditor = () => {
     setCriteriaDraft(ratingCriteria)
+    setBoardMembersDraft(boardMembers.length ? boardMembers : [''])
+    setBoardMembersPage(1)
     setCriteriaEditorOpen(true)
   }
 
@@ -263,8 +301,16 @@ function RatingsPage({ uploads = [], isLoading = false, currentUser = null, onRa
       showRatingNotice('fail', 'Criteria names must be unique.')
       return
     }
+    const cleanedBoardMembers = boardMembersDraft.map((item) => String(item || '').trim()).filter(Boolean)
+    const uniqueBoardMemberCount = new Set(cleanedBoardMembers.map((item) => item.toLowerCase())).size
+    if (uniqueBoardMemberCount !== cleanedBoardMembers.length) {
+      showRatingNotice('fail', 'Board member names must be unique.')
+      return
+    }
     setRatingCriteria(cleaned)
+    setBoardMembers(cleanedBoardMembers)
     window.localStorage.setItem(ratingCriteriaStorageKey, JSON.stringify(cleaned))
+    window.localStorage.setItem(boardMembersStorageKey, JSON.stringify(cleanedBoardMembers))
     try {
       await fetch('http://localhost:5000/activity-logs', {
         method: 'POST',
@@ -279,12 +325,15 @@ function RatingsPage({ uploads = [], isLoading = false, currentUser = null, onRa
           subjectName: 'Rating form',
           metadata: {
             before: {
-              criteria: ratingCriteria
+              criteria: ratingCriteria,
+              boardMembers
             },
             after: {
-              criteria: cleaned
+              criteria: cleaned,
+              boardMembers: cleanedBoardMembers
             },
-            criteriaCount: cleaned.length
+            criteriaCount: cleaned.length,
+            boardMemberCount: cleanedBoardMembers.length
           }
         })
       })
@@ -299,6 +348,33 @@ function RatingsPage({ uploads = [], isLoading = false, currentUser = null, onRa
   const resetCriteriaDraft = () => {
     setCriteriaDraft(defaultRatingCriteria)
   }
+
+  const ratingBoardMemberOptions = useMemo(() => {
+    const savedNames = boardMembers.map((item) => String(item || '').trim()).filter(Boolean)
+    return Array.from(new Set(savedNames))
+      .sort((a, b) => a.localeCompare(b))
+      .map((name) => ({ value: name, label: name }))
+  }, [boardMembers])
+
+  const boardMembersPageSize = 5
+  const boardMembersPageCount = Math.max(1, Math.ceil(boardMembersDraft.length / boardMembersPageSize))
+  const pagedBoardMembersDraft = useMemo(() => {
+    const start = (boardMembersPage - 1) * boardMembersPageSize
+    return boardMembersDraft.slice(start, start + boardMembersPageSize).map((member, index) => ({
+      member,
+      index: start + index
+    }))
+  }, [boardMembersDraft, boardMembersPage])
+
+  useEffect(() => {
+    setBoardMembersPage((page) => Math.min(page, boardMembersPageCount))
+  }, [boardMembersPageCount])
+
+  const filteredBoardMemberOptions = useMemo(() => {
+    const query = selectedBoardMember.trim().toLowerCase()
+    if (!query) return ratingBoardMemberOptions
+    return ratingBoardMemberOptions.filter((option) => option.label.toLowerCase().includes(query))
+  }, [ratingBoardMemberOptions, selectedBoardMember])
 
   const openActionsMenu = (event, item) => {
     const rect = event.currentTarget.getBoundingClientRect()
@@ -336,7 +412,7 @@ function RatingsPage({ uploads = [], isLoading = false, currentUser = null, onRa
       showRatingNotice('fail', 'Please enter a board member name before saving.')
       return
     }
-    if (hasBoardMemberRated(selectedApplicant, boardMemberName)) {
+    if (hasBoardMemberRated(selectedApplicant, boardMemberName, ratingFormType)) {
       showRatingNotice('fail', `${boardMemberName} has already rated this applicant.`)
       return
     }
@@ -351,23 +427,6 @@ function RatingsPage({ uploads = [], isLoading = false, currentUser = null, onRa
       [criterion]: Number(ratingScores[criterion])
     }), {})
 
-    const demonstrationSummary = ratingFormType === 'demonstration'
-      ? [
-          'Applicant Demonstration Form',
-          `Board Type: ${getBoardTypeLabel(selectedBoardType)}`,
-          ...Object.entries(demonstrationDetails)
-            .filter(([, value]) => String(value || '').trim())
-            .map(([key, value]) => `${key}: ${String(value).trim()}`),
-          `Mean: ${demonstrationMean ? demonstrationMean.toFixed(2) : '-'}`,
-          `Descriptive Rating: ${getDemonstrationDescription(demonstrationMean)}`,
-          demonstrationDetails.observer ? `Observer: ${demonstrationDetails.observer}` : '',
-          ratingRemarks.trim()
-        ].filter(Boolean).join('\n')
-      : [
-          `Board Type: ${getBoardTypeLabel(selectedBoardType)}`,
-          ratingRemarks.trim()
-        ].filter(Boolean).join('\n')
-
     try {
       const response = await fetch(`http://localhost:5000/uploads/${selectedApplicant.id}/ratings`, {
         method: 'POST',
@@ -379,8 +438,9 @@ function RatingsPage({ uploads = [], isLoading = false, currentUser = null, onRa
           raterName: boardMemberName,
           raterEmail: '',
           boardType: selectedBoardType,
+          formType: ratingFormType,
           scores,
-          remarks: demonstrationSummary
+          remarks: ratingRemarks.trim()
         })
       })
       const payload = await response.json().catch(() => null)
@@ -408,7 +468,7 @@ function RatingsPage({ uploads = [], isLoading = false, currentUser = null, onRa
       showRatingNotice('fail', 'Please enter a board member name before saving.')
       return
     }
-    if (hasBoardMemberRated(selectedApplicant, boardMemberName)) {
+    if (hasBoardMemberRated(selectedApplicant, boardMemberName, ratingFormType)) {
       showRatingNotice('fail', `${boardMemberName} has already rated this applicant.`)
       return
     }
@@ -491,6 +551,43 @@ function RatingsPage({ uploads = [], isLoading = false, currentUser = null, onRa
     }
   }
 
+  const exportDemonstrationSummary = async (item) => {
+    if (!item?.id) return
+    setActionsMenu(null)
+    try {
+      const response = await fetch(`http://localhost:5000/uploads/${item.id}/demonstration-summary/export`, {
+        headers: getArchiveActorHeaders(currentUser)
+      })
+      const blob = await response.blob()
+      if (!response.ok) {
+        const message = await blob.text().then((text) => {
+          try {
+            return JSON.parse(text)?.message
+          } catch {
+            return null
+          }
+        }).catch(() => null)
+        throw new Error(message || 'Failed to export demonstration summary.')
+      }
+
+      const disposition = response.headers.get('content-disposition') || ''
+      const filenameMatch = disposition.match(/filename="?([^"]+)"?/i)
+      const filename = filenameMatch?.[1] || `demonstration-summary-${item.id}.xls`
+      const url = window.URL.createObjectURL(blob)
+      const link = document.createElement('a')
+      link.href = url
+      link.download = filename
+      document.body.appendChild(link)
+      link.click()
+      link.remove()
+      window.URL.revokeObjectURL(url)
+      await onRatingsChanged?.()
+      showRatingNotice('success', 'Demonstration summary exported successfully.')
+    } catch (error) {
+      showRatingNotice('fail', error.message || 'Failed to export demonstration summary.')
+    }
+  }
+
   const openCancelConfirmation = (item) => {
     if (!item?.id) return
     setActionsMenu(null)
@@ -506,13 +603,18 @@ function RatingsPage({ uploads = [], isLoading = false, currentUser = null, onRa
   }
 
   const isRatedApplicant = (item) => Boolean(item?.ratingCount || item?.rating_count || (Array.isArray(item?.ratings) && item.ratings.length))
-  const hasBoardMemberRated = (item, boardMember) => {
+  const hasSavedFormRating = (item, formType) => {
+    const ratings = Array.isArray(item?.ratings) ? item.ratings : []
+    return ratings.some((rating) => getSavedRatingFormType(rating) === formType)
+  }
+  const hasBoardMemberRated = (item, boardMember, formType = ratingFormType) => {
     const ratings = Array.isArray(item?.ratings) ? item.ratings : []
     const boardMemberName = String(boardMember || '').trim().toLowerCase()
+    const targetFormType = formType === 'demonstration' ? 'demonstration' : 'interview'
 
     return Boolean(boardMemberName) && ratings.some((rating) => {
       const raterName = String(rating.raterName || rating.rater_name || '').trim().toLowerCase()
-      return raterName === boardMemberName
+      return raterName === boardMemberName && getSavedRatingFormType(rating) === targetFormType
     })
   }
 
@@ -598,6 +700,89 @@ function RatingsPage({ uploads = [], isLoading = false, currentUser = null, onRa
           ))}
         </div>
 
+        <div className="ratings-criteria-card">
+          <div className="ratings-settings-section-head">
+            <h3>Board Members</h3>
+            <span>{boardMembersDraft.filter((name) => String(name || '').trim()).length} names</span>
+          </div>
+          <div className="ratings-board-members-table-wrap">
+            <table className="ratings-board-members-table">
+              <thead>
+                <tr>
+                  <th>#</th>
+                  <th>Name</th>
+                  <th>Action</th>
+                </tr>
+              </thead>
+              <tbody>
+                {pagedBoardMembersDraft.map(({ member, index }) => (
+                  <tr key={`board-member-${index}`}>
+                    <td>{index + 1}</td>
+                    <td>
+                      <input
+                        type="text"
+                        value={member}
+                        onChange={(event) => {
+                          const next = [...boardMembersDraft]
+                          next[index] = event.target.value
+                          setBoardMembersDraft(next)
+                        }}
+                        placeholder="Enter board member name"
+                      />
+                    </td>
+                    <td>
+                      <button
+                        type="button"
+                        className="ratings-table-remove-btn"
+                        onClick={() => {
+                          const next = boardMembersDraft.filter((_, memberIndex) => memberIndex !== index)
+                          setBoardMembersDraft(next.length ? next : [''])
+                        }}
+                      >
+                        Remove
+                      </button>
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+            <div className="ratings-table-pager">
+              <span>
+                Page {boardMembersPage} of {boardMembersPageCount}
+              </span>
+              <div>
+                <button
+                  type="button"
+                  onClick={() => setBoardMembersPage((page) => Math.max(1, page - 1))}
+                  disabled={boardMembersPage === 1}
+                >
+                  Previous
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setBoardMembersPage((page) => Math.min(boardMembersPageCount, page + 1))}
+                  disabled={boardMembersPage === boardMembersPageCount}
+                >
+                  Next
+                </button>
+              </div>
+            </div>
+          </div>
+          <button
+            type="button"
+            className="ratings-add-member-btn"
+            onClick={() => {
+              setBoardMembersDraft((prev) => {
+                const next = [...prev, '']
+                setBoardMembersPage(Math.ceil(next.length / boardMembersPageSize))
+                return next
+              })
+            }}
+          >
+            Add Board Member
+          </button>
+        </div>
+
         <div className="ratings-form-footer">
           <button type="button" className="btn btn-secondary" onClick={resetCriteriaDraft}>
             Reset Defaults
@@ -615,12 +800,33 @@ function RatingsPage({ uploads = [], isLoading = false, currentUser = null, onRa
 
   if (selectedApplicant) {
     const applicantRatings = Array.isArray(selectedApplicant.ratings) ? selectedApplicant.ratings : []
-    const ratingLabel = selectedApplicant.ratingLabel || selectedApplicant.rating_label || 'No rating'
-    const ratingCount = Number(selectedApplicant.ratingCount || selectedApplicant.rating_count || applicantRatings.length || 0)
+    const getSavedMaxScore = (rating) => {
+      const total = Number(rating.totalScore ?? rating.total_score ?? 0)
+      const percentage = Number(rating.percentageScore ?? rating.percentage_score ?? 0)
+      if (total > 0 && percentage > 0) {
+        return Math.round(total / (percentage / 100))
+      }
+      const savedScores = rating.scores || {}
+      return Math.max(1, Object.values(savedScores).filter((score) => Number(score) > 0).length) * 5
+    }
+    const getRatingGroupStats = (formType) => {
+      const ratings = applicantRatings.filter((rating) => getSavedRatingFormType(rating) === formType)
+      const count = ratings.length
+      const average = count
+        ? ratings.reduce((total, rating) => total + Number(rating.percentageScore ?? rating.percentage_score ?? 0), 0) / count
+        : 0
+      return {
+        ratings,
+        count,
+        label: count ? `${average.toFixed(2)}%` : 'No rating'
+      }
+    }
+    const interviewStats = getRatingGroupStats('interview')
+    const demonstrationStats = getRatingGroupStats('demonstration')
     const canOpenRatingForm = ratingStarted
     const isDemonstrationForm = ratingFormType === 'demonstration'
     const interviewDate = formatInterviewDate(selectedApplicant.uploaded_at || selectedApplicant.updated_at || selectedApplicant.updatedAt)
-    const selectedBoardMemberAlreadyRated = hasBoardMemberRated(selectedApplicant, selectedBoardMember)
+    const selectedBoardMemberAlreadyRated = hasBoardMemberRated(selectedApplicant, selectedBoardMember, ratingFormType)
     const saveRatingConfirmNode = confirmSaveRating ? (
       <div
         className="modal-overlay delete-confirm-overlay"
@@ -716,16 +922,53 @@ function RatingsPage({ uploads = [], isLoading = false, currentUser = null, onRa
                 onChange={setSelectedBoardType}
                 placeholder="Select board type"
               />
-              <input
-                className="ratings-board-input"
-                type="text"
-                value={selectedBoardMember}
-                onChange={(event) => setSelectedBoardMember(event.target.value)}
-                placeholder="Enter board member name"
-              />
+              <div
+                ref={boardMemberRef}
+                className="ratings-board-member-combobox"
+                onClick={(event) => event.stopPropagation()}
+              >
+                <input
+                  className="ratings-board-input"
+                  type="text"
+                  value={selectedBoardMember}
+                  onChange={(event) => {
+                    setSelectedBoardMember(event.target.value)
+                    setIsBoardMemberOpen(true)
+                  }}
+                  onFocus={() => setIsBoardMemberOpen(true)}
+                  placeholder="Select or type board member"
+                />
+                <button
+                  type="button"
+                  className="ratings-board-member-toggle"
+                  aria-label="Show board member names"
+                  onClick={() => setIsBoardMemberOpen((current) => !current)}
+                  disabled={ratingBoardMemberOptions.length === 0}
+                >
+                  {isBoardMemberOpen ? '▴' : '▾'}
+                </button>
+                {isBoardMemberOpen && filteredBoardMemberOptions.length > 0 && (
+                  <div className="ratings-board-member-menu">
+                    {filteredBoardMemberOptions.map((option) => (
+                      <button
+                        key={option.value}
+                        type="button"
+                        className={`ratings-board-member-option ${option.value === selectedBoardMember ? 'active' : ''}`}
+                        onMouseDown={(event) => {
+                          event.preventDefault()
+                          setSelectedBoardMember(option.value)
+                          setIsBoardMemberOpen(false)
+                        }}
+                      >
+                        {option.label}
+                      </button>
+                    ))}
+                  </div>
+                )}
+              </div>
               {selectedBoardMemberAlreadyRated && (
                 <p className="ratings-board-warning">
-                  {selectedBoardMember} has already rated this applicant.
+                  {selectedBoardMember} has already rated this {isDemonstrationForm ? 'demonstration' : 'interview'} form.
                 </p>
               )}
             </div>
@@ -944,30 +1187,36 @@ function RatingsPage({ uploads = [], isLoading = false, currentUser = null, onRa
             Rating started for {selectedApplicant.name || 'this applicant'}.
           </div>
         )}
-        <section className="ratings-result-card">
-          <div>
-            <h3>Interview Rating</h3>
-            <p>{ratingCount ? `${ratingCount} board member${ratingCount === 1 ? '' : 's'} rated this applicant.` : 'No board member has rated this applicant yet.'}</p>
-          </div>
-          <div className="ratings-result-score">
-            <span>Total Score</span>
-            <strong>{ratingLabel}</strong>
-          </div>
-          {applicantRatings.length > 0 && (
-            <div className="ratings-rater-list">
-              {applicantRatings.map((rating) => {
-                const savedFormType = getSavedRatingFormType(rating)
-                const savedScores = rating.scores || {}
-                const savedMaxScore = Math.max(1, Object.values(savedScores).filter((score) => Number(score) > 0).length) * 5
-                return (
-                  <span key={rating.id} className={`ratings-rater-chip ${savedFormType}`}>
-                    {rating.raterName || rating.rater_name || 'Board member'} · {Number(rating.totalScore ?? rating.total_score ?? 0)}/{savedMaxScore} · {Number(rating.percentageScore ?? rating.percentage_score ?? 0).toFixed(0)}%
-                  </span>
-                )
-              })}
-            </div>
-          )}
-        </section>
+        <div className="ratings-result-grid">
+          {[
+            ['interview', 'Interview Rating', interviewStats],
+            ['demonstration', 'Demonstration Rating', demonstrationStats]
+          ].map(([formType, title, stats]) => (
+            <section key={formType} className={`ratings-result-card ${formType}`}>
+              <div>
+                <h3>{title}</h3>
+                <p>
+                  {stats.count
+                    ? `${stats.count} board member${stats.count === 1 ? '' : 's'} rated this ${formType}.`
+                    : `No board member has rated this ${formType} yet.`}
+                </p>
+              </div>
+              <div className="ratings-result-score">
+                <span>Total Score</span>
+                <strong>{stats.label}</strong>
+              </div>
+              {stats.ratings.length > 0 && (
+                <div className="ratings-rater-list">
+                  {stats.ratings.map((rating) => (
+                    <span key={rating.id} className={`ratings-rater-chip ${formType}`}>
+                      {rating.raterName || rating.rater_name || 'Board member'} · {Number(rating.totalScore ?? rating.total_score ?? 0)}/{getSavedMaxScore(rating)} · {Number(rating.percentageScore ?? rating.percentage_score ?? 0).toFixed(0)}%
+                    </span>
+                  ))}
+                </div>
+              )}
+            </section>
+          ))}
+        </div>
         <ApplicantViewPage
           viewItem={selectedApplicant}
           backLabel="Back to Ratings"
@@ -1150,13 +1399,22 @@ function RatingsPage({ uploads = [], isLoading = false, currentUser = null, onRa
           >
             View
           </button>
-          {getEvaluationStatus(actionsMenu.item) === 'rated' && (
+          {hasSavedFormRating(actionsMenu.item, 'interview') && (
             <button
               type="button"
               className="actions-menu-item"
               onClick={() => exportRatingSummary(actionsMenu.item)}
             >
-              Export Excel
+              Export Interview Excel
+            </button>
+          )}
+          {hasSavedFormRating(actionsMenu.item, 'demonstration') && (
+            <button
+              type="button"
+              className="actions-menu-item"
+              onClick={() => exportDemonstrationSummary(actionsMenu.item)}
+            >
+              Export Demonstration Excel
             </button>
           )}
           <button

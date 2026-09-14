@@ -89,6 +89,7 @@ class AuthController extends Controller
         $data = $request->validate([
             'identifier' => ['required', 'string'],
             'password' => ['required', 'string'],
+            'remember' => ['nullable', 'boolean'],
         ]);
 
         $identifier = Str::lower(trim($data['identifier']));
@@ -103,7 +104,7 @@ class AuthController extends Controller
             return response()->json(['message' => 'Invalid employer credentials.'], 401);
         }
 
-        $this->startSession($request, 'employer', $employer);
+        $this->startSession($request, 'employer', $employer, (bool) ($data['remember'] ?? false));
 
         return response()->json([
             ...$this->serializeEmployer($employer),
@@ -148,6 +149,7 @@ class AuthController extends Controller
         $data = $request->validate([
             'email' => ['required', 'string'],
             'password' => ['required', 'string'],
+            'remember' => ['nullable', 'boolean'],
         ]);
 
         $identifier = Str::lower(trim($data['email']));
@@ -157,7 +159,7 @@ class AuthController extends Controller
             ->first();
 
         if ($user && Hash::check($data['password'], (string) $user->password)) {
-            $this->startSession($request, 'web', $user);
+            $this->startSession($request, 'web', $user, (bool) ($data['remember'] ?? false));
 
             return response()->json($this->serializeStaff($user));
         }
@@ -170,7 +172,7 @@ class AuthController extends Controller
             ->first();
 
         if ($employer && $this->passwordMatchesAndUpgrades($data['password'], $employer)) {
-            $this->startSession($request, 'employer', $employer);
+            $this->startSession($request, 'employer', $employer, (bool) ($data['remember'] ?? false));
 
             return response()->json([
                 ...$this->serializeEmployer($employer),
@@ -262,6 +264,7 @@ class AuthController extends Controller
         $data = $request->validate([
             'identifier' => ['required', 'string'],
             'password' => ['required', 'string'],
+            'remember' => ['nullable', 'boolean'],
         ]);
 
         $identifier = Str::lower(trim($data['identifier']));
@@ -280,18 +283,18 @@ class AuthController extends Controller
             $jobSeeker->save();
         }
 
-        $this->startSession($request, 'job_seeker', $jobSeeker);
+        $this->startSession($request, 'job_seeker', $jobSeeker, (bool) ($data['remember'] ?? false));
 
         return response()->json($this->serializeJobSeeker($jobSeeker));
     }
 
-    private function startSession(Request $request, string $guard, object $user): void
+    private function startSession(Request $request, string $guard, object $user, bool $remember = false): void
     {
         foreach (self::SESSION_GUARDS as $sessionGuard) {
             Auth::guard($sessionGuard)->logout();
         }
 
-        Auth::guard($guard)->login($user);
+        Auth::guard($guard)->login($user, $remember);
 
         if ($request->hasSession()) {
             $request->session()->regenerate();

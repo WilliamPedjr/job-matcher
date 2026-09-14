@@ -182,7 +182,7 @@ function LandingPage({ onLoginClick, onRegisterClick, scrollToSectionId = "" }) 
           </article>
           <article className="landing-about-card">
             <h3>For applicants</h3>
-            <p>Apply with less hassle. Diba! WOW!</p>
+            <p>Apply with less hassle.</p>
           </article>
 
         </div>

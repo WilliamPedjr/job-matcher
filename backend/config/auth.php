@@ -117,6 +117,20 @@ return [
             'expire' => 60,
             'throttle' => 60,
         ],
+
+        'employers' => [
+            'provider' => 'employers',
+            'table' => 'password_reset_tokens',
+            'expire' => 60,
+            'throttle' => 60,
+        ],
+
+        'job_seekers' => [
+            'provider' => 'job_seekers',
+            'table' => 'password_reset_tokens',
+            'expire' => 60,
+            'throttle' => 60,
+        ],
     ],
 
     /*

@@ -92,6 +92,7 @@ Route::get('/uploads/{id}/download', [UploadController::class, 'download']);
 Route::get('/uploads/{id}/supporting', [UploadController::class, 'supporting']);
 Route::get('/uploads/{id}/supporting/{supportId}/download', [UploadController::class, 'supportingDownload']);
 Route::get('/uploads/{id}/rating-summary/export', [UploadController::class, 'exportRatingSummary']);
+Route::get('/uploads/{id}/demonstration-summary/export', [UploadController::class, 'exportDemonstrationSummary']);
 Route::put('/uploads/{id}/evaluation', [UploadController::class, 'markForEvaluation']);
 Route::put('/uploads/{id}/evaluation/cancel', [UploadController::class, 'cancelEvaluation']);
 Route::post('/uploads/{id}/ratings', [UploadController::class, 'storeRating']);

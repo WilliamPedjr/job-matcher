@@ -370,7 +370,14 @@ class UploadController extends Controller
             ], 422);
         }
 
-        $stats = $this->ratingStats($upload);
+        $ratings = $this->ratingsForFormType($upload, 'interview');
+        if ($ratings->isEmpty()) {
+            return response()->json([
+                'message' => 'Interview rating summary can only be exported after an interview rating is saved.',
+            ], 422);
+        }
+
+        $stats = $this->ratingStats($upload, 'interview');
         $phone = $this->formatPhoneForExcel($upload->phone);
         $rows = [
             ['Applicant Name', $upload->name ?: '-'],
@@ -386,7 +393,6 @@ class UploadController extends Controller
             ['Rating Count', $stats['count']],
         ];
 
-        $ratings = $upload->ratings()->orderBy('id')->get();
         $criteria = $ratings
             ->flatMap(fn (ApplicationRating $rating) => array_keys($rating->scores ?? []))
             ->unique()
@@ -490,7 +496,7 @@ class UploadController extends Controller
         $html .= '<tr>';
         $html .= '<th class="label">Remarks</th>';
         foreach ($ratings as $rating) {
-            $html .= '<td class="text">' . $this->excelCell($rating->remarks ?: '-') . '</td>';
+            $html .= '<td class="text">' . $this->excelCell($this->userRatingRemarks($rating)) . '</td>';
         }
         $html .= '<td class="muted">-</td>';
         $html .= '</tr>';
@@ -510,6 +516,146 @@ class UploadController extends Controller
         return response($html, 200, [
             'Content-Type' => 'application/vnd.ms-excel; charset=UTF-8',
             'Content-Disposition' => "attachment; filename=\"rating-summary-{$safeName}.xls\"",
+        ]);
+    }
+
+    public function exportDemonstrationSummary(Request $request, int $id): mixed
+    {
+        $upload = Upload::query()->with(['ratings', 'jobSeeker'])->findOrFail($id);
+        $ratings = $this->ratingsForFormType($upload, 'demonstration');
+        if ($ratings->isEmpty()) {
+            return response()->json([
+                'message' => 'Demonstration summary can only be exported after a demonstration rating is saved.',
+            ], 422);
+        }
+
+        $stats = $this->ratingStats($upload, 'demonstration');
+        $phone = $this->formatPhoneForExcel($upload->phone);
+        $rows = [
+            ['Applicant Name', $upload->name ?: '-'],
+            ['Unique ID', $upload->job_seeker_id_number ?: $upload->jobSeeker?->id_number ?: '-'],
+            ['Email', $upload->email ?: '-'],
+            ['Phone', $phone, true],
+            ['Position Applied', $upload->applied_job_title ?: $upload->matched_job_title ?: '-'],
+            ['Generated Form', 'Applicant Demonstration Form'],
+            ['Average Demonstration Rating', $stats['average'] !== null ? $stats['average'] . '%' : '-'],
+            ['Rating Count', $stats['count']],
+        ];
+
+        $criteria = $ratings
+            ->flatMap(fn (ApplicationRating $rating) => array_keys($rating->scores ?? []))
+            ->unique()
+            ->values();
+        $ratingColumnSpan = 2 + $ratings->count();
+
+        $html = '<html><head><meta charset="UTF-8">';
+        $html .= '<style>
+            @page { size: A4 landscape; margin: 0.35in; mso-page-orientation: landscape; }
+            body { font-family: Arial, sans-serif; color: #172033; }
+            table { border-collapse: collapse; margin: 0; table-layout: fixed; width: 100%; }
+            th, td {
+                border: 1px solid #b8c4d8;
+                padding: 4px 5px;
+                vertical-align: middle;
+                text-align: center;
+                font-size: 10px;
+                line-height: 1.2;
+                white-space: normal;
+                word-wrap: break-word;
+            }
+            .title { background: #175c49; color: #ffffff; font-size: 16px; font-weight: 700; }
+            .subtitle { background: #e8f7f1; color: #172033; font-size: 10px; }
+            .section { background: #20735c; color: #ffffff; font-weight: 700; font-size: 12px; }
+            .label { background: #f3f6fb; color: #172033; font-weight: 700; width: 190px; }
+            .value { width: 330px; mso-number-format:"\@"; }
+            .head { background: #d8f1e8; color: #114336; font-weight: 700; }
+            .text { mso-number-format:"\@"; }
+            .muted { color: #64748b; }
+            .print-wide { mso-fit-to-page: yes; }
+            .rating-label-col { width: 215px; }
+            .rating-member-col { width: 90px; }
+            .rating-average-col { width: 72px; }
+        </style>';
+        $html .= '</head><body>';
+        $html .= '<table class="print-wide">';
+        $html .= '<colgroup><col style="width:210px"><col style="width:390px"></colgroup>';
+        $html .= '<tr><th class="title" colspan="2">Applicant Demonstration Form Summary</th></tr>';
+        $html .= '<tr><td class="subtitle" colspan="2">Generated on ' . $this->excelCell(now()->format('F j, Y g:i A')) . '</td></tr>';
+        $html .= '<tr><th class="section" colspan="2">Applicant Information</th></tr>';
+        foreach ($rows as $row) {
+            $value = ($row[2] ?? false) ? $this->excelTextFormula($row[1]) : $this->excelCell($row[1]);
+            $html .= '<tr><th class="label">' . $this->excelCell($row[0]) . '</th><td class="value text">' . $value . '</td></tr>';
+        }
+        $html .= '</table><br>';
+        $html .= '<table class="print-wide">';
+        $html .= '<colgroup><col class="rating-label-col">';
+        foreach ($ratings as $rating) {
+            $html .= '<col class="rating-member-col">';
+        }
+        $html .= '<col class="rating-average-col"></colgroup>';
+        $html .= '<tr><th class="section" colspan="' . $ratingColumnSpan . '">Demonstration Ratings</th></tr>';
+        $html .= '<tr><th class="head">Criteria</th>';
+        foreach ($ratings as $rating) {
+            $html .= '<th class="head">' . $this->excelCell($rating->rater_name ?: 'Observer') . '</th>';
+        }
+        $html .= '<th class="head">Average</th></tr>';
+        $html .= '<tr><th class="label">Date Rated</th>';
+        foreach ($ratings as $rating) {
+            $html .= '<td class="text">' . $this->excelCell($rating->created_at?->format('F j, Y g:i A') ?: '-') . '</td>';
+        }
+        $html .= '<td class="muted">-</td></tr>';
+
+        foreach ($criteria as $criterion) {
+            $criterionScores = $ratings
+                ->map(fn (ApplicationRating $rating) => collect($rating->scores ?? [])->get($criterion))
+                ->filter(fn ($score) => is_numeric($score) && (float) $score > 0);
+            $criterionAverage = $criterionScores->count() > 0
+                ? round((float) $criterionScores->avg(), 2)
+                : '-';
+
+            $html .= '<tr>';
+            $html .= '<th class="label">' . $this->excelCell($this->demonstrationCriterionLabel((string) $criterion)) . '</th>';
+            foreach ($ratings as $rating) {
+                $score = collect($rating->scores ?? [])->get($criterion, '-');
+                $html .= '<td class="text">' . $this->excelCell((string) $score === '0' ? 'NA' : $score) . '</td>';
+            }
+            $html .= '<td class="text">' . $this->excelCell($criterionAverage) . '</td>';
+            $html .= '</tr>';
+        }
+
+        $html .= '<tr><th class="label">Total Score</th>';
+        foreach ($ratings as $rating) {
+            $scores = collect($rating->scores ?? []);
+            $possibleScore = max(1, $scores->filter(fn ($score) => (float) $score > 0)->count()) * 5;
+            $html .= '<td class="text">' . $this->excelCell($rating->total_score . '/' . $possibleScore) . '</td>';
+        }
+        $html .= '<td class="text"><strong>' . $this->excelCell($stats['average'] !== null ? $stats['average'] . '%' : '-') . '</strong></td></tr>';
+        $html .= '<tr><th class="label">Percentage</th>';
+        foreach ($ratings as $rating) {
+            $html .= '<td class="text">' . $this->excelCell(round((float) $rating->percentage_score, 2) . '%') . '</td>';
+        }
+        $html .= '<td class="text"><strong>' . $this->excelCell($stats['average'] !== null ? $stats['average'] . '%' : '-') . '</strong></td></tr>';
+        $html .= '<tr><th class="label">Remarks / Details</th>';
+        foreach ($ratings as $rating) {
+            $html .= '<td class="text">' . $this->excelCell($this->userRatingRemarks($rating)) . '</td>';
+        }
+        $html .= '<td class="muted">-</td></tr>';
+        $html .= '</table></body></html>';
+
+        ActivityLog::record('application.demonstration_summary_downloaded', "Downloaded demonstration summary for {$upload->name}.", $request, [
+            'subject_type' => 'application',
+            'subject_id' => $upload->id,
+            'subject_name' => $upload->name,
+            'metadata' => [
+                'jobTitle' => $upload->applied_job_title ?: $upload->matched_job_title,
+                'format' => 'xls',
+            ],
+        ]);
+
+        $safeName = Str::slug($upload->name ?: 'application');
+        return response($html, 200, [
+            'Content-Type' => 'application/vnd.ms-excel; charset=UTF-8',
+            'Content-Disposition' => "attachment; filename=\"demonstration-summary-{$safeName}.xls\"",
         ]);
     }
 
@@ -540,6 +686,7 @@ class UploadController extends Controller
             'raterEmail' => ['nullable', 'string', 'max:255'],
             'boardMembers' => ['nullable', 'array'],
             'boardMembers.*' => ['nullable', 'string', 'max:255'],
+            'formType' => ['nullable', 'string', 'in:interview,demonstration'],
             'scores' => ['required', 'array'],
             'scores.*' => ['required', 'integer', 'min:0', 'max:5'],
             'remarks' => ['nullable', 'string', 'max:1000'],
@@ -552,6 +699,7 @@ class UploadController extends Controller
         $percentageScore = round(($totalScore / $possibleScore) * 100, 2);
         $raterName = trim((string) ($data['raterName'] ?? ''));
         $raterEmail = Str::lower(trim((string) ($data['raterEmail'] ?? '')));
+        $formType = ($data['formType'] ?? 'interview') === 'demonstration' ? 'demonstration' : 'interview';
 
         $alreadyRated = ApplicationRating::query()
             ->where('upload_id', $upload->id)
@@ -563,11 +711,12 @@ class UploadController extends Controller
 
                 $query->whereRaw('LOWER(rater_name) = ?', [Str::lower($raterName)]);
             })
-            ->exists();
+            ->get()
+            ->contains(fn (ApplicationRating $rating) => $this->ratingFormType($rating) === $formType);
 
         if ($alreadyRated) {
             return response()->json([
-                'message' => 'This board member has already rated this applicant.',
+                'message' => "This board member has already rated this {$formType} form.",
             ], 422);
         }
 
@@ -846,6 +995,8 @@ class UploadController extends Controller
             'raterName' => $rating->rater_name,
             'rater_email' => $rating->rater_email,
             'raterEmail' => $rating->rater_email,
+            'form_type' => $this->ratingFormType($rating),
+            'formType' => $this->ratingFormType($rating),
             'scores' => $rating->scores ?? [],
             'remarks' => $rating->remarks,
             'total_score' => $rating->total_score,
@@ -908,11 +1059,96 @@ class UploadController extends Controller
             ->toString();
     }
 
-    private function ratingStats(Upload $upload): array
+    private function ratingFormType(ApplicationRating $rating): string
+    {
+        $remarks = Str::lower((string) ($rating->remarks ?? ''));
+        $scoreKeys = array_keys($rating->scores ?? []);
+
+        if (str_contains($remarks, 'applicant demonstration form')) {
+            return 'demonstration';
+        }
+
+        foreach ($scoreKeys as $key) {
+            if (str_contains((string) $key, ': ')) {
+                return 'demonstration';
+            }
+        }
+
+        return 'interview';
+    }
+
+    private function ratingsForFormType(Upload $upload, string $formType): \Illuminate\Support\Collection
+    {
+        $ratings = $upload->relationLoaded('ratings')
+            ? $upload->ratings
+            : $upload->ratings()->orderBy('id')->get();
+
+        return $ratings
+            ->filter(fn (ApplicationRating $rating) => $this->ratingFormType($rating) === $formType)
+            ->values();
+    }
+
+    private function demonstrationCriterionLabel(string $criterion): string
+    {
+        $parts = explode(': ', $criterion, 2);
+        if (count($parts) < 2) {
+            return $criterion;
+        }
+
+        return Str::headline($parts[0]) . ' - ' . $parts[1];
+    }
+
+    private function userRatingRemarks(ApplicationRating $rating): string
+    {
+        $remarks = trim((string) ($rating->remarks ?? ''));
+        if ($remarks === '') {
+            return '-';
+        }
+
+        $generatedPrefixes = [
+            'applicant demonstration form',
+            'board type:',
+            'teacher:',
+            'subject:',
+            'building:',
+            'matterlesson:',
+            'matter lesson:',
+            'date:',
+            'time:',
+            'room:',
+            'mean:',
+            'descriptive rating:',
+            'observer:',
+        ];
+
+        $lines = preg_split('/\R+/', $remarks) ?: [];
+        $userLines = array_filter(array_map('trim', $lines), function (string $line) use ($generatedPrefixes): bool {
+            $lowerLine = Str::lower($line);
+
+            foreach ($generatedPrefixes as $prefix) {
+                if ($lowerLine === $prefix || str_starts_with($lowerLine, $prefix)) {
+                    return false;
+                }
+            }
+
+            return $line !== '';
+        });
+
+        $cleaned = trim(implode("\n", $userLines));
+        return $cleaned !== '' ? $cleaned : '-';
+    }
+
+    private function ratingStats(Upload $upload, ?string $formType = null): array
     {
         $ratings = $upload->relationLoaded('ratings')
             ? $upload->ratings
             : $upload->ratings()->get();
+
+        if ($formType !== null) {
+            $ratings = $ratings
+                ->filter(fn (ApplicationRating $rating) => $this->ratingFormType($rating) === $formType)
+                ->values();
+        }
 
         $count = $ratings->count();
         if ($count === 0) {

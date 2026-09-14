@@ -3,13 +3,23 @@
 namespace App\Http\Controllers\Auth;
 
 use App\Http\Controllers\Controller;
+use App\Models\Employer;
+use App\Models\JobSeeker;
+use App\Models\User;
 use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Password;
+use Illuminate\Support\Str;
 use Illuminate\View\View;
 
 class PasswordResetLinkController extends Controller
 {
+    private const BROKERS = [
+        'users' => User::class,
+        'employers' => Employer::class,
+        'job_seekers' => JobSeeker::class,
+    ];
+
     /**
      * Display the password reset link request view.
      */
@@ -27,18 +37,30 @@ class PasswordResetLinkController extends Controller
     {
         $request->validate([
             'email' => ['required', 'email'],
+            'account_type' => ['nullable', 'string', 'in:users,employers,job_seekers'],
         ]);
 
-        // We will send the password reset link to this user. Once we have attempted
-        // to send the link, we will examine the response then see the message we
-        // need to show to the user. Finally, we'll send out a proper response.
-        $status = Password::sendResetLink(
-            $request->only('email')
-        );
+        $email = Str::lower(trim($request->input('email')));
+        $broker = $this->brokerForEmail($email, $request->input('account_type', 'users'));
+        $status = $broker !== null
+            ? Password::broker($broker)->sendResetLink(['email' => $email])
+            : Password::INVALID_USER;
 
         return $status == Password::RESET_LINK_SENT
                     ? back()->with('status', __($status))
                     : back()->withInput($request->only('email'))
                             ->withErrors(['email' => __($status)]);
+    }
+
+    private function brokerForEmail(string $email, string $requestedBroker): ?string
+    {
+        $modelClass = self::BROKERS[$requestedBroker] ?? null;
+        if (!$modelClass) {
+            return null;
+        }
+
+        return $modelClass::query()->whereRaw('LOWER(email) = ?', [$email])->exists()
+            ? $requestedBroker
+            : null;
     }
 }
