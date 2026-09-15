@@ -47,7 +47,7 @@ const jobSeekerPageIntros = {
     body: "This is your setup page. Add your phone number, address, education, experience, resume, and supporting documents here.",
     tips: [
       "Use Edit Profile to add phone number and address.",
-      "Upload resume, certificates, portfolio, application letter, and transcript."
+      "Upload resume, certificates, portfolio, and transcript. Add the application letter when applying."
     ]
   },
   help: {
@@ -1952,7 +1952,18 @@ function App() {
       return (
         <LandingPage
           scrollToSectionId={landingSectionTarget}
-          onLoginClick={() => setIsViewingLanding(false)}
+          onPersonnelLoginClick={() => {
+            setLoginMode("staff")
+            setIsRegistering(false)
+            setIsEmailVerificationVisible(false)
+            setIsViewingLanding(false)
+          }}
+          onJobSeekerLoginClick={() => {
+            setLoginMode("jobseeker")
+            setIsRegistering(false)
+            setIsEmailVerificationVisible(false)
+            setIsViewingLanding(false)
+          }}
           onRegisterClick={() => {
             setLoginMode("jobseeker")
             setIsEmailVerificationVisible(false)

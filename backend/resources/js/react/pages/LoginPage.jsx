@@ -38,7 +38,7 @@ function LoginPage({
   }, [loginEmail, loginPassword, loginError])
 
   return (
-    <main className="login-shell">
+    <main className={`login-shell ${isJobSeekerMode ? "jobseeker-login-shell" : "staff-login-shell"}`}>
       <header className="topbar login-topbar-shared login-topbar">
         <button type="button" className="brand" onClick={() => onGoToLandingSection("landing-hero")}>
           <img src={loginImage} alt="LNU-HiRe" />
@@ -50,12 +50,17 @@ function LoginPage({
 
         <nav className="topnav login-topnav-shared login-nav" aria-label="Login page navigation" />
         <div className="login-topbar-cta">
-          <button type="button" className="btn login-signin-btn" onClick={onRegister}>Job Seeker Register</button>
+          {isJobSeekerMode && (
+            <button type="button" className="btn login-signin-btn" onClick={onRegister}>Job Seeker Register</button>
+          )}
         </div>
       </header>
 
-      <section className="login-hero-modern" id="login-hero">
+      <section className={`login-hero-modern ${isJobSeekerMode ? "jobseeker-login-hero" : "staff-login-hero"}`} id="login-hero">
         <div className="login-left-modern">
+          {!isJobSeekerMode && (
+            <img src={loginImage} alt="LNU-HiRe" className="staff-login-logo" />
+          )}
           <h1 className="login-heading-modern">
             Welcome to <span>LNU-HiRe</span>
           </h1>
@@ -63,23 +68,8 @@ function LoginPage({
             Find the best-fit talent faster with intelligent applicant matching.
           </p>
 
-          <div className="login-mode-switch" role="tablist" aria-label="Login type">
-            <button
-              type="button"
-              className={`login-mode-chip ${!isJobSeekerMode ? "is-active" : ""}`}
-              onClick={() => setLoginMode("staff")}
-              aria-pressed={!isJobSeekerMode}
-            >
-              Employer / Admin
-            </button>
-            <button
-              type="button"
-              className={`login-mode-chip ${isJobSeekerMode ? "is-active" : ""}`}
-              onClick={() => setLoginMode("jobseeker")}
-              aria-pressed={isJobSeekerMode}
-            >
-              Job Seeker
-            </button>
+          <div className="login-portal-heading">
+            <span>{isJobSeekerMode ? "Job Seeker Portal" : "Personnel/Admin Portal"}</span>
           </div>
 
           <form
@@ -143,13 +133,15 @@ function LoginPage({
                 />
                 <span>Remember Me</span>
               </label>
-              <button
-                type="button"
-                className="link-btn-modern"
-                onClick={() => window.location.assign("/forgot-password")}
-              >
-                Forgot Password?
-              </button>
+              {isJobSeekerMode && (
+                <button
+                  type="button"
+                  className="link-btn-modern"
+                  onClick={() => window.location.assign("/forgot-password")}
+                >
+                  Forgot Password?
+                </button>
+              )}
             </div>
 
             {loginError && <p className="login-error-modern">{loginError}</p>}
@@ -171,11 +163,13 @@ function LoginPage({
           )}
         </div>
 
-        <div className="login-right-modern">
-          <div className="login-brand-card">
-            <img src={loginImage} alt="LNU RecruitIQ" className="login-brand-logo" />
+        {isJobSeekerMode && (
+          <div className="login-right-modern">
+            <div className="login-brand-card">
+              <img src={loginImage} alt="LNU RecruitIQ" className="login-brand-logo" />
+            </div>
           </div>
-        </div>
+        )}
       </section>
 
       

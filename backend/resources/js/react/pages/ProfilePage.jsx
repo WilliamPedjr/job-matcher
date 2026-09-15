@@ -1,8 +1,7 @@
 import React from 'react'
-import { useEffect, useRef, useState } from "react"
+import { useEffect, useMemo, useRef, useState } from "react"
 import "../styles/ProfilePage.css"
 import profileIcon from "../assets/circle-user-solid-full.svg"
-import { getArchiveActorHeaders } from "../utils/archiveActor"
 
 const readJsonResponse = async (response) => {
   const contentType = response.headers.get("content-type") || ""
@@ -68,6 +67,12 @@ function ProfilePage({
   const [supportingStatus, setSupportingStatus] = useState("")
   const [supportingErrorToast, setSupportingErrorToast] = useState("")
   const [pendingSupportingType, setPendingSupportingType] = useState("certificate")
+  const [isEligibilityModalOpen, setIsEligibilityModalOpen] = useState(false)
+  const [eligibilityStatus, setEligibilityStatus] = useState("")
+  const [eligibilityForm, setEligibilityForm] = useState({
+    classification: "",
+    file: null
+  })
   const [resumeAttentionActive, setResumeAttentionActive] = useState(false)
   const resumeSectionRef = useRef(null)
   const resumeInputRef = useRef(null)
@@ -79,13 +84,71 @@ function ProfilePage({
   const supportingTypeConfig = [
     { key: "certificate", label: "Certificate" },
     { key: "portfolio", label: "Portfolio" },
-    { key: "recommendation", label: "Application Letter" },
     { key: "transcript", label: "Transcript" },
     { key: "others", label: "Other Supporting Documents" }
   ]
 
+  const educationLevelOptions = [
+    "Elementary",
+    "Junior High School",
+    "Senior High School",
+    "Vocational",
+    "College",
+    "Graduate Studies",
+    "Doctorate"
+  ]
+  const graduationStatusOptions = [
+    "Graduated",
+    "Undergraduate",
+    "Ongoing",
+    "With Honors",
+    "Cum Laude",
+    "Magna Cum Laude",
+    "Summa Cum Laude"
+  ]
+  const ldClassificationOptions = [
+    "Managerial",
+    "Supervisory",
+    "Technical",
+    "Foundation",
+    "Leadership",
+    "Professional Development",
+    "Other"
+  ]
+  const governmentServiceOptions = ["Yes", "No"]
+  const appointmentStatusOptions = [
+    "Permanent",
+    "Temporary",
+    "Contractual",
+    "Casual",
+    "Job Order",
+    "Part-time",
+    "Other"
+  ]
+  const eligibilityClassificationOptions = [
+    "Career Service Eligibility - Preference Rating (CSE-PR)",
+    "Career Service Eligibility - Sub Professional (CSE-Sub)",
+    "Career Service Eligibility - Professional (CSE-Prof)",
+    "Bar/Board Eligibility (RA 1080)",
+    "Barangay Health Worker Eligibility (RA 7883)",
+    "Barangay Nutrition Scholar Eligibility (PD 1569)",
+    "Barangay Official Eligibility (RA 7160)",
+    "Electronic Data Processing Specialist Eligibility (CSC Res. 90-083)",
+    "Foreign School Honor Graduate Eligibility (CSC Res. 1302714)",
+    "Honor Graduate Eligibility (PD 907)",
+    "Sanggunian Member Eligibility (RA 10156)",
+    "Scientific and Technological Specialist Eligibility (PD 997)",
+    "Skills Eligibility - Category II (CSC MC 11, s. 1996, as Amended)",
+    "Veteran Preference Rating (EO 132/790)",
+    "Other Eligibility"
+  ]
+  const academicYearOptions = useMemo(() => {
+    const currentYear = new Date().getFullYear()
+    return Array.from({ length: currentYear - 1949 }, (_, index) => String(currentYear - index))
+  }, [])
+
   const supportingFiles = Array.isArray(jobSeekerSupporting) ? jobSeekerSupporting : []
-  const requiredSupportingKeys = ["certificate", "portfolio", "recommendation", "transcript"]
+  const requiredSupportingKeys = ["certificate", "portfolio", "transcript"]
   const supportingByType = supportingFiles.reduce((acc, item) => {
     const type = String(item?.type || "others")
     if (!acc[type]) acc[type] = []
@@ -93,6 +156,7 @@ function ProfilePage({
     return acc
   }, {})
   const supportingComplete = requiredSupportingKeys.every((key) => Array.isArray(supportingByType[key]) && supportingByType[key].length > 0)
+  const eligibilityDocs = supportingFiles.filter((item) => String(item?.type || "").toLowerCase().startsWith("eligibility:"))
 
   const normalizeEducationItem = (item = {}) => ({
     id: item?.id ?? null,
@@ -102,6 +166,135 @@ function ProfilePage({
     endYear: item?.endYear || item?.end_year || "",
     description: item?.description || "",
   })
+
+  const parseAcademicDescription = (description = "") => {
+    const details = {
+      educationLevel: "",
+      graduationStatus: "",
+      yearGraduated: "",
+      academicHonors: "",
+      honorsNotApplicable: false
+    }
+
+    String(description || "").split(/\r?\n/).forEach((line) => {
+      const [rawLabel, ...valueParts] = line.split(":")
+      if (!valueParts.length) return
+      const label = rawLabel.trim().toLowerCase()
+      const value = valueParts.join(":").trim()
+      if (label === "educational level") details.educationLevel = value
+      if (label === "graduation status rank") details.graduationStatus = value
+      if (label === "year graduated") details.yearGraduated = value
+      if (label === "academic honors / awards received") {
+        details.academicHonors = value === "N/A" ? "" : value
+        details.honorsNotApplicable = value === "N/A"
+      }
+    })
+
+    return details
+  }
+
+  const buildAcademicDescription = (state = {}) => {
+    const lines = []
+    const honors = state.honorsNotApplicable ? "N/A" : String(state.academicHonors || "").trim()
+
+    if (state.educationLevel) lines.push(`Educational Level: ${state.educationLevel}`)
+    if (state.graduationStatus) lines.push(`Graduation Status Rank: ${state.graduationStatus}`)
+    if (state.yearGraduated) lines.push(`Year Graduated: ${state.yearGraduated}`)
+    if (honors) lines.push(`Academic Honors / Awards Received: ${honors}`)
+
+    return lines.join("\n") || state.educationDescription || ""
+  }
+
+  const parseTrainingDescription = (description = "") => {
+    const details = {
+      trainingHours: "",
+      ldClassification: "",
+      trainingCertificateName: ""
+    }
+
+    String(description || "").split(/\r?\n/).forEach((line) => {
+      const [rawLabel, ...valueParts] = line.split(":")
+      if (!valueParts.length) return
+      const label = rawLabel.trim().toLowerCase()
+      const value = valueParts.join(":").trim()
+      if (label === "number of hours credit") details.trainingHours = value
+      if (label === "type of ld classification") details.ldClassification = value
+      if (label === "certificate file") details.trainingCertificateName = value
+    })
+
+    return details
+  }
+
+  const buildTrainingDescription = (state = {}) => {
+    const lines = ["Record Type: Training"]
+    if (state.trainingHours) lines.push(`Number of Hours Credit: ${state.trainingHours}`)
+    if (state.ldClassification) lines.push(`Type of LD Classification: ${state.ldClassification}`)
+    if (state.trainingCertificateFile?.name || state.trainingCertificateName) {
+      lines.push(`Certificate File: ${state.trainingCertificateFile?.name || state.trainingCertificateName}`)
+    }
+
+    return lines.join("\n") || state.experienceDescription || ""
+  }
+
+  const parseWorkExperienceDescription = (description = "") => {
+    const details = {
+      governmentService: "",
+      monthlySalary: "",
+      salaryGrade: "",
+      appointmentStatus: "",
+      coeFileName: ""
+    }
+
+    String(description || "").split(/\r?\n/).forEach((line) => {
+      const [rawLabel, ...valueParts] = line.split(":")
+      if (!valueParts.length) return
+      const label = rawLabel.trim().toLowerCase()
+      const value = valueParts.join(":").trim()
+      if (label === "government service") details.governmentService = value
+      if (label === "monthly gross salary") details.monthlySalary = value
+      if (label === "salary grade") details.salaryGrade = value
+      if (label === "status of appointment") details.appointmentStatus = value
+      if (label === "coe file") details.coeFileName = value
+    })
+
+    return details
+  }
+
+  const buildWorkExperienceDescription = (state = {}) => {
+    const lines = ["Record Type: Work Experience"]
+    if (state.governmentService) lines.push(`Government Service: ${state.governmentService}`)
+    if (state.monthlySalary) lines.push(`Monthly Gross Salary: ${state.monthlySalary}`)
+    if (state.salaryGrade) lines.push(`Salary Grade: ${state.salaryGrade}`)
+    if (state.appointmentStatus) lines.push(`Status of Appointment: ${state.appointmentStatus}`)
+    if (state.coeFile?.name || state.coeFileName) {
+      lines.push(`COE File: ${state.coeFile?.name || state.coeFileName}`)
+    }
+
+    return lines.join("\n") || state.experienceDescription || ""
+  }
+
+  const isTrainingExperience = (item = {}) => {
+    const description = String(item?.description || "").toLowerCase()
+    return description.includes("record type: training") ||
+      description.includes("number of hours credit:") ||
+      description.includes("type of ld classification:") ||
+      description.includes("certificate file:")
+  }
+
+  const visibleDescriptionLines = (description = "") => (
+    String(description || "")
+      .split(/\r?\n/)
+      .filter((line) => line.trim() && !line.toLowerCase().startsWith("record type:"))
+  )
+
+  const eligibilityDocType = (classification = "") => `eligibility:${classification}`
+
+  const eligibilityClassificationFromType = (type = "") => {
+    const value = String(type || "")
+    return value.toLowerCase().startsWith("eligibility:")
+      ? value.slice(value.indexOf(":") + 1)
+      : "Eligibility"
+  }
 
   const normalizeExperienceItem = (item = {}) => ({
     id: item?.id ?? null,
@@ -163,6 +356,8 @@ function ProfilePage({
   const aboutText = isJobSeeker ? (normalizedJobSeekerProfile?.aboutText || "") : ""
   const education = isJobSeeker ? (normalizedJobSeekerProfile?.education || []) : []
   const experience = isJobSeeker ? (normalizedJobSeekerProfile?.experience || []) : []
+  const trainingExperience = experience.filter(isTrainingExperience)
+  const workExperience = experience.filter((item) => !isTrainingExperience(item))
   const resumeUpdatedAt = jobSeekerResume?.updatedAt
     ? new Date(jobSeekerResume.updatedAt).toLocaleDateString(undefined, { month: "short", day: "numeric", year: "numeric" })
     : ""
@@ -318,26 +513,69 @@ function ProfilePage({
   }
 
   const openEditEducation = (item = null) => {
+    const academicDetails = parseAcademicDescription(item?.description || "")
     setFormState((prev) => ({
       ...prev,
       schoolName: item?.schoolName || item?.school_name || item?.school || "",
       degree: item?.degree || item?.program || "",
       startYear: item?.startYear || item?.start_year || "",
       endYear: item?.endYear || item?.end_year || "",
-      educationDescription: item?.description || ""
+      educationDescription: item?.description || "",
+      educationLevel: academicDetails.educationLevel,
+      graduationStatus: academicDetails.graduationStatus,
+      yearGraduated: academicDetails.yearGraduated,
+      academicHonors: academicDetails.academicHonors,
+      honorsNotApplicable: academicDetails.honorsNotApplicable
     }))
     setEditingItem(item)
     setEditMode("education")
   }
 
-  const openEditExperience = (item = null) => {
+  const openEditTraining = (item = null) => {
+    const trainingDetails = parseTrainingDescription(item?.description || "")
     setFormState((prev) => ({
       ...prev,
+      experienceCategory: "training",
       companyName: item?.companyName || item?.company_name || item?.company || "",
       position: item?.position || item?.title || "",
       startDate: item?.startDate || item?.start_date || "",
       endDate: item?.endDate || item?.end_date || "",
-      experienceDescription: item?.description || ""
+      experienceDescription: item?.description || "",
+      trainingHours: trainingDetails.trainingHours,
+      ldClassification: trainingDetails.ldClassification,
+      trainingCertificateName: trainingDetails.trainingCertificateName,
+      trainingCertificateFile: null,
+      governmentService: "",
+      monthlySalary: "",
+      salaryGrade: "",
+      appointmentStatus: "",
+      coeFileName: "",
+      coeFile: null
+    }))
+    setEditingItem(item)
+    setEditMode("experience")
+  }
+
+  const openEditWorkExperience = (item = null) => {
+    const workDetails = parseWorkExperienceDescription(item?.description || "")
+    setFormState((prev) => ({
+      ...prev,
+      experienceCategory: "work",
+      companyName: item?.companyName || item?.company_name || item?.company || "",
+      position: item?.position || item?.title || "",
+      startDate: item?.startDate || item?.start_date || "",
+      endDate: item?.endDate || item?.end_date || "",
+      experienceDescription: item?.description || "",
+      governmentService: workDetails.governmentService,
+      monthlySalary: workDetails.monthlySalary,
+      salaryGrade: workDetails.salaryGrade,
+      appointmentStatus: workDetails.appointmentStatus,
+      coeFileName: workDetails.coeFileName,
+      coeFile: null,
+      trainingHours: "",
+      ldClassification: "",
+      trainingCertificateName: "",
+      trainingCertificateFile: null
     }))
     setEditingItem(item)
     setEditMode("experience")
@@ -411,6 +649,7 @@ function ProfilePage({
       return
     }
     setSaveStatus("Saving...")
+    const educationDescription = buildAcademicDescription(formState)
     try {
       const response = await fetch(
         `http://localhost:5000/job-seekers/${resolvedJobSeekerId}/education${editingItem?.id ? `/${editingItem.id}` : ""}`,
@@ -422,7 +661,7 @@ function ProfilePage({
             degree: formState.degree,
             start_year: formState.startYear,
             end_year: formState.endYear,
-            description: formState.educationDescription
+            description: educationDescription
           })
         }
       )
@@ -437,7 +676,7 @@ function ProfilePage({
         degree: formState.degree,
         start_year: formState.startYear,
         end_year: formState.endYear,
-        description: formState.educationDescription
+        description: educationDescription
       })
       updateProfileLocal((prev) => {
         const list = Array.isArray(prev.education) ? [...prev.education] : []
@@ -490,6 +729,10 @@ function ProfilePage({
       return
     }
     setSaveStatus("Saving...")
+    const isTrainingRecord = formState.experienceCategory === "training"
+    const experienceDescription = isTrainingRecord
+      ? buildTrainingDescription(formState)
+      : buildWorkExperienceDescription(formState)
     try {
       const response = await fetch(
         `http://localhost:5000/job-seekers/${resolvedJobSeekerId}/experience${editingItem?.id ? `/${editingItem.id}` : ""}`,
@@ -501,7 +744,7 @@ function ProfilePage({
             position: formState.position,
             start_date: formState.startDate,
             end_date: formState.endDate,
-            description: formState.experienceDescription
+            description: experienceDescription
           })
         }
       )
@@ -516,8 +759,27 @@ function ProfilePage({
         position: formState.position,
         start_date: formState.startDate,
         end_date: formState.endDate,
-        description: formState.experienceDescription
+        description: experienceDescription
       })
+      const supportingFile = isTrainingRecord ? formState.trainingCertificateFile : formState.coeFile
+      const supportingType = isTrainingRecord ? "certificate" : "others"
+      const uploadFailureMessage = isTrainingRecord
+        ? "Training saved, but certificate upload failed."
+        : "Experience saved, but COE upload failed."
+      if (supportingFile) {
+        const certificateData = new FormData()
+        certificateData.append("supportingFiles", supportingFile)
+        certificateData.append("supportingTypes", supportingType)
+        const certificateResponse = await fetch(`http://localhost:5000/job-seekers/${resolvedJobSeekerId}/supporting`, {
+          method: "POST",
+          body: certificateData
+        })
+        if (!certificateResponse.ok) {
+          const payload = await certificateResponse.json().catch(() => null)
+          throw new Error(payload?.message || uploadFailureMessage)
+        }
+        await refreshSupportingFiles()
+      }
       updateProfileLocal((prev) => {
         const list = Array.isArray(prev.experience) ? [...prev.experience] : []
         if (editingItem?.id) {
@@ -581,6 +843,13 @@ function ProfilePage({
 
   const handleResumeUpload = (file) => {
     if (!file) return
+    if (jobSeekerResume) {
+      setResumeStatus("Resume/PDS already uploaded and cannot be replaced.")
+      if (resumeInputRef.current) {
+        resumeInputRef.current.value = ""
+      }
+      return
+    }
     if (!resolvedJobSeekerId) {
       setResumeStatus("Missing job seeker id.")
       if (resumeInputRef.current) {
@@ -614,32 +883,6 @@ function ProfilePage({
         if (resumeInputRef.current) {
           resumeInputRef.current.value = ""
         }
-      })
-  }
-
-  const handleResumeRemove = () => {
-    if (!resolvedJobSeekerId) {
-      setResumeStatus("Missing job seeker id.")
-      return
-    }
-    setResumeStatus("Removing...")
-    fetch(`http://localhost:5000/job-seekers/${resolvedJobSeekerId}/resume`, {
-      method: "DELETE",
-      headers: getArchiveActorHeaders()
-    })
-      .then(async (response) => {
-        if (!response.ok) {
-          const payload = await response.json().catch(() => null)
-          throw new Error(payload?.message || "Failed to remove resume.")
-        }
-      })
-      .then(() => {
-        onJobSeekerResumeUpdate?.(null)
-        setResumeStatus("Removed.")
-        setTimeout(() => setResumeStatus(""), 2000)
-      })
-      .catch((error) => {
-        setResumeStatus(error.message || "Failed to remove resume.")
       })
   }
 
@@ -699,6 +942,55 @@ function ProfilePage({
       .catch((error) => {
         setSupportingStatus("")
         setSupportingErrorToast(error.message || "Failed to upload supporting document.")
+      })
+  }
+
+  const handleEligibilitySubmit = () => {
+    if (!resolvedJobSeekerId) {
+      setEligibilityStatus("Missing job seeker id.")
+      return
+    }
+    if (!eligibilityForm.classification) {
+      setEligibilityStatus("Select an eligibility classification.")
+      return
+    }
+    if (!eligibilityForm.file) {
+      setEligibilityStatus("Upload an eligibility certificate.")
+      return
+    }
+
+    const lowerName = String(eligibilityForm.file.name || "").toLowerCase()
+    const allowedExtensions = [".pdf", ".png", ".jpg", ".jpeg"]
+    if (!allowedExtensions.some((extension) => lowerName.endsWith(extension))) {
+      setEligibilityStatus("Upload a PDF, PNG, JPG, or JPEG document.")
+      return
+    }
+
+    setEligibilityStatus("Saving...")
+    const formData = new FormData()
+    formData.append("supportingFiles", eligibilityForm.file)
+    formData.append("supportingTypes", eligibilityDocType(eligibilityForm.classification))
+
+    fetch(`http://localhost:5000/job-seekers/${resolvedJobSeekerId}/supporting`, {
+      method: "POST",
+      body: formData
+    })
+      .then(async (response) => {
+        if (!response.ok) {
+          const payload = await readJsonResponse(response).catch(() => null)
+          throw new Error(payload?.message || "Failed to upload eligibility certificate.")
+        }
+        return readJsonResponse(response)
+      })
+      .then(() => {
+        return refreshSupportingFiles().then(() => {
+          setEligibilityForm({ classification: "", file: null })
+          setEligibilityStatus("")
+          setIsEligibilityModalOpen(false)
+        })
+      })
+      .catch((error) => {
+        setEligibilityStatus(error.message || "Failed to upload eligibility certificate.")
       })
   }
 
@@ -901,8 +1193,8 @@ function ProfilePage({
                 />
                 <div className={`js-panel-subtext ${jobSeekerResume ? "js-supporting-ready" : "js-supporting-missing"}`}>
                   {jobSeekerResume
-                    ? "Resume/CV is uploaded and ready to use for applications."
-                    : "Upload Resume/CV before applying to jobs."}
+                    ? "Resume/PDS is uploaded and locked for applications."
+                    : "Upload Resume/PDS before applying to jobs."}
                 </div>
                 {jobSeekerResume ? (
                   <>
@@ -913,16 +1205,7 @@ function ProfilePage({
                         <div className="js-panel-subtext">
                           {resumeUpdatedAt ? `Updated ${resumeUpdatedAt}` : "Resume on file"}
                         </div>
-                        <div className="js-panel-actions">
-                          <label htmlFor="job-seeker-resume" className="js-text-btn">Replace</label>
-                          <button
-                            type="button"
-                            className="js-text-btn danger"
-                            onClick={handleResumeRemove}
-                          >
-                            Remove
-                          </button>
-                        </div>
+                        <div className="js-panel-subtext">This file cannot be replaced or removed by the job seeker.</div>
                       </div>
                     </div>
                   </>
@@ -964,7 +1247,7 @@ function ProfilePage({
                 <div className={`js-panel-subtext ${supportingComplete ? "js-supporting-ready" : "js-supporting-missing"}`}>
                   {supportingComplete
                     ? "All required supporting document types are uploaded."
-                    : "Upload Certificate, Portfolio, Application Letter, and Transcript."}
+                    : "Upload Certificate, Portfolio, and Transcript."}
                 </div>
                 {supportingTypeConfig.map((typeConfig) => {
                   const docs = supportingByType[typeConfig.key] || []
@@ -1014,6 +1297,64 @@ function ProfilePage({
             <section className="js-profile-panel">
               <div className="js-panel-header">
                 <div>
+                  <h3>Board / Civil Eligibility</h3>
+                  <p className="js-panel-subtitle">Add verified eligibility or board rating certificates</p>
+                </div>
+                <button
+                  type="button"
+                  className="js-icon-btn"
+                  title="Add"
+                  onClick={() => {
+                    setEligibilityForm({ classification: "", file: null })
+                    setEligibilityStatus("")
+                    setIsEligibilityModalOpen(true)
+                  }}
+                >
+                  ✎
+                </button>
+              </div>
+              {eligibilityDocs.length ? (
+                eligibilityDocs.map((doc) => (
+                  <div key={doc.id} className="js-panel-row">
+                    <div className="js-panel-icon">EL</div>
+                    <div>
+                      <strong>{eligibilityClassificationFromType(doc.type)}</strong>
+                      <div className="js-panel-subtext">{doc.originalName || "Eligibility certificate"}</div>
+                      <div className="js-panel-subtext">
+                        {doc.uploadedAt
+                          ? `Uploaded ${new Date(doc.uploadedAt).toLocaleDateString(undefined, { month: "short", day: "numeric", year: "numeric" })}`
+                          : "Uploaded"}
+                      </div>
+                      <div className="js-panel-actions">
+                        <button type="button" className="js-text-btn danger" onClick={() => setConfirmDeleteSupportingId(doc.id)}>
+                          Remove
+                        </button>
+                      </div>
+                    </div>
+                  </div>
+                ))
+              ) : (
+                <div className="js-panel-row">
+                  <div className="js-panel-icon">EL</div>
+                  <div className="js-panel-subtext">No eligibility record added yet.</div>
+                </div>
+              )}
+              <button
+                type="button"
+                className="js-outline-btn"
+                onClick={() => {
+                  setEligibilityForm({ classification: "", file: null })
+                  setEligibilityStatus("")
+                  setIsEligibilityModalOpen(true)
+                }}
+              >
+                Add Eligibility
+              </button>
+            </section>
+
+            <section className="js-profile-panel">
+              <div className="js-panel-header">
+                <div>
                   <h3>Education</h3>
                   <p className="js-panel-subtitle">Show your qualifications</p>
                 </div>
@@ -1029,7 +1370,13 @@ function ProfilePage({
                       <div className="js-panel-subtext">
                         {[item.startYear, item.endYear].filter(Boolean).join(" - ") || "-"}
                       </div>
-                      {item.description ? <div className="js-panel-subtext">{item.description}</div> : null}
+                      {item.description ? (
+                        <div className="js-panel-subtext academic-description-lines">
+                          {String(item.description).split(/\r?\n/).map((line, index) => (
+                            <span key={`${line}-${index}`}>{line}</span>
+                          ))}
+                        </div>
+                      ) : null}
                       <div className="js-panel-actions">
                         <button type="button" className="js-text-btn" onClick={() => openEditEducation(item)}>Edit</button>
                         <button type="button" className="js-text-btn danger" onClick={() => deleteEducation(item.id)}>Delete</button>
@@ -1050,12 +1397,12 @@ function ProfilePage({
               <div className="js-panel-header">
                 <div>
                   <h3>Experience</h3>
-                  <p className="js-panel-subtitle">Showcase your accomplishments</p>
+                  <p className="js-panel-subtitle">Show your work history</p>
                 </div>
-                <button type="button" className="js-icon-btn" title="Edit" onClick={() => openEditExperience()}>✎</button>
+                <button type="button" className="js-icon-btn" title="Edit" onClick={() => openEditWorkExperience()}>✎</button>
               </div>
-              {experience.length ? (
-                experience.map((item) => (
+              {workExperience.length ? (
+                workExperience.map((item) => (
                   <div key={item.id} className="js-panel-row">
                     <div className="js-panel-icon">👤</div>
                     <div>
@@ -1064,9 +1411,15 @@ function ProfilePage({
                       <div className="js-panel-subtext">
                         {[item.startDate, item.endDate].filter(Boolean).join(" - ") || "-"}
                       </div>
-                      {item.description ? <div className="js-panel-subtext">{item.description}</div> : null}
+                      {item.description ? (
+                        <div className="js-panel-subtext academic-description-lines">
+                          {visibleDescriptionLines(item.description).map((line, index) => (
+                            <span key={`${line}-${index}`}>{line}</span>
+                          ))}
+                        </div>
+                      ) : null}
                       <div className="js-panel-actions">
-                        <button type="button" className="js-text-btn" onClick={() => openEditExperience(item)}>Edit</button>
+                        <button type="button" className="js-text-btn" onClick={() => openEditWorkExperience(item)}>Edit</button>
                         <button type="button" className="js-text-btn danger" onClick={() => deleteExperience(item.id)}>Delete</button>
                       </div>
                     </div>
@@ -1078,7 +1431,48 @@ function ProfilePage({
                   <div className="js-panel-subtext">No experience added yet.</div>
                 </div>
               )}
-              <button type="button" className="js-outline-btn" onClick={() => openEditExperience()}>Add Experience</button>
+              <button type="button" className="js-outline-btn" onClick={() => openEditWorkExperience()}>Add Experience</button>
+            </section>
+
+            <section className="js-profile-panel">
+              <div className="js-panel-header">
+                <div>
+                  <h3>Learning &amp; Development (Trainings Attended)</h3>
+                  <p className="js-panel-subtitle">Show trainings, seminars, and development programs</p>
+                </div>
+                <button type="button" className="js-icon-btn" title="Edit" onClick={() => openEditTraining()}>✎</button>
+              </div>
+              {trainingExperience.length ? (
+                trainingExperience.map((item) => (
+                  <div key={item.id} className="js-panel-row">
+                    <div className="js-panel-icon">LD</div>
+                    <div>
+                      <strong>{item.position || "-"}</strong>
+                      <div className="js-panel-subtext">{item.companyName || "-"}</div>
+                      <div className="js-panel-subtext">
+                        {[item.startDate, item.endDate].filter(Boolean).join(" - ") || "-"}
+                      </div>
+                      {item.description ? (
+                        <div className="js-panel-subtext academic-description-lines">
+                          {visibleDescriptionLines(item.description).map((line, index) => (
+                            <span key={`${line}-${index}`}>{line}</span>
+                          ))}
+                        </div>
+                      ) : null}
+                      <div className="js-panel-actions">
+                        <button type="button" className="js-text-btn" onClick={() => openEditTraining(item)}>Edit</button>
+                        <button type="button" className="js-text-btn danger" onClick={() => deleteExperience(item.id)}>Delete</button>
+                      </div>
+                    </div>
+                  </div>
+                ))
+              ) : (
+                <div className="js-panel-row">
+                  <div className="js-panel-icon">LD</div>
+                  <div className="js-panel-subtext">No learning and development records added yet.</div>
+                </div>
+              )}
+              <button type="button" className="js-outline-btn" onClick={() => openEditTraining()}>Add Training</button>
             </section>
           </div>
         </div>
@@ -1137,9 +1531,9 @@ function ProfilePage({
 
       {editMode && (
         <div className="modal-overlay" onClick={closeEdit}>
-          <div className="modal-card modal-modern js-edit-modal" onClick={(e) => e.stopPropagation()}>
+          <div className={`modal-card modal-modern js-edit-modal${editMode === "education" || editMode === "experience" ? " academic-edit-modal" : ""}`} onClick={(e) => e.stopPropagation()}>
             <div className="modal-header">
-              <h3>Edit {editMode === "profile" ? "Profile" : editMode === "about" ? "About" : editMode === "education" ? "Education" : "Experience"}</h3>
+              <h3>{editMode === "education" ? `${editingItem ? "Edit" : "Add"} Education` : editMode === "experience" ? `${editingItem ? "Edit" : "Add"} ${formState.experienceCategory === "work" ? "Experience" : "Training"}` : `Edit ${editMode === "profile" ? "Profile" : "About"}`}</h3>
               <button type="button" className="close-x" onClick={closeEdit}>×</button>
             </div>
             {editMode === "profile" && (
@@ -1186,54 +1580,218 @@ function ProfilePage({
               </div>
             )}
             {editMode === "education" && (
-              <div className="js-edit-body">
+              <div className="js-edit-body academic-block-form">
+                <div className="modal-grid">
+                  <div className="field-group">
+                    <label>Educational Level</label>
+                    <select className="input" value={formState.educationLevel || ""} onChange={(e) => setFormState((prev) => ({ ...prev, educationLevel: e.target.value }))}>
+                      <option value="">Select level</option>
+                      {educationLevelOptions.map((level) => (
+                        <option key={level} value={level}>{level}</option>
+                      ))}
+                    </select>
+                  </div>
+                  <div className="field-group">
+                    <label>Graduation Status</label>
+                    <select className="input" value={formState.graduationStatus || ""} onChange={(e) => setFormState((prev) => ({ ...prev, graduationStatus: e.target.value }))}>
+                      <option value="">Select status</option>
+                      {graduationStatusOptions.map((status) => (
+                        <option key={status} value={status}>{status}</option>
+                      ))}
+                    </select>
+                  </div>
+                </div>
                 <div className="field-group">
-                  <label>School Name</label>
+                  <label>School Name <span className="academic-label-note">Use complete school name</span></label>
                   <input className="input" value={formState.schoolName || ""} onChange={(e) => setFormState((prev) => ({ ...prev, schoolName: e.target.value }))} />
                 </div>
                 <div className="field-group">
-                  <label>Degree</label>
+                  <label>Degree / Course <span className="academic-label-note">Spell out the full course</span></label>
                   <input className="input" value={formState.degree || ""} onChange={(e) => setFormState((prev) => ({ ...prev, degree: e.target.value }))} />
                 </div>
                 <div className="modal-grid">
                   <div className="field-group">
-                    <label>Start Year</label>
-                    <input className="input" value={formState.startYear || ""} onChange={(e) => setFormState((prev) => ({ ...prev, startYear: e.target.value }))} />
+                    <label>From Year</label>
+                    <select className="input" value={formState.startYear || ""} onChange={(e) => setFormState((prev) => ({ ...prev, startYear: e.target.value }))}>
+                      <option value="">Select year</option>
+                      {academicYearOptions.map((year) => (
+                        <option key={`from-${year}`} value={year}>{year}</option>
+                      ))}
+                    </select>
                   </div>
                   <div className="field-group">
-                    <label>End Year</label>
-                    <input className="input" value={formState.endYear || ""} onChange={(e) => setFormState((prev) => ({ ...prev, endYear: e.target.value }))} />
+                    <label>To Year</label>
+                    <select className="input" value={formState.endYear || ""} onChange={(e) => setFormState((prev) => ({ ...prev, endYear: e.target.value }))}>
+                      <option value="">Select year</option>
+                      {academicYearOptions.map((year) => (
+                        <option key={`to-${year}`} value={year}>{year}</option>
+                      ))}
+                    </select>
                   </div>
                 </div>
+                <div className="field-group academic-year-graduated">
+                  <label>Year Graduated</label>
+                  <select className="input" value={formState.yearGraduated || ""} onChange={(e) => setFormState((prev) => ({ ...prev, yearGraduated: e.target.value }))}>
+                    <option value="">Select graduation year</option>
+                    {academicYearOptions.map((year) => (
+                      <option key={`grad-${year}`} value={year}>{year}</option>
+                    ))}
+                  </select>
+                </div>
                 <div className="field-group">
-                  <label>Description</label>
-                  <textarea className="input" rows={4} value={formState.educationDescription || ""} onChange={(e) => setFormState((prev) => ({ ...prev, educationDescription: e.target.value }))} />
+                  <label>Academic Honors / Awards Received</label>
+                  <textarea
+                    className="input academic-textarea"
+                    rows={2}
+                    disabled={Boolean(formState.honorsNotApplicable)}
+                    value={formState.honorsNotApplicable ? "" : (formState.academicHonors || "")}
+                    onChange={(e) => setFormState((prev) => ({ ...prev, academicHonors: e.target.value }))}
+                  />
+                  <label className="academic-checkbox">
+                    <input
+                      type="checkbox"
+                      checked={Boolean(formState.honorsNotApplicable)}
+                      onChange={(e) => setFormState((prev) => ({ ...prev, honorsNotApplicable: e.target.checked }))}
+                    />
+                    <span>Not Applicable (N/A)</span>
+                  </label>
                 </div>
               </div>
             )}
-            {editMode === "experience" && (
-              <div className="js-edit-body">
+            {editMode === "experience" && formState.experienceCategory === "work" && (
+              <div className="js-edit-body work-experience-form">
                 <div className="field-group">
-                  <label>Position</label>
+                  <label>Position Title</label>
                   <input className="input" value={formState.position || ""} onChange={(e) => setFormState((prev) => ({ ...prev, position: e.target.value }))} />
-                </div>
-                <div className="field-group">
-                  <label>Company Name</label>
-                  <input className="input" value={formState.companyName || ""} onChange={(e) => setFormState((prev) => ({ ...prev, companyName: e.target.value }))} />
                 </div>
                 <div className="modal-grid">
                   <div className="field-group">
                     <label>Start Date</label>
-                    <input className="input" value={formState.startDate || ""} onChange={(e) => setFormState((prev) => ({ ...prev, startDate: e.target.value }))} />
+                    <input type="date" className="input" value={formState.startDate || ""} onChange={(e) => setFormState((prev) => ({ ...prev, startDate: e.target.value }))} />
                   </div>
                   <div className="field-group">
                     <label>End Date</label>
-                    <input className="input" value={formState.endDate || ""} onChange={(e) => setFormState((prev) => ({ ...prev, endDate: e.target.value }))} />
+                    <input
+                      type="date"
+                      className="input"
+                      disabled={formState.endDate === "Present"}
+                      value={formState.endDate === "Present" ? "" : (formState.endDate || "")}
+                      onChange={(e) => setFormState((prev) => ({ ...prev, endDate: e.target.value }))}
+                    />
+                    <label className="academic-checkbox experience-present-check">
+                      <input
+                        type="checkbox"
+                        checked={formState.endDate === "Present"}
+                        onChange={(e) => setFormState((prev) => ({ ...prev, endDate: e.target.checked ? "Present" : "" }))}
+                      />
+                      <span>Present</span>
+                    </label>
                   </div>
                 </div>
                 <div className="field-group">
-                  <label>Description</label>
-                  <textarea className="input" rows={4} value={formState.experienceDescription || ""} onChange={(e) => setFormState((prev) => ({ ...prev, experienceDescription: e.target.value }))} />
+                  <label>Department / Agency / Corporate Office Company Name</label>
+                  <input className="input" value={formState.companyName || ""} onChange={(e) => setFormState((prev) => ({ ...prev, companyName: e.target.value }))} />
+                </div>
+                <div className="modal-grid">
+                  <div className="field-group">
+                    <label>Government Service</label>
+                    <select className="input" value={formState.governmentService || ""} onChange={(e) => setFormState((prev) => ({ ...prev, governmentService: e.target.value }))}>
+                      <option value="">Select option</option>
+                      {governmentServiceOptions.map((option) => (
+                        <option key={option} value={option}>{option}</option>
+                      ))}
+                    </select>
+                  </div>
+                  <div className="field-group">
+                    <label>Monthly Gross Salary</label>
+                    <input className="input" inputMode="decimal" placeholder="0.00" value={formState.monthlySalary || ""} onChange={(e) => setFormState((prev) => ({ ...prev, monthlySalary: e.target.value }))} />
+                  </div>
+                </div>
+                <div className="modal-grid">
+                  <div className="field-group">
+                    <label>Salary Grade (SG) <span className="academic-label-note">If applicable</span></label>
+                    <input className="input" placeholder="Leave empty if private" value={formState.salaryGrade || ""} onChange={(e) => setFormState((prev) => ({ ...prev, salaryGrade: e.target.value }))} />
+                  </div>
+                  <div className="field-group">
+                    <label>Status of Appointment</label>
+                    <select className="input" value={formState.appointmentStatus || ""} onChange={(e) => setFormState((prev) => ({ ...prev, appointmentStatus: e.target.value }))}>
+                      <option value="">Select status</option>
+                      {appointmentStatusOptions.map((statusOption) => (
+                        <option key={statusOption} value={statusOption}>{statusOption}</option>
+                      ))}
+                    </select>
+                  </div>
+                </div>
+                <div className="field-group">
+                  <label>Certificate of Employment (COE) <span className="academic-label-note">PDF, JPG, or PNG</span></label>
+                  <input
+                    type="file"
+                    className="input training-file-input"
+                    accept=".pdf,.jpg,.jpeg,.png,application/pdf,image/jpeg,image/png"
+                    onChange={(e) => setFormState((prev) => ({ ...prev, coeFile: e.target.files?.[0] || null }))}
+                  />
+                  {(formState.coeFile?.name || formState.coeFileName) && (
+                    <div className="js-panel-subtext training-file-name">
+                      {formState.coeFile?.name || formState.coeFileName}
+                    </div>
+                  )}
+                </div>
+              </div>
+            )}
+            {editMode === "experience" && formState.experienceCategory !== "work" && (
+              <div className="js-edit-body training-block-form">
+                <div className="field-group">
+                  <label>Training Program / Course Title</label>
+                  <input className="input" value={formState.position || ""} onChange={(e) => setFormState((prev) => ({ ...prev, position: e.target.value }))} />
+                </div>
+                <div className="modal-grid">
+                  <div className="field-group">
+                    <label>Start Date</label>
+                    <input type="date" className="input" value={formState.startDate || ""} onChange={(e) => setFormState((prev) => ({ ...prev, startDate: e.target.value }))} />
+                  </div>
+                  <div className="field-group">
+                    <label>End Date</label>
+                    <input type="date" className="input" value={formState.endDate || ""} onChange={(e) => setFormState((prev) => ({ ...prev, endDate: e.target.value }))} />
+                  </div>
+                </div>
+                <div className="modal-grid">
+                  <div className="field-group">
+                    <label>Number of Hours Credit</label>
+                    <input
+                      className="input"
+                      inputMode="decimal"
+                      placeholder="e.g. 40"
+                      value={formState.trainingHours || ""}
+                      onChange={(e) => setFormState((prev) => ({ ...prev, trainingHours: e.target.value }))}
+                    />
+                  </div>
+                  <div className="field-group">
+                    <label>LD Classification</label>
+                    <select className="input" value={formState.ldClassification || ""} onChange={(e) => setFormState((prev) => ({ ...prev, ldClassification: e.target.value }))}>
+                      <option value="">Select classification</option>
+                      {ldClassificationOptions.map((classification) => (
+                        <option key={classification} value={classification}>{classification}</option>
+                      ))}
+                    </select>
+                  </div>
+                </div>
+                <div className="field-group">
+                  <label>Conducted / Sponsored By</label>
+                  <input className="input" value={formState.companyName || ""} onChange={(e) => setFormState((prev) => ({ ...prev, companyName: e.target.value }))} />
+                </div>
+                <div className="field-group">
+                  <label>Certificate of Training <span className="academic-label-note">PDF, JPG, or PNG</span></label>
+                  <input
+                    type="file"
+                    className="input training-file-input"
+                    accept=".pdf,.jpg,.jpeg,.png,application/pdf,image/jpeg,image/png"
+                    onChange={(e) => setFormState((prev) => ({ ...prev, trainingCertificateFile: e.target.files?.[0] || null }))}
+                  />
+                  {(formState.trainingCertificateFile?.name || formState.trainingCertificateName) && (
+                    <div className="js-panel-subtext training-file-name">
+                      {formState.trainingCertificateFile?.name || formState.trainingCertificateName}
+                    </div>
+                  )}
                 </div>
               </div>
             )}
@@ -1251,6 +1809,77 @@ function ProfilePage({
               </button>
               <button className="btn btn-secondary" onClick={closeEdit}>Cancel</button>
               {saveStatus && <span className="muted">{saveStatus}</span>}
+            </div>
+          </div>
+        </div>
+      )}
+
+      {isEligibilityModalOpen && (
+        <div
+          className="modal-overlay"
+          onClick={(e) => {
+            if (e.target === e.currentTarget) {
+              setIsEligibilityModalOpen(false)
+              setEligibilityStatus("")
+            }
+          }}
+        >
+          <div className="modal-card modal-modern js-edit-modal" onClick={(e) => e.stopPropagation()}>
+            <div className="modal-header">
+              <h3>Add Board / Civil Eligibility</h3>
+              <button
+                type="button"
+                className="close-x"
+                onClick={() => {
+                  setIsEligibilityModalOpen(false)
+                  setEligibilityStatus("")
+                }}
+              >
+                ×
+              </button>
+            </div>
+            <div className="js-edit-body">
+              <div className="field-group">
+                <label>Eligibility Type Classification</label>
+                <select
+                  className="input"
+                  value={eligibilityForm.classification}
+                  onChange={(e) => setEligibilityForm((prev) => ({ ...prev, classification: e.target.value }))}
+                >
+                  <option value="">Select verified designation</option>
+                  {eligibilityClassificationOptions.map((classification) => (
+                    <option key={classification} value={classification}>{classification}</option>
+                  ))}
+                </select>
+              </div>
+              <div className="field-group">
+                <label>Certificate of Eligibility / Board Rating Certificate</label>
+                <input
+                  type="file"
+                  className="input training-file-input"
+                  accept=".pdf,.jpg,.jpeg,.png,application/pdf,image/jpeg,image/png"
+                  onChange={(e) => setEligibilityForm((prev) => ({ ...prev, file: e.target.files?.[0] || null }))}
+                />
+                {eligibilityForm.file?.name && (
+                  <div className="js-panel-subtext training-file-name">{eligibilityForm.file.name}</div>
+                )}
+              </div>
+            </div>
+            <div className="modal-actions">
+              <button className="btn" type="button" onClick={handleEligibilitySubmit}>
+                Add Record
+              </button>
+              <button
+                className="btn btn-secondary"
+                type="button"
+                onClick={() => {
+                  setIsEligibilityModalOpen(false)
+                  setEligibilityStatus("")
+                }}
+              >
+                Cancel
+              </button>
+              {eligibilityStatus && <span className="muted">{eligibilityStatus}</span>}
             </div>
           </div>
         </div>

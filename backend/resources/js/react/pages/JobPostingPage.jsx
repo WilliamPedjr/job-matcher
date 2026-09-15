@@ -12,6 +12,9 @@ function JobPostingPage({ uploads = [], isEmployer = false, isJobSeeker = false,
   const [statusFilter, setStatusFilter] = useState("all")
   const [jobPositionTypeFilter, setJobPositionTypeFilter] = useState("all")
   const [matchFilter, setMatchFilter] = useState("all")
+  const [jobsViewMode, setJobsViewMode] = useState("table")
+  const [cardPage, setCardPage] = useState(1)
+  const [tablePage, setTablePage] = useState(1)
   const [selectedJobTitle, setSelectedJobTitle] = useState("")
   const [modalSortConfig, setModalSortConfig] = useState({ key: "date", direction: "desc" })
   const [actionsJobId, setActionsJobId] = useState(null)
@@ -64,6 +67,8 @@ function JobPostingPage({ uploads = [], isEmployer = false, isJobSeeker = false,
   const [deleteToast, setDeleteToast] = useState(null)
   const deleteToastTimerRef = useRef(null)
   const isEditingJob = editingJobId != null
+  const CARD_PAGE_SIZE = 6
+  const TABLE_PAGE_SIZE = 10
   const descriptionRef = useRef(null)
   const createJobModalRef = useRef(null)
   const jobPositionRef = useRef(null)
@@ -545,6 +550,38 @@ function JobPostingPage({ uploads = [], isEmployer = false, isJobSeeker = false,
       return String(a.title || "").localeCompare(String(b.title || ""))
     })
   }, [filteredJobs])
+
+  const cardPageCount = Math.max(1, Math.ceil(fifoJobs.length / CARD_PAGE_SIZE))
+  const activeCardPage = Math.min(cardPage, cardPageCount)
+  const cardStartIndex = (activeCardPage - 1) * CARD_PAGE_SIZE
+  const cardPageJobs = useMemo(
+    () => fifoJobs.slice(cardStartIndex, cardStartIndex + CARD_PAGE_SIZE),
+    [fifoJobs, cardStartIndex]
+  )
+  const tablePageCount = Math.max(1, Math.ceil(fifoJobs.length / TABLE_PAGE_SIZE))
+  const activeTablePage = Math.min(tablePage, tablePageCount)
+  const tableStartIndex = (activeTablePage - 1) * TABLE_PAGE_SIZE
+  const tablePageJobs = useMemo(
+    () => fifoJobs.slice(tableStartIndex, tableStartIndex + TABLE_PAGE_SIZE),
+    [fifoJobs, tableStartIndex]
+  )
+
+  useEffect(() => {
+    setCardPage(1)
+    setTablePage(1)
+  }, [searchTerm, statusFilter, jobPositionTypeFilter, matchFilter, jobsViewMode])
+
+  useEffect(() => {
+    if (cardPage > cardPageCount) {
+      setCardPage(cardPageCount)
+    }
+  }, [cardPage, cardPageCount])
+
+  useEffect(() => {
+    if (tablePage > tablePageCount) {
+      setTablePage(tablePageCount)
+    }
+  }, [tablePage, tablePageCount])
 
   const normalizeJobPositionType = (value) => (
     String(value || "").trim().toLowerCase().replace(/\s+/g, "-")
@@ -1408,6 +1445,139 @@ function JobPostingPage({ uploads = [], isEmployer = false, isJobSeeker = false,
     }
   }
 
+  const getJobActionKey = (job) => `${job.source || "job"}-${job.id}`
+
+  const formatJobDeadline = (job) => (
+    job.deadline
+      ? new Date(job.deadline).toLocaleDateString(undefined, { month: "short", day: "numeric", year: "numeric" })
+      : "-"
+  )
+
+  const openJobRecord = (job) => {
+    if (isJobSeeker) {
+      onViewJob?.(job)
+      return
+    }
+    if (job.source === "template") {
+      setEditingJobId(null)
+      setShowJobFormErrors(false)
+      setNewJobTitle(job.title || "")
+      applyTemplateFromRecord(job)
+      setIsUsingSavedJobDraft(false)
+      setIsCreateModalOpen(true)
+      return
+    }
+    openEditJobModal(job)
+  }
+
+  const handleJobRecordKeyDown = (event, job) => {
+    if (event.key !== "Enter" && event.key !== " ") return
+    event.preventDefault()
+    openJobRecord(job)
+  }
+
+  const getJobMatchContent = (job) => {
+    if (!isJobSeeker) return null
+    if (!jobSeekerResume) {
+      return <span className="job-chip chip-warning">Upload resume</span>
+    }
+    if (jobMatchStatus === "loading") {
+      return <span className="job-chip chip-muted">Checking</span>
+    }
+
+    const matchKey = String(job.title || "").trim().toLowerCase()
+    const match = matchKey ? jobMatches[matchKey] : null
+    if (jobMatchStatus === "error" || !match || match.score == null) {
+      return <span className="job-chip chip-warning">Unavailable</span>
+    }
+
+    const matchScoreLabel = `${Number(match.score).toFixed(1)}%`
+    return (
+      <span className={`job-chip ${match.qualifies ? "chip-good" : "chip-bad"}`}>
+        <span className="job-chip-score">{matchScoreLabel}</span>
+        <span className="job-chip-label">{match.qualifies ? "match" : "not match"}</span>
+      </span>
+    )
+  }
+
+  const renderJobActions = (job, actionKey) => {
+    if (isJobSeeker || job.id == null) return null
+
+    return (
+      <>
+        <button
+          className="job-more"
+          type="button"
+          onClick={(e) => {
+            openJobActionsMenu(e, job, actionKey)
+          }}
+          aria-label="Job actions"
+        >
+          ...
+        </button>
+        {actionsJobId === actionKey && actionsJobMenu && (
+          <div
+            className="job-actions-menu job-actions-menu-floating"
+            style={{ top: `${actionsJobMenu.top}px`, left: `${actionsJobMenu.left}px` }}
+            onClick={(e) => e.stopPropagation()}
+          >
+            {job.source === "template" ? (
+              <button
+                type="button"
+                className="actions-menu-item"
+                onClick={() => {
+                  setActionsJobId(null)
+                  setEditingJobId(null)
+                  setShowJobFormErrors(false)
+                  setNewJobTitle(job.title || "")
+                  applyTemplateFromRecord(job)
+                  setIsUsingSavedJobDraft(false)
+                  setIsCreateModalOpen(true)
+                }}
+              >
+                Use Template
+              </button>
+            ) : (
+              <>
+                <button
+                  type="button"
+                  className="actions-menu-item"
+                  onClick={() => {
+                    setActionsJobId(null)
+                    openEditJobModal(job)
+                  }}
+                >
+                  Edit Details
+                </button>
+                <button
+                  type="button"
+                  className="actions-menu-item"
+                  onClick={() => updateJobStatus(job.id, "active")}
+                >
+                  Set Active
+                </button>
+                <button
+                  type="button"
+                  className="actions-menu-item"
+                  onClick={() => updateJobStatus(job.id, "closed")}
+                >
+                  Set Closed
+                </button>
+                <button
+                  type="button"
+                  className="actions-menu-item danger"
+                  onClick={() => deleteJobPost(job.id)}
+                >
+                  Delete Post
+                </button>
+              </>
+            )}
+          </div>
+        )}
+      </>
+    )
+  }
+
   return (
     <section className={`jobs-panel jobs-panel-modern ${actionsJobId || isPositioningJobActionsMenu ? "jobs-menu-open" : ""}`}>
       <div className="jobs-hero">
@@ -1427,7 +1597,7 @@ function JobPostingPage({ uploads = [], isEmployer = false, isJobSeeker = false,
         )}
       </div>
 
-      <div className="jobs-controls jobs-controls-modern">
+      <div className={`jobs-controls jobs-controls-modern ${isJobSeeker ? "jobs-controls-jobseeker" : ""}`}>
         <div className="autocomplete jobs-search">
           <input
             className="input"
@@ -1485,6 +1655,28 @@ function JobPostingPage({ uploads = [], isEmployer = false, isJobSeeker = false,
             placeholder="All Match"
           />
         )}
+        <div className="jobs-view-toggle" role="group" aria-label="Job list view">
+          <button
+            type="button"
+            className={`jobs-view-btn ${jobsViewMode === "table" ? "active" : ""}`}
+            onClick={() => setJobsViewMode("table")}
+            aria-pressed={jobsViewMode === "table"}
+            title="Table view"
+          >
+            <span className="jobs-view-icon table-icon" aria-hidden="true" />
+            <span className="jobs-view-text">Table</span>
+          </button>
+          <button
+            type="button"
+            className={`jobs-view-btn ${jobsViewMode === "cards" ? "active" : ""}`}
+            onClick={() => setJobsViewMode("cards")}
+            aria-pressed={jobsViewMode === "cards"}
+            title="Card view"
+          >
+            <span className="jobs-view-icon cards-icon" aria-hidden="true" />
+            <span className="jobs-view-text">Cards</span>
+          </button>
+        </div>
       </div>
 
       <div className="table-wrap jobs-table-wrap">
@@ -1494,46 +1686,97 @@ function JobPostingPage({ uploads = [], isEmployer = false, isJobSeeker = false,
           <p className="muted jobs-table-message">{error}</p>
         ) : fifoJobs.length === 0 ? (
           <p className="muted jobs-table-message">No jobs found.</p>
-        ) : (
-          <table className="records-table jobs-table">
-            <thead>
-              <tr>
-                <th className="jobs-order-col">#</th>
-                <th className="jobs-title-col">Job Position</th>
-                <th className="jobs-dept-col">Department/Units</th>
-                <th className="jobs-type-col">Type</th>
-                <th className="jobs-deadline-col">Post Deadline</th>
-                {isJobSeeker && <th className="jobs-match-col">Match</th>}
-                {!isJobSeeker && <th className="jobs-applicants-col">Applicants</th>}
-                <th className="jobs-status-col">Status</th>
-                {!isJobSeeker && <th className="actions-col jobs-actions-col">Actions</th>}
-              </tr>
-            </thead>
-            <tbody>
-              {fifoJobs.map((job, index) => {
-                const actionKey = `${job.source || "job"}-${job.id}`
-                const deadline = job.deadline
-                  ? new Date(job.deadline).toLocaleDateString(undefined, { month: "short", day: "numeric", year: "numeric" })
-                  : "-"
-                const matchKey = String(job.title || "").trim().toLowerCase()
-                const match = matchKey ? jobMatches[matchKey] : null
-                let matchContent = null
+        ) : jobsViewMode === "cards" ? (
+          <>
+            <div className="jobs-grid jobs-card-view">
+              {cardPageJobs.map((job, index) => {
+                const actionKey = getJobActionKey(job)
+                const skillItems = parseSkills(job.requiredSkills || job.required_skills || "").slice(0, 5)
+                return (
+                  <article
+                    key={`${job.source || "job"}-${job.id ?? job.title}`}
+                    className="job-card job-card-modern job-card-clickable jobs-list-card"
+                    role="button"
+                    tabIndex={0}
+                    onClick={() => openJobRecord(job)}
+                    onKeyDown={(event) => handleJobRecordKeyDown(event, job)}
+                  >
+                    <div className="job-card-head">
+                      <div>
+                        <p className="job-card-index">#{cardStartIndex + index + 1}</p>
+                        <h2>{job.title || "-"}</h2>
+                      </div>
+                      <div className="job-card-actions">
+                        <span className={`job-status ${String(job.status || "active").toLowerCase()}`}>
+                          {String(job.status || "active").toLowerCase()}
+                        </span>
+                        {renderJobActions(job, actionKey)}
+                      </div>
+                    </div>
 
-                if (isJobSeeker) {
-                  if (!jobSeekerResume) {
-                    matchContent = <span className="job-chip chip-warning">Upload resume</span>
-                  } else if (jobMatchStatus === "loading") {
-                    matchContent = <span className="job-chip chip-muted">Checking</span>
-                  } else if (jobMatchStatus === "error" || !match || match.score == null) {
-                    matchContent = <span className="job-chip chip-warning">Unavailable</span>
-                  } else {
-                    matchContent = (
-                      <span className={`job-chip ${match.qualifies ? "chip-good" : "chip-bad"}`}>
-                        {match.qualifies ? "match" : "not match"}
-                      </span>
-                    )
-                  }
-                }
+                    <p className="job-description">{job.description || "-"}</p>
+
+                    <div className="job-card-skill-preview">
+                      <span className="job-card-skill-label">Required Skills</span>
+                      <div className="job-card-chips job-card-skill-chips">
+                        {skillItems.length ? (
+                          skillItems.map((skill) => (
+                            <span key={skill} className="job-chip chip-outline">{skill}</span>
+                          ))
+                        ) : (
+                          <span className="job-chip chip-muted">No listed skills</span>
+                        )}
+                      </div>
+                    </div>
+                  </article>
+                )
+              })}
+            </div>
+            {cardPageCount > 1 && (
+              <div className="jobs-card-pagination" aria-label="Job cards pagination">
+                <button
+                  type="button"
+                  className="jobs-page-btn"
+                  onClick={() => setCardPage((page) => Math.max(1, page - 1))}
+                  disabled={activeCardPage <= 1}
+                >
+                  Previous
+                </button>
+                <span className="jobs-page-status">
+                  Page {activeCardPage} of {cardPageCount}
+                </span>
+                <button
+                  type="button"
+                  className="jobs-page-btn"
+                  onClick={() => setCardPage((page) => Math.min(cardPageCount, page + 1))}
+                  disabled={activeCardPage >= cardPageCount}
+                >
+                  Next
+                </button>
+              </div>
+            )}
+          </>
+        ) : (
+          <>
+            <table className="records-table jobs-table">
+              <thead>
+                <tr>
+                  <th className="jobs-order-col">#</th>
+                  <th className="jobs-title-col">Job Position</th>
+                  <th className="jobs-dept-col">Department/Units</th>
+                  <th className="jobs-type-col">Type</th>
+                  <th className="jobs-deadline-col">Post Deadline</th>
+                  {isJobSeeker && <th className="jobs-match-col">Match</th>}
+                  {!isJobSeeker && <th className="jobs-applicants-col">Applicants</th>}
+                  <th className="jobs-status-col">Status</th>
+                  {!isJobSeeker && <th className="actions-col jobs-actions-col">Actions</th>}
+                </tr>
+              </thead>
+              <tbody>
+                {tablePageJobs.map((job, index) => {
+                const actionKey = getJobActionKey(job)
+                const deadline = formatJobDeadline(job)
+                const matchContent = getJobMatchContent(job)
 
                 return (
                   <tr
@@ -1541,61 +1784,17 @@ function JobPostingPage({ uploads = [], isEmployer = false, isJobSeeker = false,
                     className="job-table-row"
                     role="button"
                     tabIndex={0}
-                    onClick={() => {
-                      if (isJobSeeker) {
-                        onViewJob?.(job)
-                        return
-                      }
-                      if (job.source === "template") {
-                        setEditingJobId(null)
-                        setShowJobFormErrors(false)
-                        setNewJobTitle(job.title || "")
-                        applyTemplateFromRecord(job)
-                        setIsUsingSavedJobDraft(false)
-                        setIsCreateModalOpen(true)
-                        return
-                      }
-                      openEditJobModal(job)
-                    }}
-                    onKeyDown={(e) => {
-                      if (e.key !== "Enter" && e.key !== " ") return
-                      e.preventDefault()
-                      if (isJobSeeker) {
-                        onViewJob?.(job)
-                        return
-                      }
-                      if (job.source === "template") {
-                        setEditingJobId(null)
-                        setShowJobFormErrors(false)
-                        setNewJobTitle(job.title || "")
-                        applyTemplateFromRecord(job)
-                        setIsUsingSavedJobDraft(false)
-                        setIsCreateModalOpen(true)
-                        return
-                      }
-                      openEditJobModal(job)
-                    }}
+                    onClick={() => openJobRecord(job)}
+                    onKeyDown={(event) => handleJobRecordKeyDown(event, job)}
                   >
-                    <td className="jobs-order-cell">{index + 1}</td>
+                    <td className="jobs-order-cell">{tableStartIndex + index + 1}</td>
                     <td>
                       <button
                         type="button"
                         className="job-table-title"
-                        onClick={() => {
-                          if (isJobSeeker) {
-                            onViewJob?.(job)
-                            return
-                          }
-                          if (job.source === "template") {
-                            setEditingJobId(null)
-                            setShowJobFormErrors(false)
-                            setNewJobTitle(job.title || "")
-                            applyTemplateFromRecord(job)
-                            setIsUsingSavedJobDraft(false)
-                            setIsCreateModalOpen(true)
-                            return
-                          }
-                          openEditJobModal(job)
+                        onClick={(event) => {
+                          event.stopPropagation()
+                          openJobRecord(job)
                         }}
                       >
                         {job.title || "-"}
@@ -1626,85 +1825,38 @@ function JobPostingPage({ uploads = [], isEmployer = false, isJobSeeker = false,
                     </td>
                     {!isJobSeeker && (
                       <td className="actions-cell job-table-actions">
-                        {job.id != null && (
-                          <>
-                            <button
-                              className="job-more"
-                              type="button"
-                              onClick={(e) => {
-                                openJobActionsMenu(e, job, actionKey)
-                              }}
-                            >
-                              ...
-                            </button>
-                            {actionsJobId === actionKey && actionsJobMenu && (
-                              <div
-                                className="job-actions-menu job-actions-menu-floating"
-                                style={{ top: `${actionsJobMenu.top}px`, left: `${actionsJobMenu.left}px` }}
-                                onClick={(e) => e.stopPropagation()}
-                              >
-                                {job.source === "template" ? (
-                                  <button
-                                    type="button"
-                                    className="actions-menu-item"
-                                    onClick={() => {
-                                      setActionsJobId(null)
-                                      setEditingJobId(null)
-                                      setShowJobFormErrors(false)
-                                      setNewJobTitle(job.title || "")
-                                      applyTemplateFromRecord(job)
-                                      setIsUsingSavedJobDraft(false)
-                                      setIsCreateModalOpen(true)
-                                    }}
-                                  >
-                                    Use Template
-                                  </button>
-                                ) : (
-                                  <>
-                                    <button
-                                      type="button"
-                                      className="actions-menu-item"
-                                      onClick={() => {
-                                        setActionsJobId(null)
-                                        openEditJobModal(job)
-                                      }}
-                                    >
-                                      Edit Details
-                                    </button>
-                                    <button
-                                      type="button"
-                                      className="actions-menu-item"
-                                      onClick={() => updateJobStatus(job.id, "active")}
-                                    >
-                                      Set Active
-                                    </button>
-                                    <button
-                                      type="button"
-                                      className="actions-menu-item"
-                                      onClick={() => updateJobStatus(job.id, "closed")}
-                                    >
-                                      Set Closed
-                                    </button>
-                                    <button
-                                      type="button"
-                                      className="actions-menu-item danger"
-                                      onClick={() => deleteJobPost(job.id)}
-                                    >
-                                      Delete Post
-                                    </button>
-                                  </>
-                                )}
-                              </div>
-                            )}
-                          </>
-                        )}
+                        {renderJobActions(job, actionKey)}
                       </td>
                     )}
                   </tr>
                 )
-              })}
-            </tbody>
-          </table>
+                })}
+              </tbody>
+            </table>
+            {tablePageCount > 1 && (
+              <div className="jobs-card-pagination" aria-label="Job table pagination">
+                <button
+                  type="button"
+                  className="jobs-page-btn"
+                  onClick={() => setTablePage((page) => Math.max(1, page - 1))}
+                  disabled={activeTablePage <= 1}
+                >
+                  Previous
+                </button>
+                <span className="jobs-page-status">
+                  Page {activeTablePage} of {tablePageCount}
+                </span>
+                <button
+                  type="button"
+                  className="jobs-page-btn"
+                  onClick={() => setTablePage((page) => Math.min(tablePageCount, page + 1))}
+                  disabled={activeTablePage >= tablePageCount}
+                >
+                  Next
+                </button>
+              </div>
+            )}
+          </>
         )}
       </div>
 

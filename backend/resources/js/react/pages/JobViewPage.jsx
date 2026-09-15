@@ -62,7 +62,6 @@ function JobViewPage({ job, onBack, onApply, onRequireResume, jobSeekerProfile, 
     message: ""
   })
   const supportingInputRef = useRef(null)
-  const resumeInputRef = useRef(null)
   const lastQualificationKeyRef = useRef("")
   const [showErrors, setShowErrors] = useState(false)
   const [applyTab, setApplyTab] = useState("profile")
@@ -265,6 +264,7 @@ function JobViewPage({ job, onBack, onApply, onRequireResume, jobSeekerProfile, 
             type: item?.mimeType || blob.type || "application/octet-stream"
           })
           const typeKey = String(item?.type || "others").toLowerCase()
+          if (typeKey === "recommendation") continue
           if (typeKey === "others" || typeKey === "other") {
             next.others.push(file)
           } else if (["certificate", "portfolio", "recommendation", "transcript"].includes(typeKey)) {
@@ -595,7 +595,7 @@ function JobViewPage({ job, onBack, onApply, onRequireResume, jobSeekerProfile, 
                   setShowErrors(false)
                 }}
               >
-                Resume/CV
+                PDS/Resume
               </button>
               <button
                 type="button"
@@ -665,37 +665,9 @@ function JobViewPage({ job, onBack, onApply, onRequireResume, jobSeekerProfile, 
             {applyTab === "resume" && (
               <div className="apply-panel">
                 <div className="field-group">
-                  <label>Upload Resume/CV</label>
-                  <input
-                    id="job-apply-upload"
-                    ref={resumeInputRef}
-                    className="hidden-file-input"
-                    type="file"
-                    multiple
-                    accept=".pdf,.png,.jpg,.jpeg"
-                    onChange={(e) => {
-                      const selected = Array.from(e.target.files || [])
-                      if (!selected.length) return
-                      const pdf = selected.find((file) => file.type === "application/pdf" || file.name.toLowerCase().endsWith(".pdf"))
-                      if (pdf) {
-                        setResumeFiles([pdf])
-                      } else {
-                        setResumeFiles(selected)
-                      }
-                      e.target.value = ""
-                    }}
-                  />
+                  <label>PDS/Resume on File</label>
                   <div
                     className={`resume-table-wrap ${showErrors && resumeError && applyTab === "resume" ? "input-error" : ""}`}
-                    role="button"
-                    tabIndex={0}
-                    onClick={() => resumeInputRef.current?.click()}
-                    onKeyDown={(e) => {
-                      if (e.key === "Enter" || e.key === " ") {
-                        e.preventDefault()
-                        resumeInputRef.current?.click()
-                      }
-                    }}
                   >
                     <table className="resume-table">
                       <thead>
@@ -710,7 +682,7 @@ function JobViewPage({ job, onBack, onApply, onRequireResume, jobSeekerProfile, 
                         {resumeFiles.length ? (
                           resumeFiles.map((file) => (
                             <tr key={`${file.name}-${file.size}-${file.lastModified}`}>
-                              <td>Resume/CV</td>
+                              <td>PDS/Resume</td>
                               <td>{file.name}</td>
                               <td>{file.type || "Unknown"}</td>
                               <td>{formatFileSize(file.size)}</td>
@@ -718,23 +690,14 @@ function JobViewPage({ job, onBack, onApply, onRequireResume, jobSeekerProfile, 
                           ))
                         ) : (
                           <tr className="supporting-docs-empty">
-                            <td colSpan={4}>No supporting documents added yet.</td>
+                            <td colSpan={4}>No PDS/Resume found. Upload one in Profile before applying.</td>
                           </tr>
                         )}
                       </tbody>
                       <tfoot>
                         <tr>
                           <td colSpan={4}>
-                            <button
-                              className="js-outline-btn resume-add-btn"
-                              type="button"
-                              onClick={(e) => {
-                                e.stopPropagation()
-                                resumeInputRef.current?.click()
-                              }}
-                            >
-                              Add Resume/CV
-                            </button>
+                            <span className="resume-locked-note">PDS/Resume cannot be added or replaced during application.</span>
                           </td>
                         </tr>
                       </tfoot>

@@ -34,7 +34,7 @@ function parseSkills(skillsData) {
   return []
 }
 
-function LandingPage({ onLoginClick, onRegisterClick, scrollToSectionId = "" }) {
+function LandingPage({ onPersonnelLoginClick, onJobSeekerLoginClick, onRegisterClick, scrollToSectionId = "" }) {
   const [availableJobs, setAvailableJobs] = useState([])
   const [loadingJobs, setLoadingJobs] = useState(true)
   const [isJobsModalOpen, setIsJobsModalOpen] = useState(false)
@@ -144,8 +144,11 @@ function LandingPage({ onLoginClick, onRegisterClick, scrollToSectionId = "" }) 
         </nav>
 
         <div className="landing-actions">
-          <button type="button" className="btn btn-secondary btn-sm" onClick={onLoginClick}>
-            Login
+          <button type="button" className="btn btn-secondary btn-sm" onClick={onPersonnelLoginClick}>
+            Personnel/Admin Login
+          </button>
+          <button type="button" className="btn btn-secondary btn-sm" onClick={onJobSeekerLoginClick}>
+            Job Seeker Login
           </button>
           <button type="button" className="btn btn-primary btn-sm" onClick={onRegisterClick}>
             Register
@@ -341,8 +344,11 @@ function LandingPage({ onLoginClick, onRegisterClick, scrollToSectionId = "" }) 
             <button type="button" className="btn btn-primary btn-lg" onClick={onRegisterClick}>
               Create an account
             </button>
-            <button type="button" className="btn btn-secondary btn-lg" onClick={onLoginClick}>
-              Sign in
+            <button type="button" className="btn btn-secondary btn-lg" onClick={onPersonnelLoginClick}>
+              Personnel/Admin Login
+            </button>
+            <button type="button" className="btn btn-secondary btn-lg" onClick={onJobSeekerLoginClick}>
+              Job Seeker Login
             </button>
           </div>
         </div>
@@ -366,8 +372,11 @@ function LandingPage({ onLoginClick, onRegisterClick, scrollToSectionId = "" }) 
             <button type="button" className="landing-footer-link" onClick={() => handleScrollTo("landing-jobs")}>
               Jobs
             </button>
-            <button type="button" className="landing-footer-link" onClick={onLoginClick}>
-              Login
+            <button type="button" className="landing-footer-link" onClick={onPersonnelLoginClick}>
+              Personnel/Admin Login
+            </button>
+            <button type="button" className="landing-footer-link" onClick={onJobSeekerLoginClick}>
+              Job Seeker Login
             </button>
           </div>
 

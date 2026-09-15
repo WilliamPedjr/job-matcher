@@ -563,7 +563,37 @@ class ResumeAnalysisService
         return array_values(array_filter(array_map(
             fn ($item) => trim($item),
             preg_split('/[,;\n|]+/', $skills) ?: []
-        )));
+        ), fn ($item) => !$this->isNoRequirementValue((string) $item)));
+    }
+
+    private function isNoRequirementValue(string $value): bool
+    {
+        $normalized = Str::of($value)
+            ->lower()
+            ->replaceMatches('/[^a-z0-9]+/', ' ')
+            ->squish()
+            ->toString();
+
+        if ($normalized === '') {
+            return true;
+        }
+
+        return in_array($normalized, [
+            'none',
+            'none required',
+            'not required',
+            'no requirement',
+            'no requirements',
+            'no required skill',
+            'no required skills',
+            'n a',
+            'na',
+            'not applicable',
+            'open qualification',
+            'open qualifications',
+            'open to all',
+            'open to all applicants',
+        ], true);
     }
 
     private function isUniversalMatchJob(mixed $job): bool
@@ -664,7 +694,7 @@ class ResumeAnalysisService
     private function calculateSkillsScore(array $requiredSkills, array $matchedSkills): float
     {
         if (!$requiredSkills) {
-            return 0.0;
+            return 100.0;
         }
 
         return round((count($matchedSkills) / max(count($requiredSkills), 1)) * 100, 2);
@@ -871,8 +901,8 @@ class ResumeAnalysisService
     private function calculateEducationScore(array $educationLines, string $minimumEducation): float
     {
         $min = Str::lower($minimumEducation);
-        if ($min === '') {
-            return 50.0;
+        if ($this->isOpenEducationRequirement($minimumEducation)) {
+            return 100.0;
         }
 
         $haystack = Str::lower(implode(' ', $educationLines));
@@ -896,7 +926,7 @@ class ResumeAnalysisService
     private function calculateExperienceScore(array $experienceLines, int $minimumYears): float
     {
         if ($minimumYears <= 0) {
-            return 50.0;
+            return 100.0;
         }
 
         $joined = implode(' ', $experienceLines);
@@ -911,6 +941,28 @@ class ResumeAnalysisService
         }
 
         return max(0.0, min(100.0, ($years / max($minimumYears, 1)) * 100));
+    }
+
+    private function isOpenEducationRequirement(string $value): bool
+    {
+        if ($this->isNoRequirementValue($value)) {
+            return true;
+        }
+
+        $normalized = Str::of($value)
+            ->lower()
+            ->replaceMatches('/[^a-z0-9]+/', ' ')
+            ->squish()
+            ->toString();
+
+        return in_array($normalized, [
+            'open to all education levels',
+            'all education levels',
+            'any education level',
+            'must be able to read and write',
+            'able to read and write',
+            'read and write',
+        ], true);
     }
 
     private function skillTaxonomy(): array
@@ -989,6 +1041,17 @@ class ResumeAnalysisService
         }
         if (preg_match('/\bexpress(\.js)?\b/', $value) === 1) {
             $variants = array_merge($variants, ['express', 'expressjs', 'express js']);
+        }
+        if (preg_match('/\badmin(?:istrative|istration)?\b/', $value) === 1) {
+            $variants = array_merge($variants, [
+                'admin',
+                'administrative',
+                'administration',
+                'administrative support',
+                'office administration',
+                'office operations',
+                'records management',
+            ]);
         }
 
         return array_values(array_unique(array_filter($variants)));

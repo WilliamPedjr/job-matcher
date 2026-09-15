@@ -298,16 +298,6 @@ function ApplicantViewPage({
             )}
           </section>
 
-          <section className="candidate-card">
-            <h3>Extracted Resume Data</h3>
-            {viewItem?.extracted_text ? (
-              <div className="extracted-block">
-                <pre>{viewItem.extracted_text}</pre>
-              </div>
-            ) : (
-              <p className="muted">No extracted resume text available.</p>
-            )}
-          </section>
         </div>
 
         <div className="candidate-right">

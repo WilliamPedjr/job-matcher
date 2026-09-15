@@ -1,7 +1,7 @@
 import React from 'react'
 import '../styles/HelpPage.css'
 
-const requiredSupportingKeys = ['certificate', 'portfolio', 'recommendation', 'transcript']
+const requiredSupportingKeys = ['certificate', 'portfolio', 'transcript']
 
 const jobSeekerSetupItems = [
   {
@@ -26,7 +26,7 @@ const jobSeekerSetupItems = [
     key: 'supporting',
     page: 'profile',
     title: 'Upload supporting documents',
-    body: 'Add certificates, portfolio, application letter, transcript, and other documents needed for applications.'
+    body: 'Add certificates, portfolio, transcript, and other reusable documents. Application letters are added when applying.'
   },
   {
     key: 'jobs',
@@ -44,7 +44,7 @@ const jobSeekerSetupItems = [
 
 const jobSeekerPages = [
   ['Dashboard', 'Track submitted applications, dates applied, qualification results, and application actions.'],
-  ['Jobs', 'Browse job openings, view job details, and apply using your saved resume and documents.'],
+  ['Jobs', 'Browse job openings, view job details, and apply using your saved resume, reusable documents, and an application letter.'],
   ['Profile', 'Update personal information, phone number, address, resume, documents, education, and experience.'],
   ['Help', 'Review setup steps and page guidance whenever you need a reminder.']
 ]

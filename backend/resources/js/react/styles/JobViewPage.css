@@ -392,7 +392,6 @@
   border: 1px solid #e2e8f0;
   box-shadow: 0 2px 10px rgba(17, 24, 39, 0.06);
   overflow: hidden;
-  cursor: pointer;
 }
 
 .resume-table-wrap:focus-visible {
@@ -434,6 +433,11 @@
   border: 1px solid #9db6ff;
   background: #f2f6ff;
   color: #1e40af;
+  font-weight: 600;
+}
+
+.resume-locked-note {
+  color: #64748b;
   font-weight: 600;
 }
 

@@ -108,6 +108,8 @@
   align-items: center;
   justify-self: end;
   gap: 10px;
+  flex-wrap: wrap;
+  justify-content: flex-end;
 }
 
 .landing-shell .btn {
@@ -986,6 +988,7 @@
 
   .landing-shell .btn {
     width: auto;
+    white-space: normal;
   }
 
   .landing-hero-copy,
