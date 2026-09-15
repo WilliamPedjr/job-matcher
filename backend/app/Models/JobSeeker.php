@@ -14,6 +14,9 @@ class JobSeeker extends Authenticatable
         'id_number',
         'full_name',
         'email',
+        'email_verified_at',
+        'email_verification_token',
+        'email_verification_sent_at',
         'username',
         'phone',
         'status',
@@ -25,10 +28,13 @@ class JobSeeker extends Authenticatable
     protected $hidden = [
         'password',
         'remember_token',
+        'email_verification_token',
     ];
 
     protected $casts = [
         'password' => 'hashed',
+        'email_verified_at' => 'datetime',
+        'email_verification_sent_at' => 'datetime',
     ];
 
     public function educations()

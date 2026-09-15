@@ -260,7 +260,20 @@ class UploadController extends Controller
             ]);
         }
 
-        return response()->json($this->serializeUpload($upload->fresh(['supportingFiles', 'jobSeeker', 'job'])), 201);
+        $upload->load(['supportingFiles', 'jobSeeker', 'job']);
+        $this->recordPersonnelActivity($request, 'application.created', "Added application for {$upload->name}.", [
+            'subject_type' => 'application',
+            'subject_id' => $upload->id,
+            'subject_name' => $upload->name,
+            'metadata' => [
+                'jobTitle' => $upload->applied_job_title ?: $upload->matched_job_title,
+                'email' => $upload->email,
+                'classification' => $upload->classification,
+                'matchScore' => $upload->match_score,
+            ],
+        ]);
+
+        return response()->json($this->serializeUpload($upload), 201);
     }
 
     public function show(int $id): JsonResponse
@@ -332,13 +345,40 @@ class UploadController extends Controller
             ))),
         ])->save();
 
-        return response()->json($this->serializeUpload($upload->fresh(['supportingFiles', 'jobSeeker', 'job'])));
+        $refreshedUpload = $upload->fresh(['supportingFiles', 'jobSeeker', 'job']);
+        $this->recordPersonnelActivity($request, 'application.reanalyzed', "Reanalyzed application for {$upload->name}.", [
+            'subject_type' => 'application',
+            'subject_id' => $upload->id,
+            'subject_name' => $upload->name,
+            'metadata' => [
+                'jobTitle' => $upload->applied_job_title ?: $upload->matched_job_title,
+                'classification' => $upload->classification,
+                'matchScore' => $upload->match_score,
+            ],
+        ]);
+
+        return response()->json([
+            'message' => 'Application reanalyzed successfully.',
+            'upload' => $this->serializeUpload($refreshedUpload),
+        ]);
     }
 
-    public function download(int $id): mixed
+    public function download(Request $request, int $id): mixed
     {
         $upload = Upload::findOrFail($id);
         abort_if(!$upload->file_path || !Storage::disk('local')->exists($upload->file_path), 404, 'Upload not found.');
+
+        $this->recordPersonnelActivity($request, 'application.resume_downloaded', "Downloaded resume for {$upload->name}.", [
+            'subject_type' => 'application',
+            'subject_id' => $upload->id,
+            'subject_name' => $upload->name,
+            'metadata' => [
+                'jobTitle' => $upload->applied_job_title ?: $upload->matched_job_title,
+                'email' => $upload->email,
+                'fileName' => $upload->original_name,
+            ],
+        ]);
+
         return Storage::disk('local')->download($upload->file_path, $upload->original_name ?: basename($upload->file_path));
     }
 
@@ -350,7 +390,7 @@ class UploadController extends Controller
         ]);
     }
 
-    public function supportingDownload(int $id, int $supportId): mixed
+    public function supportingDownload(Request $request, int $id, int $supportId): mixed
     {
         $upload = Upload::findOrFail($id);
         $file = SupportingFile::query()
@@ -358,6 +398,19 @@ class UploadController extends Controller
             ->where('id', $supportId)
             ->firstOrFail();
         abort_if(!$file->file_path || !Storage::disk('local')->exists($file->file_path), 404, 'Supporting file not found.');
+
+        $this->recordPersonnelActivity($request, 'application.supporting_downloaded', "Downloaded supporting document for {$upload->name}.", [
+            'subject_type' => 'application',
+            'subject_id' => $upload->id,
+            'subject_name' => $upload->name,
+            'metadata' => [
+                'jobTitle' => $upload->applied_job_title ?: $upload->matched_job_title,
+                'email' => $upload->email,
+                'fileName' => $file->original_name,
+                'documentType' => $file->doc_type,
+            ],
+        ]);
+
         return Storage::disk('local')->download($file->file_path, $file->original_name ?: basename($file->file_path));
     }
 
@@ -878,6 +931,19 @@ class UploadController extends Controller
             'mime_type' => $file->getClientMimeType() ?: $file->getMimeType(),
             'size_bytes' => $file->getSize() ?: null,
         ];
+    }
+
+    private function recordPersonnelActivity(Request $request, string $event, string $description, array $attributes = []): void
+    {
+        $actor = Archive::actorFromRequest($request);
+        $role = Str::lower(trim((string) ($actor['actor_role'] ?? '')));
+        $hasActor = !empty($actor['actor_name']) || !empty($actor['actor_email']) || $role !== '';
+
+        if (!$hasActor || $role === 'jobseeker') {
+            return;
+        }
+
+        ActivityLog::record($event, $description, $request, $attributes);
     }
 
     private function serializeUpload(Upload $upload): array

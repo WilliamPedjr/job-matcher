@@ -181,18 +181,38 @@ class JobController extends Controller
 
     public function updateSkills(Request $request, int $id): JsonResponse
     {
+        $job = Job::findOrFail($id);
         $data = $request->validate([
             'skills' => ['required'],
         ]);
 
+        $previousSkills = JobSkillCatalog::query()
+            ->where('job_id', $id)
+            ->orderBy('skill')
+            ->pluck('skill')
+            ->values()
+            ->all();
+
         $this->syncSkills($id, $data['skills']);
+        $skills = JobSkillCatalog::query()
+            ->where('job_id', $id)
+            ->orderBy('skill')
+            ->pluck('skill')
+            ->values();
+
+        ActivityLog::record('job.skills_updated', "Updated required skills for {$job->title}.", $request, [
+            'subject_type' => 'job',
+            'subject_id' => $job->id,
+            'subject_name' => $job->title,
+            'metadata' => [
+                'previousSkills' => $previousSkills,
+                'skills' => $skills->all(),
+                'skillCount' => $skills->count(),
+            ],
+        ]);
 
         return response()->json([
-            'skills' => JobSkillCatalog::query()
-                ->where('job_id', $id)
-                ->orderBy('skill')
-                ->pluck('skill')
-                ->values(),
+            'skills' => $skills,
         ]);
     }
 

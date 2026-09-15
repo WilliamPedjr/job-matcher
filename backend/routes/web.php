@@ -2,6 +2,7 @@
 
 use App\Models\JobSeeker;
 use Illuminate\Http\Request;
+use App\Http\Controllers\Api\AuthController;
 use App\Http\Controllers\ProfileController;
 use Illuminate\Support\Facades\Route;
 use Illuminate\Support\Str;
@@ -62,5 +63,6 @@ Route::middleware('auth')->group(function () {
 require __DIR__.'/auth.php';
 
 Route::view('/', 'app');
+Route::get('/job-seeker/verify-email/{token}', [AuthController::class, 'verifyJobSeekerEmail']);
 Route::view('/{any}', 'app')
     ->where('any', '^(?!(api|login|register|forgot-password|reset-password|verify-email|confirm-password|dashboard|profile)).*$');

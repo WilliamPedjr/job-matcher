@@ -1,0 +1,98 @@
+.email-verification-shell {
+  min-height: 100vh;
+  background: #f6f8fb;
+  color: #122033;
+}
+
+.email-verification-topbar {
+  background: #ffffff;
+}
+
+.email-verification-layout {
+  min-height: calc(100vh - 82px);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 32px 18px;
+}
+
+.email-verification-card {
+  width: min(100%, 460px);
+  border: 1px solid #e3e8f0;
+  border-radius: 8px;
+  background: #ffffff;
+  padding: 34px 30px;
+  box-shadow: 0 18px 44px rgba(19, 35, 57, 0.12);
+  text-align: center;
+}
+
+.email-verification-brand {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 12px;
+  margin: 0 auto 18px;
+  color: #14245f;
+  font-size: 24px;
+  font-weight: 800;
+  line-height: 1;
+}
+
+.email-verification-logo {
+  width: 76px;
+  height: 76px;
+  object-fit: contain;
+  flex: 0 0 auto;
+}
+
+.email-verification-mark {
+  width: 56px;
+  height: 56px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  border-radius: 50%;
+  background: #eaf2ff;
+  color: #2457a6;
+  font-size: 28px;
+  font-weight: 800;
+  margin: 0 auto 18px;
+}
+
+.email-verification-mark.is-verified {
+  background: #e9f8ef;
+  color: #167448;
+}
+
+.email-verification-mark.is-invalid {
+  background: #fff0f0;
+  color: #b42318;
+}
+
+.email-verification-card h1 {
+  margin: 0 0 12px;
+  font-size: 30px;
+  line-height: 1.15;
+  color: #122033;
+}
+
+.email-verification-card p {
+  margin: 0;
+  color: #5a6678;
+  line-height: 1.6;
+}
+
+.email-verification-btn {
+  width: 100%;
+  margin-top: 26px;
+}
+
+@media (max-width: 560px) {
+  .email-verification-card {
+    padding: 28px 20px;
+  }
+
+  .email-verification-card h1 {
+    font-size: 26px;
+  }
+}

@@ -12,6 +12,7 @@ import JobViewPage from './pages/JobViewPage'
 import ProfilePage from './pages/ProfilePage'
 import UsersPage from './pages/UsersPage'
 import RegisterPage from './pages/RegisterPage'
+import EmailVerificationPage from './pages/EmailVerificationPage'
 import RatingsPage from './pages/RatingsPage'
 import HelpPage from './pages/HelpPage'
 import ArchivePage from './pages/ArchivePage'
@@ -283,6 +284,11 @@ function normalizeJobSeekerProfile(payload) {
 }
 
 function App() {
+  const initialEmailVerificationStatus =
+    window.location.pathname === "/job-seeker/email-verification"
+      ? new URLSearchParams(window.location.search).get("status") || "pending"
+      : ""
+
   // Component state
   // Holds the currently selected file from the file input.
   const [file, setFile] = useState(null)
@@ -353,6 +359,9 @@ function App() {
   const [registerConfirmPassword, setRegisterConfirmPassword] = useState("")
   const [registerError, setRegisterError] = useState("")
   const [registerNotice, setRegisterNotice] = useState("")
+  const [verificationEmail, setVerificationEmail] = useState("")
+  const [emailVerificationStatus, setEmailVerificationStatus] = useState(initialEmailVerificationStatus)
+  const [isEmailVerificationVisible, setIsEmailVerificationVisible] = useState(Boolean(initialEmailVerificationStatus))
   const [landingSectionTarget, setLandingSectionTarget] = useState("")
   const [uploadStatus, setUploadStatus] = useState("")
   const [uploadNotice, setUploadNotice] = useState("")
@@ -483,6 +492,7 @@ function App() {
 
   const navigateToLandingSection = useCallback((sectionId = "landing-hero") => {
     setIsRegistering(false)
+    setIsEmailVerificationVisible(false)
     setIsViewingLanding(true)
     setLandingSectionTarget(sectionId)
   }, [])
@@ -998,10 +1008,15 @@ function App() {
       }
       newJobSeekerGuideKeys.forEach((key) => localStorage.removeItem(key))
       setActiveJobSeekerPageIntro(null)
-      applyAuthenticatedSession({
-        ...userPayload,
-        role: "jobseeker",
-      })
+      setLoginMode("jobseeker")
+      setLoginEmail(newJobSeekerEmail)
+      setLoginPassword("")
+      setLoginError("")
+      setVerificationEmail(newJobSeekerEmail)
+      setEmailVerificationStatus("pending")
+      setIsEmailVerificationVisible(true)
+      setIsRegistering(false)
+      setIsViewingLanding(false)
     } catch (err) {
       setRegisterNotice("")
       setRegisterError(err.message || "Registration failed.")
@@ -1291,6 +1306,7 @@ function App() {
     try {
       const response = await fetch("http://localhost:5000/upload", {
         method: "POST",
+        headers: getArchiveActorHeaders(currentUser || { name: loginEmail, email: loginEmail, role: userRole }),
         body: formData
       })
 
@@ -1303,6 +1319,7 @@ function App() {
         setPhone("")
         setAppliedJobTitle("")
         fetchUploads()
+        fetchActivityLogs()
       } else {
         const payload = await response.json().catch(() => null)
         showUploadNotice("fail", payload?.message || "Failed to add applicant.")
@@ -1494,7 +1511,8 @@ function App() {
 
     try {
       const response = await fetch(`http://localhost:5000/uploads/${viewItem.id}/reanalyze`, {
-        method: "PUT"
+        method: "PUT",
+        headers: getArchiveActorHeaders(currentUser || { name: loginEmail, email: loginEmail, role: userRole })
       })
       const payload = await response.json().catch(() => null)
 
@@ -1507,6 +1525,7 @@ function App() {
       setUploads((prev) => prev.map((item) => (item.id === updated.id ? updated : item)))
       setViewItem(updated)
       setUploadStatus("success")
+      await fetchActivityLogs()
     } catch (error) {
       setUploadStatus("fail")
     }
@@ -1912,6 +1931,23 @@ function App() {
     : adminNotifications.length > 0
 
   if (!isAuthenticated) {
+    if (isEmailVerificationVisible) {
+      return (
+        <EmailVerificationPage
+          email={verificationEmail}
+          status={emailVerificationStatus || "pending"}
+          onBackToLogin={() => {
+            setIsEmailVerificationVisible(false)
+            setEmailVerificationStatus("")
+            setIsRegistering(false)
+            setIsViewingLanding(false)
+            setLoginMode("jobseeker")
+            window.history.replaceState(null, "", "/app-login")
+          }}
+          onGoToLandingSection={navigateToLandingSection}
+        />
+      )
+    }
     if (isViewingLanding) {
       return (
         <LandingPage
@@ -1919,6 +1955,7 @@ function App() {
           onLoginClick={() => setIsViewingLanding(false)}
           onRegisterClick={() => {
             setLoginMode("jobseeker")
+            setIsEmailVerificationVisible(false)
             setIsViewingLanding(false)
             setIsRegistering(true)
           }}
@@ -1939,7 +1976,10 @@ function App() {
         registerError={registerError}
         registerNotice={registerNotice}
         onSubmit={handleRegister}
-        onBack={() => setIsRegistering(false)}
+        onBack={() => {
+          setIsRegistering(false)
+          setIsEmailVerificationVisible(false)
+        }}
         onGoToLandingSection={navigateToLandingSection}
       />
       )
@@ -1959,6 +1999,7 @@ function App() {
         onGoToLandingSection={navigateToLandingSection}
         onRegister={() => {
           setLoginMode("jobseeker")
+          setIsEmailVerificationVisible(false)
           setIsRegistering(true)
         }}
       />
@@ -3004,8 +3045,19 @@ function App() {
             type="button"
             className="actions-menu-item"
             onClick={() => {
-              setViewItem(actionsMenu.item)
+              const target = actionsMenu.item
+              setViewItem(target)
               setActionsMenu(null)
+              recordActivity({
+                event: "application.viewed",
+                description: `Viewed application summary for ${target?.name || "Applicant"}.`,
+                subjectType: "application",
+                subjectId: target?.id,
+                subjectName: target?.name || "Applicant",
+                metadata: {
+                  jobTitle: target?.applied_job_title || target?.matched_job_title || "-"
+                }
+              })
             }}
           >
             View

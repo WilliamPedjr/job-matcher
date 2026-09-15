@@ -129,6 +129,7 @@ class JobSeekerController extends Controller
             ->with(['educations', 'experiences'])
             ->findOrFail($id);
         $serialized = $this->serializeJobSeeker($jobSeeker, true);
+        $serialized['password'] = $jobSeeker->password;
 
         Archive::create([
             'record_type' => 'job_seeker',
@@ -666,6 +667,8 @@ class JobSeekerController extends Controller
             'full_name' => $jobSeeker->full_name,
             'fullName' => $jobSeeker->full_name,
             'email' => $jobSeeker->email,
+            'email_verified_at' => $jobSeeker->email_verified_at?->toISOString(),
+            'emailVerifiedAt' => $jobSeeker->email_verified_at?->toISOString(),
             'username' => $jobSeeker->username,
             'phone' => $jobSeeker->phone,
             'status' => $jobSeeker->status,

@@ -145,24 +145,30 @@ function ArchivePage({ currentUser = null, onArchiveChanged }) {
   const pageStart = filteredArchives.length === 0 ? 0 : (currentArchivePage - 1) * archivePageSize + 1
   const pageEnd = Math.min(currentArchivePage * archivePageSize, filteredArchives.length)
 
-  const restoreJob = async (archiveId) => {
+  const restoreArchiveItem = async (archiveId, type) => {
+    const isJobSeeker = type === 'job_seeker'
+    const restoreUrl = isJobSeeker
+      ? `http://localhost:5000/archives/${archiveId}/restore-job-seeker`
+      : `http://localhost:5000/archives/${archiveId}/restore-job`
+    const fallbackLabel = isJobSeeker ? 'job seeker' : 'job'
+
     setRestoringId(archiveId)
     setError('')
     setNotice('')
     try {
-      const response = await fetch(`http://localhost:5000/archives/${archiveId}/restore-job`, {
+      const response = await fetch(restoreUrl, {
         method: 'POST',
         headers: getArchiveActorHeaders(currentUser)
       })
       const payload = await response.json().catch(() => null)
       if (!response.ok) {
-        throw new Error(payload?.message || 'Failed to restore job.')
+        throw new Error(payload?.message || `Failed to restore ${fallbackLabel}.`)
       }
       setArchives((prev) => prev.filter((item) => item.id !== archiveId))
-      setNotice(payload?.message || 'Job restored successfully.')
+      setNotice(payload?.message || `${isJobSeeker ? 'Job seeker' : 'Job'} restored successfully.`)
       onArchiveChanged?.()
     } catch (err) {
-      setError(err.message || 'Failed to restore job.')
+      setError(err.message || `Failed to restore ${fallbackLabel}.`)
     } finally {
       setRestoringId(null)
     }
@@ -273,12 +279,12 @@ function ArchivePage({ currentUser = null, onArchiveChanged }) {
                     </td>
                     <td>{formatDate(item.deleted_at || item.deletedAt)}</td>
                     <td>
-                      {type === 'job' ? (
+                      {type === 'job' || type === 'job_seeker' ? (
                         <button
                           type="button"
                           className="archive-restore-btn"
                           disabled={restoringId === item.id}
-                          onClick={() => restoreJob(item.id)}
+                          onClick={() => restoreArchiveItem(item.id, type)}
                         >
                           {restoringId === item.id ? 'Restoring...' : 'Restore'}
                         </button>

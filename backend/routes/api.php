@@ -35,6 +35,7 @@ Route::get('/staff/me', [AuthController::class, 'staffMe']);
 
 Route::get('/archives', [ArchiveController::class, 'index']);
 Route::post('/archives/{id}/restore-job', [ArchiveController::class, 'restoreJob']);
+Route::post('/archives/{id}/restore-job-seeker', [ArchiveController::class, 'restoreJobSeeker']);
 
 Route::get('/job-seekers/all', [JobSeekerController::class, 'indexAll']);
 Route::get('/job-seekers/{id}', [JobSeekerController::class, 'show']);

@@ -190,6 +190,32 @@
   padding: 16px 12px;
 }
 
+.users-status-badge {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-width: 96px;
+  min-height: 28px;
+  padding: 5px 10px;
+  border-radius: 999px;
+  font-size: 12px;
+  font-weight: 800;
+  line-height: 1;
+  white-space: nowrap;
+}
+
+.users-status-badge.is-verified {
+  background: #e9f8ef;
+  color: #167448;
+  border: 1px solid #bde8cd;
+}
+
+.users-status-badge.is-unverified {
+  background: #fff4e5;
+  color: #9a5b00;
+  border: 1px solid #ffd38a;
+}
+
 .users-page .records-table th {
   background: #f8fafc;
   color: #4b5563;

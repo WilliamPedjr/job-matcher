@@ -23,6 +23,7 @@ function UsersPage({ currentUser = null, onUsersChanged }) {
     idNumber: ""
   })
   const [confirmDeleteUser, setConfirmDeleteUser] = useState(null)
+  const [jobSeekerActionsMenu, setJobSeekerActionsMenu] = useState(null)
   const [employerActionsMenu, setEmployerActionsMenu] = useState(null)
   const [isEmployerModalOpen, setIsEmployerModalOpen] = useState(false)
   const [showEmployerPassword, setShowEmployerPassword] = useState(false)
@@ -94,8 +95,11 @@ function UsersPage({ currentUser = null, onUsersChanged }) {
   }, [fetchUsers])
 
   useEffect(() => {
-    if (!employerActionsMenu) return
-    const handleClick = () => setEmployerActionsMenu(null)
+    if (!jobSeekerActionsMenu && !employerActionsMenu) return
+    const handleClick = () => {
+      setJobSeekerActionsMenu(null)
+      setEmployerActionsMenu(null)
+    }
     window.addEventListener("click", handleClick)
     window.addEventListener("resize", handleClick)
     window.addEventListener("scroll", handleClick, true)
@@ -104,7 +108,17 @@ function UsersPage({ currentUser = null, onUsersChanged }) {
       window.removeEventListener("resize", handleClick)
       window.removeEventListener("scroll", handleClick, true)
     }
-  }, [employerActionsMenu])
+  }, [jobSeekerActionsMenu, employerActionsMenu])
+
+  const openJobSeekerActionsMenu = (event, user) => {
+    const rect = event.currentTarget.getBoundingClientRect()
+    setJobSeekerActionsMenu({
+      user,
+      top: rect.bottom + 6,
+      left: Math.max(12, rect.right - 140)
+    })
+    setEmployerActionsMenu(null)
+  }
 
   const openEmployerActionsMenu = (event, user) => {
     const rect = event.currentTarget.getBoundingClientRect()
@@ -113,6 +127,7 @@ function UsersPage({ currentUser = null, onUsersChanged }) {
       top: rect.bottom + 6,
       left: Math.max(12, rect.right - 140)
     })
+    setJobSeekerActionsMenu(null)
   }
 
 
@@ -122,6 +137,8 @@ function UsersPage({ currentUser = null, onUsersChanged }) {
     return d.toLocaleDateString(undefined, { month: "short", day: "numeric", year: "numeric" })
   }
 
+  const isEmailVerified = (user) => Boolean(user.emailVerifiedAt || user.email_verified_at)
+
   const filteredJobSeekers = jobSeekerUsers.filter((user) => {
     const query = jobSeekerSearch.trim().toLowerCase()
     if (!query) return true
@@ -129,7 +146,8 @@ function UsersPage({ currentUser = null, onUsersChanged }) {
       user.fullName,
       user.email,
       user.username,
-      user.phone
+      user.phone,
+      isEmailVerified(user) ? "verified" : "not verified"
     ]
       .filter(Boolean)
       .join(" ")
@@ -234,6 +252,7 @@ function UsersPage({ currentUser = null, onUsersChanged }) {
         }
       }
       await fetchUsers()
+      await onUsersChanged?.()
       showToast("Personnel account updated successfully.", "success")
       setTimeout(() => {
         closeEditUser()
@@ -370,35 +389,57 @@ function UsersPage({ currentUser = null, onUsersChanged }) {
                 <th>Phone</th>
                 <th>Username</th>
                 <th>Email</th>
+                <th>Status</th>
                 <th>Created</th>
+                <th>Action</th>
               </tr>
             </thead>
             <tbody>
               {isLoadingUsers ? (
                 <tr>
-                  <td colSpan={7} className="users-empty">Loading job seekers...</td>
+                  <td colSpan={9} className="users-empty">Loading job seekers...</td>
                 </tr>
               ) : filteredJobSeekers.length === 0 ? (
                 <tr>
-                  <td colSpan={7} className="users-empty">No job seeker users found.</td>
+                  <td colSpan={9} className="users-empty">No job seeker users found.</td>
                 </tr>
               ) : (
-                filteredJobSeekers.map((user, index) => (
-                  <tr key={`jobseeker-${user.id}`}>
-                    <td>{index + 1}</td>
-                    <td>
-                      <div className="applicant-cell">
-                        <strong>{user.fullName || "-"}</strong>
-                        <span>{user.email || "-"}</span>
-                      </div>
-                    </td>
-                    <td>{user.idNumber || user.id_number || "-"}</td>
-                    <td>{user.phone || "-"}</td>
-                    <td>{user.username || "-"}</td>
-                    <td>{user.email || "-"}</td>
-                    <td>{formatDate(user.createdAt)}</td>
-                  </tr>
-                ))
+                filteredJobSeekers.map((user, index) => {
+                  const verified = isEmailVerified(user)
+                  return (
+                    <tr key={`jobseeker-${user.id}`}>
+                      <td>{index + 1}</td>
+                      <td>
+                        <div className="applicant-cell">
+                          <strong>{user.fullName || "-"}</strong>
+                          <span>{user.email || "-"}</span>
+                        </div>
+                      </td>
+                      <td>{user.idNumber || user.id_number || "-"}</td>
+                      <td>{user.phone || "-"}</td>
+                      <td>{user.username || "-"}</td>
+                      <td>{user.email || "-"}</td>
+                      <td>
+                        <span className={`users-status-badge ${verified ? "is-verified" : "is-unverified"}`}>
+                          {verified ? "Verified" : "Not Verified"}
+                        </span>
+                        </td>
+                        <td>{formatDate(user.createdAt)}</td>
+                        <td className="actions-cell">
+                          <button
+                            type="button"
+                            className="action-btn action-trigger"
+                            onClick={(e) => {
+                              e.stopPropagation()
+                              openJobSeekerActionsMenu(e, user)
+                            }}
+                          >
+                            ...
+                          </button>
+                        </td>
+                      </tr>
+                    )
+                })
               )}
             </tbody>
           </table>
@@ -656,6 +697,7 @@ function UsersPage({ currentUser = null, onUsersChanged }) {
                       }
                     }
                     await fetchUsers()
+                    await onUsersChanged?.()
                     restoreScrollPosition(scrollX, scrollY)
                     showToast(
                       `${target.type === "jobseeker" ? "Job seeker" : "Personnel"} deleted successfully.`,
@@ -773,6 +815,28 @@ function UsersPage({ currentUser = null, onUsersChanged }) {
               <button className="btn btn-secondary" onClick={() => setIsEmployerModalOpen(false)}>Cancel</button>
             </div>
           </div>
+        </div>
+      )}
+
+      {jobSeekerActionsMenu && (
+        <div
+          className="actions-menu actions-menu-floating"
+          style={{ top: `${jobSeekerActionsMenu.top}px`, left: `${jobSeekerActionsMenu.left}px` }}
+          onClick={(e) => e.stopPropagation()}
+        >
+          <button
+            type="button"
+            className="actions-menu-item danger"
+            onClick={() => {
+              const target = jobSeekerActionsMenu
+              setJobSeekerActionsMenu(null)
+              if (target) {
+                confirmDelete("jobseeker", target.user)
+              }
+            }}
+          >
+            Delete
+          </button>
         </div>
       )}
 

@@ -7,6 +7,7 @@ use App\Models\ActivityLog;
 use App\Models\Employer;
 use App\Models\JobSeeker;
 use App\Models\User;
+use App\Notifications\JobSeekerEmailVerificationNotification;
 use App\Services\RecaptchaService;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
@@ -71,6 +72,32 @@ class AuthController extends Controller
     public function logout(Request $request): JsonResponse
     {
         foreach (self::SESSION_GUARDS as $guard) {
+            $user = Auth::guard($guard)->user();
+            if (!$user) {
+                continue;
+            }
+
+            $role = match ($guard) {
+                'web' => Str::lower(trim((string) ($user->role ?? 'staff'))) ?: 'staff',
+                'employer' => 'employer',
+                'job_seeker' => 'jobseeker',
+                default => 'user',
+            };
+            $name = $user->name ?? $user->full_name ?? $user->company_name ?? $user->email ?? 'Account';
+
+            ActivityLog::record('auth.logged_out', "{$name} logged out.", $request, [
+                'subject_type' => $guard === 'job_seeker' ? 'job_seeker' : ($guard === 'employer' ? 'personnel' : 'user'),
+                'subject_id' => $user->id ?? null,
+                'subject_name' => $name,
+                'actor_name' => $name,
+                'actor_email' => $user->email ?? null,
+                'actor_role' => $role,
+            ]);
+
+            break;
+        }
+
+        foreach (self::SESSION_GUARDS as $guard) {
             Auth::guard($guard)->logout();
         }
 
@@ -105,6 +132,14 @@ class AuthController extends Controller
         }
 
         $this->startSession($request, 'employer', $employer, (bool) ($data['remember'] ?? false));
+        ActivityLog::record('auth.logged_in', "{$employer->company_name} logged in.", $request, [
+            'subject_type' => 'personnel',
+            'subject_id' => $employer->id,
+            'subject_name' => $employer->company_name,
+            'actor_name' => $employer->company_name,
+            'actor_email' => $employer->email,
+            'actor_role' => 'employer',
+        ]);
 
         return response()->json([
             ...$this->serializeEmployer($employer),
@@ -160,6 +195,15 @@ class AuthController extends Controller
 
         if ($user && Hash::check($data['password'], (string) $user->password)) {
             $this->startSession($request, 'web', $user, (bool) ($data['remember'] ?? false));
+            $role = Str::lower(trim((string) ($user->role ?? 'staff'))) ?: 'staff';
+            ActivityLog::record('auth.logged_in', "{$user->name} logged in.", $request, [
+                'subject_type' => 'user',
+                'subject_id' => $user->id,
+                'subject_name' => $user->name,
+                'actor_name' => $user->name,
+                'actor_email' => $user->email,
+                'actor_role' => $role,
+            ]);
 
             return response()->json($this->serializeStaff($user));
         }
@@ -173,6 +217,14 @@ class AuthController extends Controller
 
         if ($employer && $this->passwordMatchesAndUpgrades($data['password'], $employer)) {
             $this->startSession($request, 'employer', $employer, (bool) ($data['remember'] ?? false));
+            ActivityLog::record('auth.logged_in', "{$employer->company_name} logged in.", $request, [
+                'subject_type' => 'personnel',
+                'subject_id' => $employer->id,
+                'subject_name' => $employer->company_name,
+                'actor_name' => $employer->company_name,
+                'actor_email' => $employer->email,
+                'actor_role' => 'employer',
+            ]);
 
             return response()->json([
                 ...$this->serializeEmployer($employer),
@@ -237,7 +289,14 @@ class AuthController extends Controller
         ]);
         $jobSeeker->forceFill([
             'id_number' => $this->formatJobSeekerIdNumber($jobSeeker->id),
+            'email_verified_at' => null,
+            'email_verification_token' => $this->makeJobSeekerEmailVerificationToken(),
+            'email_verification_sent_at' => now(),
         ])->save();
+
+        $jobSeeker->notify(new JobSeekerEmailVerificationNotification(
+            url("/job-seeker/verify-email/{$jobSeeker->email_verification_token}")
+        ));
 
         ActivityLog::record('job_seeker.created', "New job seeker account created for {$jobSeeker->full_name}.", $request, [
             'subject_type' => 'job_seeker',
@@ -250,8 +309,6 @@ class AuthController extends Controller
                 'email' => $jobSeeker->email,
             ],
         ]);
-
-        $this->startSession($request, 'job_seeker', $jobSeeker);
 
         return response()->json([
             'message' => 'Job seeker registered successfully.',
@@ -278,6 +335,12 @@ class AuthController extends Controller
             return response()->json(['message' => 'Invalid job seeker credentials.'], 401);
         }
 
+        if (!$jobSeeker->email_verified_at) {
+            return response()->json([
+                'message' => 'Please verify your email before logging in.',
+            ], 403);
+        }
+
         if (Str::lower((string) $jobSeeker->status) !== 'active') {
             $jobSeeker->status = 'active';
             $jobSeeker->save();
@@ -286,6 +349,24 @@ class AuthController extends Controller
         $this->startSession($request, 'job_seeker', $jobSeeker, (bool) ($data['remember'] ?? false));
 
         return response()->json($this->serializeJobSeeker($jobSeeker));
+    }
+
+    public function verifyJobSeekerEmail(string $token)
+    {
+        $jobSeeker = JobSeeker::query()
+            ->where('email_verification_token', $token)
+            ->first();
+
+        if (!$jobSeeker) {
+            return redirect('/job-seeker/email-verification?status=invalid');
+        }
+
+        $jobSeeker->forceFill([
+            'email_verified_at' => $jobSeeker->email_verified_at ?: now(),
+            'email_verification_token' => null,
+        ])->save();
+
+        return redirect('/job-seeker/email-verification?status=verified');
     }
 
     private function startSession(Request $request, string $guard, object $user, bool $remember = false): void
@@ -336,6 +417,8 @@ class AuthController extends Controller
             'full_name' => $jobSeeker->full_name,
             'fullName' => $jobSeeker->full_name,
             'email' => $jobSeeker->email,
+            'email_verified_at' => $jobSeeker->email_verified_at?->toISOString(),
+            'emailVerifiedAt' => $jobSeeker->email_verified_at?->toISOString(),
             'username' => $jobSeeker->username,
             'phone' => $jobSeeker->phone,
             'status' => $jobSeeker->status,
@@ -352,6 +435,15 @@ class AuthController extends Controller
     private function formatJobSeekerIdNumber(int $id): string
     {
         return sprintf('LNU-%06d', $id);
+    }
+
+    private function makeJobSeekerEmailVerificationToken(): string
+    {
+        do {
+            $token = Str::random(64);
+        } while (JobSeeker::query()->where('email_verification_token', $token)->exists());
+
+        return $token;
     }
 
     private function passwordMatchesAndUpgrades(string $plainPassword, object $user): bool
