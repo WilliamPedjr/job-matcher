@@ -9,7 +9,7 @@
             <div class="mb-6 text-center">
                 <h1 class="text-2xl font-black">Forgot Password</h1>
                 <p class="mt-2 text-sm leading-6 text-[#667085]">
-                    Enter your email and account type to receive a reset link.
+                    Enter your job seeker email to receive a reset link.
                 </p>
             </div>
 
@@ -32,20 +32,7 @@
                     <x-input-error :messages="$errors->get('email')" class="mt-2" />
                 </div>
 
-                <div>
-                    <x-input-label for="account_type" :value="__('Account Type')" class="mb-2 text-sm font-bold text-[#17243d]" />
-                    <select
-                        id="account_type"
-                        name="account_type"
-                        class="block h-12 w-full rounded-lg border-[#cbd5e1] px-4 text-base shadow-sm focus:border-[#2563eb] focus:ring-[#2563eb]"
-                        required
-                    >
-                        <option value="users" @selected(old('account_type') === 'users')>{{ __('Staff / Admin') }}</option>
-                        <option value="employers" @selected(old('account_type') === 'employers')>{{ __('Employer') }}</option>
-                        <option value="job_seekers" @selected(old('account_type') === 'job_seekers')>{{ __('Job Seeker') }}</option>
-                    </select>
-                    <x-input-error :messages="$errors->get('account_type')" class="mt-2" />
-                </div>
+                <input type="hidden" name="account_type" value="job_seekers">
 
                 <button
                     type="submit"

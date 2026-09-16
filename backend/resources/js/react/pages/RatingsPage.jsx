@@ -659,6 +659,7 @@ function RatingsPage({ uploads = [], isLoading = false, currentUser = null, onRa
       loadedSavedRatingKeyRef.current = savedRatingKey
       setRatingScores(selectedBoardMemberSavedRating.scores || {})
       setRatingRemarks(selectedBoardMemberSavedRating.remarks || '')
+      setDemonstrationDetails(demonstrationDetailDefaults)
       return
     }
 
@@ -666,6 +667,7 @@ function RatingsPage({ uploads = [], isLoading = false, currentUser = null, onRa
       loadedSavedRatingKeyRef.current = ''
       setRatingScores({})
       setRatingRemarks('')
+      setDemonstrationDetails(demonstrationDetailDefaults)
     }
   }, [ratingFormType, ratingStarted, selectedBoardMember, selectedBoardMemberSavedRating])
 
@@ -1230,7 +1232,7 @@ function RatingsPage({ uploads = [], isLoading = false, currentUser = null, onRa
               disabled={isViewingSavedBoardMemberRating}
               onClick={requestSaveRating}
             >
-              Save Rating
+              {isViewingSavedBoardMemberRating ? 'Saved Rating' : 'Save Rating'}
             </button>
           </div>
         </section>
@@ -1265,11 +1267,27 @@ function RatingsPage({ uploads = [], isLoading = false, currentUser = null, onRa
               </div>
               {stats.ratings.length > 0 && (
                 <div className="ratings-rater-list">
-                  {stats.ratings.map((rating) => (
-                    <span key={rating.id} className={`ratings-rater-chip ${formType}`}>
-                      {rating.raterName || rating.rater_name || 'Board member'} · {Number(rating.totalScore ?? rating.total_score ?? 0)}/{getSavedMaxScore(rating)} · {Number(rating.percentageScore ?? rating.percentage_score ?? 0).toFixed(0)}%
-                    </span>
-                  ))}
+                  {stats.ratings.map((rating) => {
+                    const raterName = rating.raterName || rating.rater_name || 'Board member'
+                    return (
+                      <button
+                        key={rating.id}
+                        type="button"
+                        className={`ratings-rater-chip ${formType}`}
+                        onClick={() => {
+                          setRatingFormType(formType)
+                          setRatingScores(rating.scores || {})
+                          setDemonstrationDetails(demonstrationDetailDefaults)
+                          setRatingRemarks(rating.remarks || '')
+                          setSelectedBoardMember(raterName)
+                          setSelectedBoardType(getDefaultBoardType(currentUser))
+                          setRatingStarted(true)
+                        }}
+                      >
+                        {raterName} · {Number(rating.totalScore ?? rating.total_score ?? 0)}/{getSavedMaxScore(rating)} · {Number(rating.percentageScore ?? rating.percentage_score ?? 0).toFixed(0)}%
+                      </button>
+                    )
+                  })}
                 </div>
               )}
             </section>
@@ -1334,7 +1352,6 @@ function RatingsPage({ uploads = [], isLoading = false, currentUser = null, onRa
       <div className="ratings-header">
         <div>
           <h2>Ratings / Evaluation</h2>
-          <p>View the list of applicants who passed the initial process or interview.</p>
         </div>
         <button type="button" className="ratings-edit-criteria-btn" onClick={openCriteriaEditor}>
           Edit Criteria

@@ -370,7 +370,6 @@ function UsersPage({ currentUser = null, onUsersChanged }) {
         <div>
           <p className="users-kicker">User Management</p>
           <h2 className="users-title">Users</h2>
-          <p className="users-subtitle">Manage and review job seeker and employer accounts.</p>
         </div>
       </div>
 

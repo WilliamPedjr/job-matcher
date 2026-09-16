@@ -182,7 +182,7 @@
 
 @media (max-width: 900px) {
   .page {
-    padding: 150px 12px 24px !important;
+    padding: 158px 12px 24px !important;
     overflow-x: hidden !important;
   }
 
@@ -199,13 +199,14 @@
     grid-template-columns: minmax(0, 1fr) auto !important;
     align-items: center !important;
     gap: 12px !important;
-    overflow: visible !important;
+    overflow: hidden !important;
   }
 
   .page > .topbar .brand {
     grid-column: 1 !important;
+    grid-row: 1 !important;
     min-width: 0 !important;
-    padding-right: 68px !important;
+    padding-right: 0 !important;
   }
 
   .page > .topbar .brand img {
@@ -215,11 +216,13 @@
 
   .page > .topbar .topnav {
     grid-column: 1 / -1 !important;
+    grid-row: 2 !important;
     flex-direction: row !important;
     flex-wrap: nowrap !important;
     gap: 8px !important;
     overflow-x: auto !important;
     overscroll-behavior-x: contain !important;
+    max-width: 100% !important;
     padding: 2px 0 4px !important;
     scrollbar-width: none !important;
   }
@@ -240,14 +243,14 @@
   .page > .topbar .topbar-right {
     grid-column: 2 !important;
     grid-row: 1 !important;
-    position: fixed !important;
-    top: 20px !important;
-    right: 16px !important;
+    position: static !important;
+    top: auto !important;
+    right: auto !important;
     width: auto !important;
     margin: 0 !important;
-    flex-direction: column !important;
+    flex-direction: row !important;
     justify-content: flex-end !important;
-    align-items: flex-end !important;
+    align-items: center !important;
     gap: 6px !important;
   }
 
@@ -306,5 +309,57 @@
     right: 0 !important;
     top: calc(100% + 6px) !important;
     bottom: auto !important;
+  }
+}
+
+@media (max-width: 640px) {
+  .page {
+    padding: 150px 10px 24px !important;
+  }
+
+  .page > .topbar {
+    padding: 12px 14px 10px !important;
+    gap: 9px !important;
+  }
+
+  .page > .topbar .brand {
+    padding-right: 0 !important;
+  }
+
+  .page > .topbar .brand img {
+    width: 38px !important;
+    height: 38px !important;
+  }
+
+  .page > .topbar .topnav {
+    gap: 6px !important;
+    padding: 1px 0 3px !important;
+  }
+
+  .page > .topbar .topnav-link {
+    min-height: 34px !important;
+    padding: 7px 9px !important;
+    font-size: var(--fs-13) !important;
+  }
+
+  .page > .topbar .topbar-right {
+    top: auto !important;
+    right: auto !important;
+    gap: 5px !important;
+  }
+
+  .page > .topbar .topbar-notifications > .topbar-bell {
+    width: 38px !important;
+    height: 38px !important;
+  }
+
+  .page > .topbar .sidebar-logout {
+    min-height: 34px !important;
+    min-width: 70px !important;
+    padding: 7px 9px !important;
+  }
+
+  .sidebar-logout-label {
+    font-size: var(--fs-13) !important;
   }
 }

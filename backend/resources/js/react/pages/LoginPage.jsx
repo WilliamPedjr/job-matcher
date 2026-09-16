@@ -65,7 +65,7 @@ function LoginPage({
             Welcome to <span>LNU-HiRe</span>
           </h1>
           <p className="login-tagline-modern">
-            Find the best-fit talent faster with intelligent applicant matching.
+            Sign in to track applications or register a new profile.
           </p>
 
           <div className="login-portal-heading">
@@ -158,6 +158,14 @@ function LoginPage({
               Need a job seeker account?{" "}
               <button type="button" className="link-btn-modern" onClick={onRegister}>
                 Register
+              </button>
+            </p>
+          )}
+          {isJobSeekerMode && (
+            <p className="login-admin-switch">
+              Are you an HR Administrator or Staff?{" "}
+              <button type="button" onClick={() => setLoginMode("staff")}>
+                Admin Sign In
               </button>
             </p>
           )}

@@ -37,11 +37,11 @@ class PasswordResetLinkController extends Controller
     {
         $request->validate([
             'email' => ['required', 'email'],
-            'account_type' => ['nullable', 'string', 'in:users,employers,job_seekers'],
+            'account_type' => ['nullable', 'string', 'in:job_seekers'],
         ]);
 
         $email = Str::lower(trim($request->input('email')));
-        $broker = $this->brokerForEmail($email, $request->input('account_type', 'users'));
+        $broker = $this->brokerForEmail($email, $request->input('account_type', 'job_seekers'));
         $status = $broker !== null
             ? Password::broker($broker)->sendResetLink(['email' => $email])
             : Password::INVALID_USER;

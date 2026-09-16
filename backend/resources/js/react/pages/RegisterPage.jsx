@@ -97,7 +97,7 @@ function RegisterPage({
           <div className="register-card">
             <h1>Register Account</h1>
             <p className="register-subtitle">
-              Fill in the details below to get started with LNU RecruitIQ.
+              Fill in the details below to get started with LNU-Hire.
             </p>
 
           <form

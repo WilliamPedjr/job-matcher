@@ -436,7 +436,6 @@ function JobViewPage({ job, onBack, onApply, onRequireResume, jobSeekerProfile, 
         <div className="job-view-header-text">
           <p className="job-view-kicker">Job Opportunity</p>
           <h2>{job.title}</h2>
-          <p className="job-view-subtitle">{job.department || "-"} Department/Units</p>
         </div>
         <div className="job-view-header-meta">
           {job.jobPosition || job.job_position ? <span className="job-view-chip chip-outline">{job.jobPosition || job.job_position}</span> : null}

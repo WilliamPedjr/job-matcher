@@ -179,7 +179,6 @@ function ArchivePage({ currentUser = null, onArchiveChanged }) {
       <div className="archive-header">
         <div>
           <h2>Archive</h2>
-          <p>Deleted users, applications, and job posts are recorded here.</p>
         </div>
         <button type="button" className="archive-refresh-btn" onClick={fetchArchives}>
           Refresh

@@ -1797,6 +1797,48 @@ optgroup {
   font-size: var(--fs-14);
 }
 
+.login-register-modern .link-btn-modern {
+  border: none;
+  background: transparent;
+  color: #112b82;
+  cursor: pointer;
+  font: inherit;
+  font-weight: 800;
+  padding: 0;
+  text-decoration: underline;
+}
+
+.login-register-modern .link-btn-modern:hover,
+.login-register-modern .link-btn-modern:focus-visible {
+  color: #0f226f;
+  outline: none;
+}
+
+.login-admin-switch {
+  margin: 10px 0 0;
+  text-align: center;
+  color: #667085;
+  font-size: var(--fs-14);
+  line-height: 1.4;
+}
+
+.login-admin-switch button {
+  border: none;
+  background: transparent;
+  color: #112b82;
+  cursor: pointer;
+  font: inherit;
+  font-weight: 800;
+  padding: 0;
+  text-decoration: underline;
+}
+
+.login-admin-switch button:hover,
+.login-admin-switch button:focus-visible {
+  color: #991b1b;
+  outline: none;
+}
+
 .login-contact-section {
   width: 100%;
   max-width: none;
@@ -1903,7 +1945,7 @@ optgroup {
 }
 
 .staff-login-shell .login-options-modern {
-  justify-content: center;
+  justify-content: flex-start;
 }
 
 .staff-login-shell .login-button-row-modern {
@@ -1973,7 +2015,7 @@ optgroup {
 }
 
 .dashboard-page {
-  padding: 6px 0 14px;
+  padding: 0px 0 14px;
 }
 
 .dashboard-header h2 {

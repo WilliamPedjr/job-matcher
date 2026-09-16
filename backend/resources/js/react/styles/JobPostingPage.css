@@ -1151,7 +1151,8 @@ optgroup {
 }
 
 .jobs-panel {
-  padding: 20px 16px;
+  container-type: inline-size;
+  padding: 0 !important;
 }
 
 .jobs-panel-modern {
@@ -1344,10 +1345,12 @@ optgroup {
 .jobs-table-wrap {
   margin-top: 0;
   overflow-x: auto;
+  -webkit-overflow-scrolling: touch;
 }
 
 .jobs-table {
-  min-width: 0;
+  width: 100%;
+  min-width: 980px;
   table-layout: fixed;
 }
 
@@ -1383,37 +1386,37 @@ optgroup {
 }
 
 .jobs-order-col {
-  width: 5%;
+  width: 52px;
 }
 
 .jobs-title-col {
-  width: 30%;
+  width: 29%;
 }
 
 .jobs-dept-col {
-  width: 14%;
+  width: 17%;
 }
 
 .jobs-type-col {
-  width: 9%;
+  width: 105px;
 }
 
 .jobs-deadline-col {
-  width: 10%;
+  width: 132px;
 }
 
 .jobs-match-col,
 .jobs-applicants-col {
-  width: 10%;
+  width: 120px;
 }
 
 .jobs-status-col {
-  width: 9%;
+  width: 120px;
 }
 
 .jobs-actions-col {
-  width: 5%;
-  min-width: 0;
+  width: 82px;
+  min-width: 82px;
 }
 
 .jobs-order-cell {
@@ -1431,7 +1434,7 @@ optgroup {
   background: transparent;
   color: #0f172a;
   cursor: pointer;
-  display: inline;
+  display: block;
   font: inherit;
   font-weight: 800;
   line-height: 1.25;
@@ -1439,6 +1442,7 @@ optgroup {
   padding: 0;
   text-align: left;
   overflow-wrap: anywhere;
+  word-break: normal;
 }
 
 .job-table-title:hover {
@@ -1464,6 +1468,7 @@ optgroup {
 .job-table-subtext,
 .job-table-skills {
   overflow-wrap: anywhere;
+  word-break: normal;
 }
 
 .jobs-type-cell,
@@ -1524,6 +1529,9 @@ optgroup {
 .job-table-actions {
   position: relative;
   text-align: center;
+  width: 82px;
+  min-width: 82px;
+  max-width: 82px;
 }
 
 .job-table-actions .job-actions-menu {
@@ -1534,10 +1542,89 @@ optgroup {
 .job-table-actions .job-actions-menu.job-actions-menu-floating {
   position: fixed;
   right: auto;
-  width: 236px;
-  min-width: 236px;
+  width: 168px;
+  min-width: 168px;
   z-index: 1000;
   transform-origin: top left;
+}
+
+@container (max-width: 980px) {
+  .jobs-table-wrap {
+    overflow: visible;
+  }
+
+  .jobs-table {
+    min-width: 0;
+    border-collapse: separate;
+    border-spacing: 0 12px;
+  }
+
+  .jobs-table thead {
+    display: none;
+  }
+
+  .jobs-table,
+  .jobs-table tbody,
+  .jobs-table tr,
+  .jobs-table td {
+    display: block;
+    width: 100%;
+  }
+
+  .jobs-table tbody {
+    padding: 0;
+  }
+
+  .jobs-table .job-table-row {
+    border: 1px solid #d9e1eb;
+    border-radius: 12px;
+    background: #ffffff;
+    box-shadow: 0 10px 18px rgba(15, 23, 42, 0.06);
+    overflow: hidden;
+  }
+
+  .jobs-table th,
+  .jobs-table td {
+    padding: 10px 14px;
+    border-bottom: 1px solid #eef2f7;
+  }
+
+  .jobs-table td {
+    display: grid;
+    grid-template-columns: minmax(104px, 34%) minmax(0, 1fr);
+    gap: 10px;
+    align-items: center;
+    min-height: 44px;
+    text-align: left;
+    white-space: normal;
+  }
+
+  .jobs-table td::before {
+    content: attr(data-label);
+    color: #64748b;
+    font-size: 12px;
+    font-weight: 800;
+    text-transform: uppercase;
+    letter-spacing: 0.02em;
+  }
+
+  .jobs-table tr td:last-child {
+    border-bottom: none;
+  }
+
+  .jobs-order-cell,
+  .jobs-match-cell,
+  .jobs-applicants-cell,
+  .jobs-status-cell,
+  .job-table-actions {
+    text-align: left;
+  }
+
+  .job-table-actions {
+    width: 100%;
+    min-width: 0;
+    max-width: none;
+  }
 }
 
 .job-applicants-modal {
@@ -2158,7 +2245,9 @@ optgroup {
   position: absolute;
   top: 26px;
   right: 0;
-  min-width: 150px;
+  width: max-content;
+  min-width: 148px;
+  max-width: 168px;
   background: #fff;
   border: 1px solid #d8dee8;
   border-radius: 8px;
@@ -2173,7 +2262,14 @@ optgroup {
 .job-actions-menu.job-actions-menu-floating {
   position: fixed;
   right: auto;
-  min-width: 176px;
+  width: 168px;
+  min-width: 168px;
+  max-width: 168px;
+}
+
+.job-actions-menu .actions-menu-item {
+  padding: 10px 14px;
+  white-space: nowrap;
 }
 
 @keyframes dropdownIn {
@@ -2334,7 +2430,7 @@ optgroup {
 
 
 .dashboard-page {
-  padding: 6px 0 14px;
+  padding: 0px 0 14px;
 }
 
 .dashboard-header h2 {
@@ -2856,6 +2952,10 @@ optgroup {
     padding: 12px;
   }
 
+  .jobs-panel {
+    padding: 0 !important;
+  }
+
   .title,
   .jobs-title,
   .dashboard-header h2 {
@@ -2869,6 +2969,96 @@ optgroup {
 
   .jobs-hero {
     padding: 14px;
+  }
+
+  .jobs-table-wrap {
+    overflow: visible;
+  }
+
+  .jobs-table {
+    min-width: 0;
+    border-collapse: separate;
+    border-spacing: 0 12px;
+  }
+
+  .jobs-table thead {
+    display: none;
+  }
+
+  .jobs-table,
+  .jobs-table tbody,
+  .jobs-table tr,
+  .jobs-table td {
+    display: block;
+    width: 100%;
+  }
+
+  .jobs-table tbody {
+    padding: 0;
+  }
+
+  .jobs-table .job-table-row {
+    border: 1px solid #d9e1eb;
+    border-radius: 12px;
+    background: #ffffff;
+    box-shadow: 0 10px 18px rgba(15, 23, 42, 0.06);
+    overflow: hidden;
+  }
+
+  .jobs-table th,
+  .jobs-table td {
+    padding: 10px 14px;
+    border-bottom: 1px solid #eef2f7;
+  }
+
+  .jobs-table td {
+    display: grid;
+    grid-template-columns: minmax(104px, 34%) minmax(0, 1fr);
+    gap: 10px;
+    align-items: center;
+    min-height: 44px;
+    text-align: left;
+    white-space: normal;
+  }
+
+  .jobs-table td::before {
+    content: attr(data-label);
+    color: #64748b;
+    font-size: 12px;
+    font-weight: 800;
+    text-transform: uppercase;
+    letter-spacing: 0.02em;
+  }
+
+  .jobs-table tr td:last-child {
+    border-bottom: none;
+  }
+
+  .jobs-order-cell,
+  .jobs-match-cell,
+  .jobs-applicants-cell,
+  .jobs-status-cell,
+  .job-table-actions {
+    text-align: left;
+  }
+
+  .job-table-actions {
+    width: 100%;
+    min-width: 0;
+    max-width: none;
+  }
+
+  .job-table-title {
+    display: inline-block;
+    max-width: 100%;
+    white-space: normal;
+  }
+
+  .jobs-dept-cell,
+  .jobs-type-cell,
+  .jobs-deadline-cell,
+  .jobs-match-cell {
+    overflow-wrap: anywhere;
   }
 
   .panel-meta,

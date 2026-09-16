@@ -19,6 +19,8 @@ function JobSeekerDashboard({ jobSeekerProfile, uploads = [], onBrowseJobs, onVi
     })
     : []
   const applicationsPageCount = Math.max(1, Math.ceil(myUploads.length / applicationPageSize))
+  const applicationsStart = myUploads.length === 0 ? 0 : ((applicationsPage - 1) * applicationPageSize) + 1
+  const applicationsEnd = Math.min(myUploads.length, applicationsPage * applicationPageSize)
   const paginatedUploads = myUploads.slice(
     (applicationsPage - 1) * applicationPageSize,
     applicationsPage * applicationPageSize
@@ -81,7 +83,6 @@ function JobSeekerDashboard({ jobSeekerProfile, uploads = [], onBrowseJobs, onVi
       <div className="js-welcome">
         <div>
           <h2>Welcomeback, {name}</h2>
-          <p>Track your job applications and see your qualification result.</p>
         </div>
         <div className="js-profile-chip">
           <div>
@@ -227,7 +228,9 @@ function JobSeekerDashboard({ jobSeekerProfile, uploads = [], onBrowseJobs, onVi
           </table>
           {myUploads.length > applicationPageSize && (
             <div className="js-applications-pagination">
-              <span>Page {applicationsPage} of {applicationsPageCount}</span>
+              <span>
+                Showing {applicationsStart}-{applicationsEnd} of {myUploads.length}
+              </span>
               <div>
                 <button
                   type="button"
@@ -244,6 +247,7 @@ function JobSeekerDashboard({ jobSeekerProfile, uploads = [], onBrowseJobs, onVi
                   Next
                 </button>
               </div>
+              <span>Page {applicationsPage} of {applicationsPageCount}</span>
             </div>
           )}
         </div>

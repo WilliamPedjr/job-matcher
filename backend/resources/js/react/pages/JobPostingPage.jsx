@@ -267,7 +267,7 @@ function JobPostingPage({ uploads = [], isEmployer = false, isJobSeeker = false,
 
   const getJobActionsMenuPosition = (button) => {
     const rect = button.getBoundingClientRect()
-    const menuWidth = 236
+    const menuWidth = 168
     const viewportWidth = window.innerWidth || document.documentElement.clientWidth
 
     return {
@@ -1652,7 +1652,6 @@ function JobPostingPage({ uploads = [], isEmployer = false, isJobSeeker = false,
         <div>
           <p className="jobs-kicker">Job Posting</p>
           <h1 className="jobs-title">New Jobs</h1>
-          <p className="jobs-subtitle">Overview of Job List and Requirements</p>
         </div>
         {!isJobSeeker && (
           <button
@@ -1855,8 +1854,10 @@ function JobPostingPage({ uploads = [], isEmployer = false, isJobSeeker = false,
                     onClick={() => openJobRecord(job)}
                     onKeyDown={(event) => handleJobRecordKeyDown(event, job)}
                   >
-                    <td className="jobs-order-cell">{tableStartIndex + index + 1}</td>
-                    <td>
+                    <td className="jobs-order-cell" data-label="#">
+                      {tableStartIndex + index + 1}
+                    </td>
+                    <td data-label="Job Position">
                       <button
                         type="button"
                         className="job-table-title"
@@ -1868,12 +1869,12 @@ function JobPostingPage({ uploads = [], isEmployer = false, isJobSeeker = false,
                         {job.title || "-"}
                       </button>
                     </td>
-                    <td className="jobs-dept-cell">{job.department || "-"}</td>
-                    <td className="jobs-type-cell">{job.type || "-"}</td>
-                    <td className="jobs-deadline-cell">{deadline}</td>
-                    {isJobSeeker && <td className="jobs-match-cell">{matchContent}</td>}
+                    <td className="jobs-dept-cell" data-label="Department/Units">{job.department || "-"}</td>
+                    <td className="jobs-type-cell" data-label="Type">{job.type || "-"}</td>
+                    <td className="jobs-deadline-cell" data-label="Post Deadline">{deadline}</td>
+                    {isJobSeeker && <td className="jobs-match-cell" data-label="Match">{matchContent}</td>}
                     {!isJobSeeker && (
-                      <td className="jobs-applicants-cell">
+                      <td className="jobs-applicants-cell" data-label="Applicants">
                         <button
                           className="job-applicants"
                           type="button"
@@ -1886,13 +1887,13 @@ function JobPostingPage({ uploads = [], isEmployer = false, isJobSeeker = false,
                         </button>
                       </td>
                     )}
-                    <td className="jobs-status-cell">
+                    <td className="jobs-status-cell" data-label="Status">
                       <span className={`job-status ${String(job.status || "active").toLowerCase()}`}>
                         {String(job.status || "active").toLowerCase()}
                       </span>
                     </td>
                     {!isJobSeeker && (
-                      <td className="actions-cell job-table-actions">
+                      <td className="actions-cell job-table-actions" data-label="Actions">
                         {renderJobActions(job, actionKey)}
                       </td>
                     )}

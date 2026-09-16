@@ -973,19 +973,20 @@ body {
   gap: 16px;
 }
 
+section.panel.applicants-panel,
 .applicants-panel {
   background: transparent;
-  padding: 0;
+  padding: 0 !important;
   border: none;
 }
 
 .applicants-hero {
-  padding: 18px 20px;
+  padding: 26px 28px;
   border-radius: 16px;
-  background: linear-gradient(135deg, #0f1f73, #1e3a8a 55%, #0f172a 120%);
-  border: 1px solid rgba(15, 23, 42, 0.2);
-  box-shadow: 0 14px 26px rgba(15, 23, 42, 0.18);
-  margin-bottom: 16px;
+  background: linear-gradient(135deg, #1d3290 0%, #17264f 100%);
+  border: 1px solid rgba(255, 255, 255, 0.16);
+  box-shadow: 0 16px 32px rgba(23, 38, 79, 0.16);
+  margin-bottom: 24px;
 }
 
 .applicants-hero .title {
@@ -2515,7 +2516,7 @@ optgroup {
 
 
 .dashboard-page {
-  padding: 6px 0 14px;
+  padding: 0 0 14px;
 }
 
 .dashboard-header h2 {
@@ -3094,6 +3095,11 @@ optgroup {
   .candidate-card,
   .dashboard-panel {
     padding: 12px;
+  }
+
+  section.panel.applicants-panel,
+  .applicants-panel {
+    padding: 0 !important;
   }
 
   .title,

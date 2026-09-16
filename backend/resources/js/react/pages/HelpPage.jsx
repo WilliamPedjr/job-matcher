@@ -65,7 +65,6 @@ function HelpPage({
           <div>
             <span className="help-kicker">Help Center</span>
             <h2>Recruitment workspace guide</h2>
-            <p>Use the dashboard, jobs, applicants, ratings, users, and archive pages to manage the hiring workflow.</p>
           </div>
         </div>
       </section>
@@ -107,7 +106,6 @@ function HelpPage({
           <div>
             <span className="help-kicker">Job Seeker Help</span>
           <h2>Follow your setup checklist</h2>
-          <p>Start with your Profile, prepare your documents, then discover where to browse jobs and track applications.</p>
           <div className="help-progress" aria-label={`${completedCount} of ${jobSeekerSetupItems.length} setup steps completed`}>
             <span>{completedCount}/{jobSeekerSetupItems.length} done</span>
             <div>

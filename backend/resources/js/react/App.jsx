@@ -417,11 +417,25 @@ function App() {
 
   const applyAuthenticatedSession = useCallback((payload) => {
     const nextRole = normalizeRole(payload?.role) || "jobseeker"
-    const nextActivePage = "dashboard"
     const nextJobSeekerProfile = nextRole === "jobseeker" ? buildJobSeekerProfile(payload) : null
     const nextJobSeekerId = nextRole === "jobseeker"
       ? (payload?.jobSeekerId ?? payload?.job_seeker_id ?? payload?.id ?? nextJobSeekerProfile?.id ?? null)
       : null
+    const newJobSeekerRedirectKeys = []
+    if (nextRole === "jobseeker") {
+      if (nextJobSeekerId != null) {
+        newJobSeekerRedirectKeys.push(`newJobSeekerProfileRedirect:${nextJobSeekerId}`)
+      }
+      const nextJobSeekerEmail = String(nextJobSeekerProfile?.email || payload?.email || "").trim()
+      if (nextJobSeekerEmail) {
+        newJobSeekerRedirectKeys.push(`newJobSeekerProfileRedirect:${nextJobSeekerEmail}`)
+      }
+    }
+    const shouldOpenProfile = newJobSeekerRedirectKeys.some((key) => localStorage.getItem(key) === "true")
+    const nextActivePage = shouldOpenProfile ? "profile" : "dashboard"
+    if (shouldOpenProfile) {
+      newJobSeekerRedirectKeys.forEach((key) => localStorage.removeItem(key))
+    }
 
     setIsAuthenticated(true)
     localStorage.setItem("isAuthenticated", "true")
@@ -1040,6 +1054,10 @@ function App() {
         newJobSeekerGuideKeys.push(`jobSeekerPageIntroEnabled:${newJobSeekerEmail}`)
       }
       newJobSeekerGuideKeys.forEach((key) => localStorage.removeItem(key))
+      localStorage.setItem(`newJobSeekerProfileRedirect:${userPayload.id}`, "true")
+      if (newJobSeekerEmail) {
+        localStorage.setItem(`newJobSeekerProfileRedirect:${newJobSeekerEmail}`, "true")
+      }
       setActiveJobSeekerPageIntro(null)
       setLoginMode("jobseeker")
       setLoginEmail(newJobSeekerEmail)
@@ -2830,7 +2848,6 @@ function App() {
           <div className="applicants-hero">
             <div>
               <h2 className="title">Applicants</h2>
-              <p className="subtitle">View and manage all job applicants ranked by qualifications</p>
             </div>
           </div>
 

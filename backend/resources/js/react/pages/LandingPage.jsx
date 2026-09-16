@@ -37,8 +37,12 @@ function parseSkills(skillsData) {
 function LandingPage({ onPersonnelLoginClick, onJobSeekerLoginClick, onRegisterClick, scrollToSectionId = "" }) {
   const [availableJobs, setAvailableJobs] = useState([])
   const [loadingJobs, setLoadingJobs] = useState(true)
-  const [isJobsModalOpen, setIsJobsModalOpen] = useState(false)
+  const [jobsPage, setJobsPage] = useState(1)
   const [showBackToTop, setShowBackToTop] = useState(false)
+  const jobsPerPage = 6
+  const jobsPageCount = Math.max(1, Math.ceil(availableJobs.length / jobsPerPage))
+  const activeJobsPage = Math.min(jobsPage, jobsPageCount)
+  const paginatedJobs = availableJobs.slice((activeJobsPage - 1) * jobsPerPage, activeJobsPage * jobsPerPage)
 
   const highlights = [
     "Resume screening",
@@ -100,6 +104,10 @@ function LandingPage({ onPersonnelLoginClick, onJobSeekerLoginClick, onRegisterC
 
     return () => window.cancelAnimationFrame(frame)
   }, [scrollToSectionId])
+
+  useEffect(() => {
+    setJobsPage((page) => Math.min(Math.max(1, page), jobsPageCount))
+  }, [jobsPageCount])
 
   useEffect(() => {
     const updateBackToTop = () => {
@@ -217,7 +225,7 @@ function LandingPage({ onPersonnelLoginClick, onJobSeekerLoginClick, onRegisterC
               <p>Loading jobs...</p>
             </div>
           ) : availableJobs.length ? (
-            availableJobs.slice(0, 6).map((job) => {
+            paginatedJobs.map((job) => {
               const skills = parseSkills(job.required_skills).slice(0, 4)
               return (
                 <article key={job.id || job.title} className="landing-job-card">
@@ -246,7 +254,7 @@ function LandingPage({ onPersonnelLoginClick, onJobSeekerLoginClick, onRegisterC
                       </div>
                     )}
 
-                    <button type="button" className="btn btn-primary btn-sm landing-job-action" onClick={onRegisterClick}>
+                    <button type="button" className="btn btn-primary btn-sm landing-job-action" onClick={onJobSeekerLoginClick}>
                       Apply now
                     </button>
                   </div>
@@ -260,11 +268,27 @@ function LandingPage({ onPersonnelLoginClick, onJobSeekerLoginClick, onRegisterC
           )}
         </div>
 
-        <div className="landing-jobs-footer">
-          <button type="button" className="btn btn-primary btn-lg" onClick={() => setIsJobsModalOpen(true)}>
-            Browse all jobs
-          </button>
-        </div>
+        {availableJobs.length > jobsPerPage && (
+          <div className="landing-jobs-footer" aria-label="Job pagination">
+            <button
+              type="button"
+              className="landing-page-btn"
+              onClick={() => setJobsPage((page) => Math.max(1, page - 1))}
+              disabled={activeJobsPage <= 1}
+            >
+              Previous
+            </button>
+            <span className="landing-page-status">Page {activeJobsPage} of {jobsPageCount}</span>
+            <button
+              type="button"
+              className="landing-page-btn"
+              onClick={() => setJobsPage((page) => Math.min(jobsPageCount, page + 1))}
+              disabled={activeJobsPage >= jobsPageCount}
+            >
+              Next
+            </button>
+          </div>
+        )}
       </section>
 
       
@@ -408,82 +432,6 @@ function LandingPage({ onPersonnelLoginClick, onJobSeekerLoginClick, onRegisterC
         </div>
       </footer>
 
-      {isJobsModalOpen && (
-        <div className="landing-modal-overlay" onClick={() => setIsJobsModalOpen(false)}>
-          <section className="landing-jobs-modal" role="dialog" aria-modal="true" aria-labelledby="landing-jobs-modal-title" onClick={(event) => event.stopPropagation()}>
-            <div className="landing-modal-header">
-              <div>
-                <p className="landing-section-eyebrow">Available Jobs</p>
-                <h2 id="landing-jobs-modal-title">All open positions</h2>
-              </div>
-              <button type="button" className="landing-modal-close" onClick={() => setIsJobsModalOpen(false)} aria-label="Close jobs modal">
-                ×
-              </button>
-            </div>
-
-            <div className="landing-modal-jobs-grid">
-              {availableJobs.length ? (
-                availableJobs.map((job) => {
-                  const skills = parseSkills(job.required_skills).slice(0, 4)
-                  return (
-                    <article key={`modal-${job.id || job.title}`} className="landing-job-card">
-                      <div className="landing-job-header">
-                        <div className="landing-job-heading">
-                          <h3 className="landing-job-title">{job.title || "Untitled role"}</h3>
-                          <p className="landing-job-company">{job.department || "Hiring team"}</p>
-                        </div>
-                        <span className="landing-job-badge">{job.type || "Full-time"}</span>
-                      </div>
-
-                      <div className="landing-job-meta">
-                        {job.itemNo || job.item_no ? (
-                          <p className="landing-job-location">Item No. {job.itemNo || job.item_no}</p>
-                        ) : null}
-                        {job.jobPosition || job.job_position ? (
-                          <p className="landing-job-location">{job.jobPosition || job.job_position}</p>
-                        ) : null}
-                        <p className="landing-job-location">{job.location || "Leyte Normal University"}</p>
-                        {job.deadline ? (
-                          <p className="landing-job-location">Deadline {new Date(job.deadline).toLocaleDateString(undefined, { month: "short", day: "numeric", year: "numeric" })}</p>
-                        ) : null}
-                        {job.eligibility ? (
-                          <p className="landing-job-location">{job.eligibility}</p>
-                        ) : null}
-                      </div>
-
-                      <p className="landing-job-description">
-                        {job.description
-                          ? job.description.slice(0, 110).replace(/\s+$/, "")
-                          : "A featured opening from the active job board."}
-                      </p>
-
-                      <div className="landing-job-footer">
-                        {skills.length > 0 && (
-                          <div className="landing-job-skills">
-                            {skills.map((skill) => (
-                              <span key={`modal-${job.id || job.title}-${skill}`} className="landing-job-skill">
-                                {skill}
-                              </span>
-                            ))}
-                          </div>
-                        )}
-
-                        <button type="button" className="btn btn-primary btn-sm landing-job-action" onClick={onRegisterClick}>
-                          Apply now
-                        </button>
-                      </div>
-                    </article>
-                  )
-                })
-              ) : (
-                <div className="landing-empty-state landing-full-span">
-                  <p>No available jobs right now.</p>
-                </div>
-              )}
-            </div>
-          </section>
-        </div>
-      )}
       <button
         type="button"
         className={`landing-back-to-top ${showBackToTop ? "visible" : ""}`}
