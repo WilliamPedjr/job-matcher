@@ -25,6 +25,8 @@ import './layouts/SidebarLayout.css'
 import html2canvas from "html2canvas"
 import { jsPDF } from "jspdf"
 
+const applicantsPageSize = 10
+
 const jobSeekerPageIntros = {
   dashboard: {
     title: "Dashboard",
@@ -283,6 +285,23 @@ function normalizeJobSeekerProfile(payload) {
   }
 }
 
+function getApplicationStatus(item) {
+  const status = String(item?.application_status || item?.applicationStatus || item?.evaluation_status || item?.evaluationStatus || "")
+    .trim()
+    .toLowerCase()
+  if (status === "for_evaluation") return "interview"
+  if (status === "rated") return "hired"
+  return ["pending", "reviewed", "shortlisted", "interview", "rejected", "hired"].includes(status) ? status : "pending"
+}
+
+function getApplicationStatusLabel(item) {
+  const status = getApplicationStatus(item)
+  return status
+    .split("-")
+    .map((part) => part.charAt(0).toUpperCase() + part.slice(1))
+    .join(" ")
+}
+
 function App() {
   const initialEmailVerificationStatus =
     window.location.pathname === "/job-seeker/email-verification"
@@ -307,8 +326,9 @@ function App() {
   const [activityLogs, setActivityLogs] = useState([])
   const [isLoadingUploads, setIsLoadingUploads] = useState(false)
   const [searchTerm, setSearchTerm] = useState("")
-  const [sortConfig, setSortConfig] = useState({ key: "date", direction: "desc" })
+  const [sortConfig, setSortConfig] = useState({ key: "date", direction: "asc" })
   const [showTopApplicants, setShowTopApplicants] = useState(false)
+  const [applicantsPage, setApplicantsPage] = useState(1)
   const [showBackToTop, setShowBackToTop] = useState(false)
   const [actionsMenu, setActionsMenu] = useState(null)
   const [viewItem, setViewItem] = useState(null)
@@ -657,7 +677,7 @@ function App() {
   }
 
   // Fetch all upload records
-  const fetchUploads = async ({ silent = false } = {}) => {
+  const fetchUploads = useCallback(async ({ silent = false } = {}) => {
     if (!silent) {
       setIsLoadingUploads(true)
     }
@@ -675,7 +695,7 @@ function App() {
         setIsLoadingUploads(false)
       }
     }
-  }
+  }, [])
 
   const fetchJobPosts = async () => {
     try {
@@ -774,6 +794,19 @@ function App() {
       fetchActivityLogs()
     }
   }, [fetchActivityLogs, isAuthenticated])
+
+  useEffect(() => {
+    if (!isAuthenticated || !isJobSeeker) return undefined
+    const intervalId = window.setInterval(() => {
+      fetchUploads({ silent: true })
+    }, 30000)
+    return () => window.clearInterval(intervalId)
+  }, [fetchUploads, isAuthenticated, isJobSeeker])
+
+  useEffect(() => {
+    if (!isAuthenticated || !isNotificationsOpen) return
+    fetchUploads({ silent: true })
+  }, [fetchUploads, isAuthenticated, isNotificationsOpen])
 
   useEffect(() => {
     if (!isAuthenticated) return
@@ -1476,28 +1509,56 @@ function App() {
     }
   }
 
-  const markApplicantForInterview = async (item) => {
-    if (!item?.id) return
+  const updateApplicationStatus = async (item, status, { silent = false } = {}) => {
+    if (!item?.id) return null
     setActionsMenu(null)
     try {
-      const response = await fetch(`http://localhost:5000/uploads/${item.id}/evaluation`, {
+      const response = await fetch(`http://localhost:5000/uploads/${item.id}/status`, {
         method: "PUT",
-        headers: getArchiveActorHeaders(currentUser || { name: loginEmail, email: loginEmail, role: userRole })
+        headers: {
+          "Content-Type": "application/json",
+          ...getArchiveActorHeaders(currentUser || { name: loginEmail, email: loginEmail, role: userRole })
+        },
+        body: JSON.stringify({ status })
       })
       const payload = await response.json().catch(() => null)
       if (!response.ok) {
-        throw new Error(payload?.message || "Failed to send applicant for evaluation.")
+        throw new Error(payload?.message || "Failed to update application status.")
       }
       setUploads((prev) => prev.map((upload) => (
         upload.id === item.id ? { ...upload, ...payload } : upload
       )))
-      showDeleteToast("Applicant moved to Ratings / Evaluation.", "success")
+      setViewItem((current) => (current?.id === item.id ? { ...current, ...payload } : current))
+      if (!silent) {
+        const notice = status === "shortlisted"
+          ? "Applicant shortlisted for interview."
+          : status === "interview"
+            ? "Applicant moved to interview."
+            : status === "rejected"
+              ? "Applicant rejected."
+              : "Application status updated."
+        showDeleteToast(notice, status === "rejected" ? "fail" : "success")
+      }
       await fetchUploads({ silent: true })
       await fetchActivityLogs()
+      return payload
     } catch (error) {
-      showDeleteToast(error.message || "Failed to send applicant for evaluation.", "fail")
+      if (!silent) {
+        showDeleteToast(error.message || "Failed to update application status.", "fail")
+      }
+      return null
     }
   }
+
+  const markApplicantForInterview = async (item) => {
+    return updateApplicationStatus(item, "interview")
+  }
+
+  useEffect(() => {
+    if (isJobSeeker || !viewItem?.id) return
+    if (getApplicationStatus(viewItem) !== "pending") return
+    updateApplicationStatus(viewItem, "reviewed", { silent: true })
+  }, [isJobSeeker, viewItem?.id])
 
   const handleDelete = (id, context = "application") => {
     setActionsMenu(null)
@@ -1593,6 +1654,21 @@ function App() {
   }, [filteredUploads])
 
   const displayedUploads = showTopApplicants ? topApplicants : filteredUploads
+  const applicantsPageCount = Math.max(1, Math.ceil(displayedUploads.length / applicantsPageSize))
+  const paginatedDisplayedUploads = displayedUploads.slice(
+    (applicantsPage - 1) * applicantsPageSize,
+    applicantsPage * applicantsPageSize
+  )
+  const applicantsStart = displayedUploads.length === 0 ? 0 : ((applicantsPage - 1) * applicantsPageSize) + 1
+  const applicantsEnd = Math.min(displayedUploads.length, applicantsPage * applicantsPageSize)
+
+  useEffect(() => {
+    setApplicantsPage(1)
+  }, [jobFilter, searchTerm, showTopApplicants, sortConfig])
+
+  useEffect(() => {
+    setApplicantsPage((page) => Math.min(page, applicantsPageCount))
+  }, [applicantsPageCount])
 
   const activeJobPosts = jobPosts.filter(
     (job) => String(job.status || "active").toLowerCase() === "active"
@@ -1835,13 +1911,17 @@ function App() {
     String(value || "").toLowerCase().replace(/\s+/g, "-")
 
   const getApplicationStatus = (item) => {
-    const cls = String(item?.classification || "").toLowerCase()
-    if (cls.includes("qualified") && !cls.includes("not")) return "Qualified"
-    if (cls.includes("highly")) return "Qualified"
-    if (cls.includes("moderately")) return "Moderately Qualified"
-    if (cls.includes("not")) return "Not Qualified"
-    return "Under Review"
+    const status = String(item?.application_status || item?.applicationStatus || item?.evaluation_status || item?.evaluationStatus || "")
+      .trim()
+      .toLowerCase()
+    if (status === "for_evaluation") return "interview"
+    if (status === "rated") return "hired"
+    return ["pending", "reviewed", "shortlisted", "interview", "rejected", "hired"].includes(status) ? status : "pending"
   }
+
+  const getApplicationNotificationId = (item) => (
+    `${item?.id || "application"}:${getApplicationStatus(item)}`
+  )
 
   const jobTitleMeta = useMemo(() => {
     const map = new Map()
@@ -1869,7 +1949,7 @@ function App() {
   }, [uploads, isJobSeeker, jobSeekerProfile])
 
   const unreadJobSeekerApplications = useMemo(() => (
-    jobSeekerApplications.filter((item) => !readNotificationIds.includes(item.id))
+    jobSeekerApplications.filter((item) => !readNotificationIds.includes(getApplicationNotificationId(item)))
   ), [jobSeekerApplications, readNotificationIds])
 
   const filteredNotifications = useMemo(() => {
@@ -1882,7 +1962,7 @@ function App() {
         return false
       }
       if (statusFilter !== "all") {
-        return getApplicationStatus(item).toLowerCase() === statusFilter
+        return getApplicationStatus(item) === statusFilter
       }
       return true
     })
@@ -2104,6 +2184,26 @@ function App() {
           }}
           onReanalyze={handleReanalyze}
           readOnly={isJobSeeker}
+          headerActions={!isJobSeeker && (
+            <>
+              <button
+                className="btn"
+                type="button"
+                onClick={() => updateApplicationStatus(viewItem, "shortlisted")}
+                disabled={["shortlisted", "interview", "rejected", "hired"].includes(getApplicationStatus(viewItem))}
+              >
+                Pass
+              </button>
+              <button
+                className="btn btn-danger"
+                type="button"
+                onClick={() => updateApplicationStatus(viewItem, "rejected")}
+                disabled={["rejected", "hired"].includes(getApplicationStatus(viewItem))}
+              >
+                Reject
+              </button>
+            </>
+          )}
         />
       )
     }
@@ -2192,6 +2292,7 @@ function App() {
                 <th>Phone</th>
                 <th>Job Applied</th>
                 <th>Score</th>
+                <th>Status</th>
                 <th>Classification</th>
                 <th>Uploaded File</th>
                 <th>Uploaded At</th>
@@ -2199,9 +2300,9 @@ function App() {
               </tr>
             </thead>
             <tbody>
-              {displayedUploads.map((item, index) => (
+              {paginatedDisplayedUploads.map((item, index) => (
                 <tr key={item.id}>
-                  <td>{index + 1}</td>
+                  <td>{((applicantsPage - 1) * applicantsPageSize) + index + 1}</td>
                   <td>
                     <div className="applicant-cell">
                       <strong>{item.name || "(No name)"}</strong>
@@ -2211,6 +2312,11 @@ function App() {
                   <td>{item.phone || "No phone"}</td>
                   <td>{item.applied_job_title || item.matched_job_title || "-"}</td>
                   <td>{item.match_score != null ? `${Number(item.match_score).toFixed(2)}%` : "-"}</td>
+                  <td>
+                    <span className={`application-status status-${getApplicationStatus(item)}`}>
+                      {getApplicationStatusLabel(item)}
+                    </span>
+                  </td>
                   <td>
                     <span className={`table-classification ${getClassificationClass(item.classification)}`}>
                       {item.classification || "-"}
@@ -2238,6 +2344,27 @@ function App() {
               ))}
             </tbody>
           </table>
+          {displayedUploads.length > applicantsPageSize && (
+            <div className="applicants-pagination">
+              <span>Page {applicantsPage} of {applicantsPageCount}</span>
+              <div>
+                <button
+                  type="button"
+                  onClick={() => setApplicantsPage((page) => Math.max(1, page - 1))}
+                  disabled={applicantsPage === 1}
+                >
+                  Previous
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setApplicantsPage((page) => Math.min(applicantsPageCount, page + 1))}
+                  disabled={applicantsPage === applicantsPageCount}
+                >
+                  Next
+                </button>
+              </div>
+            </div>
+          )}
         </div>
       )
     }
@@ -2379,7 +2506,7 @@ function App() {
                       className="notifications-mark-read"
                       onClick={() => {
                         if (isJobSeeker) {
-                          markNotificationsRead(unreadJobSeekerApplications.map((item) => item.id))
+                          markNotificationsRead(unreadJobSeekerApplications.map((item) => getApplicationNotificationId(item)))
                         } else {
                           markNotificationsRead(adminNotifications.map((item) => item.id))
                         }
@@ -2406,10 +2533,12 @@ function App() {
                         onChange={(e) => setNotificationStatus(e.target.value)}
                       >
                         <option value="all">All Status</option>
-                        <option value="Qualified">Qualified</option>
-                        <option value="Moderately Qualified">Moderately Qualified</option>
-                        <option value="Not Qualified">Not Qualified</option>
-                        <option value="Under Review">Under Review</option>
+                        <option value="pending">Pending</option>
+                        <option value="reviewed">Reviewed</option>
+                        <option value="shortlisted">Shortlisted</option>
+                        <option value="interview">Interview</option>
+                        <option value="rejected">Rejected</option>
+                        <option value="hired">Hired</option>
                       </select>
                     </div>
                     <div className="notifications-table">
@@ -2434,6 +2563,7 @@ function App() {
                               const jobTitle = item.applied_job_title || item.matched_job_title || "-"
                               const department = jobTitleMeta.get(jobTitle)?.department || "-"
                               const status = getApplicationStatus(item)
+                              const statusLabel = getApplicationStatusLabel(item)
                               const dateLabel = (() => {
                                 const d = new Date(item.uploaded_at)
                                 if (Number.isNaN(d.getTime())) return "-"
@@ -2449,8 +2579,8 @@ function App() {
                                   <td>{department}</td>
                                   <td>{dateLabel}</td>
                                   <td>
-                                    <span className={`notification-status status-${status.toLowerCase().replace(/\s+/g, "-")}`}>
-                                      {status}
+                                    <span className={`notification-status status-${status}`}>
+                                      {statusLabel}
                                     </span>
                                   </td>
                                 </tr>
@@ -2508,6 +2638,7 @@ function App() {
                       pagedAdminNotifications.map((item) => {
                         const jobTitle = item.applied_job_title || item.matched_job_title || "-"
                         const status = getApplicationStatus(item)
+                        const statusLabel = getApplicationStatusLabel(item)
                         const dateLabel = (() => {
                           const d = new Date(item.uploaded_at)
                           if (Number.isNaN(d.getTime())) return "-"
@@ -2525,8 +2656,8 @@ function App() {
                                 {jobTitle} · {dateLabel}
                               </div>
                             </div>
-                            <span className={`notification-status status-${status.toLowerCase().replace(/\s+/g, "-")}`}>
-                              {status}
+                            <span className={`notification-status status-${status}`}>
+                              {statusLabel}
                             </span>
                           </div>
                         )
@@ -2723,8 +2854,8 @@ function App() {
           <div className="panel-meta applicants-meta">
             <p>
               {showTopApplicants
-                ? `Showing ${displayedUploads.length} of ${uploads.length} applicants (Top 10 by score)`
-                : `Showing ${displayedUploads.length} of ${uploads.length} applicants`}
+                ? `Showing ${applicantsStart}-${applicantsEnd} of ${displayedUploads.length} applicants (Top 10 by score)`
+                : `Showing ${applicantsStart}-${applicantsEnd} of ${displayedUploads.length} applicants`}
             </p>
             <div className="sort-wrap applicants-sort">
               <span>Sort by:</span>
@@ -3083,30 +3214,36 @@ function App() {
           >
             Download Summary (PDF)
           </button>
-          <button
-            type="button"
-            className="actions-menu-item"
-            disabled={Boolean(actionsMenu.item?.ratingCount || actionsMenu.item?.rating_count)}
-            onClick={() => {
-              const status = String(actionsMenu.item?.evaluation_status || actionsMenu.item?.evaluationStatus || "").toLowerCase()
-              const hasRating = Boolean(actionsMenu.item?.ratingCount || actionsMenu.item?.rating_count)
-              if (hasRating) return
-              if (status === "for_evaluation" || status === "rated") {
+          {getApplicationStatus(actionsMenu.item) === "shortlisted" && (
+            <button
+              type="button"
+              className="actions-menu-item"
+              disabled={Boolean(actionsMenu.item?.ratingCount || actionsMenu.item?.rating_count)}
+              onClick={async () => {
+                const hasRating = Boolean(actionsMenu.item?.ratingCount || actionsMenu.item?.rating_count)
+                if (hasRating) return
+                setActionsMenu(null)
+                const updated = await markApplicantForInterview(actionsMenu.item)
+                if (updated) {
+                  handleTopNav("ratings")
+                }
+              }}
+            >
+              Interview
+            </button>
+          )}
+          {getApplicationStatus(actionsMenu.item) === "interview" && (
+            <button
+              type="button"
+              className="actions-menu-item"
+              onClick={() => {
                 setActionsMenu(null)
                 handleTopNav("ratings")
-                return
-              }
-              markApplicantForInterview(actionsMenu.item)
-            }}
-          >
-            {actionsMenu.item?.ratingCount || actionsMenu.item?.rating_count
-              ? "Rated"
-              : String(actionsMenu.item?.evaluation_status || actionsMenu.item?.evaluationStatus || "").toLowerCase() === "for_evaluation"
-                ? "Rating"
-                : String(actionsMenu.item?.evaluation_status || actionsMenu.item?.evaluationStatus || "").toLowerCase() === "rated"
-                  ? "Rated"
-                  : "Interview"}
-          </button>
+              }}
+            >
+              Rating
+            </button>
+          )}
           <button
             type="button"
             className="actions-menu-item danger"

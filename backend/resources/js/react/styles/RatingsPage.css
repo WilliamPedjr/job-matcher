@@ -347,6 +347,13 @@
   opacity: 0.65;
 }
 
+.ratings-applicants-pager {
+  border: 0;
+  border-top: 1px solid #e5eaf2;
+  border-radius: 0;
+  background: #ffffff;
+}
+
 .ratings-add-member-btn {
   grid-column: 1 / -1;
   justify-self: start;
@@ -1241,6 +1248,25 @@
   border-color: #b7ebc6;
   background: #effaf2;
   color: #188a42;
+}
+
+.ratings-status.shortlisted {
+  border-color: #fed7aa;
+  background: #fff7ed;
+  color: #c2410c;
+}
+
+.ratings-status.interview,
+.ratings-status.for_evaluation {
+  border-color: #c7d2fe;
+  background: #eef2ff;
+  color: #3730a3;
+}
+
+.ratings-status.hired {
+  border-color: #bbf7d0;
+  background: #f0fdf4;
+  color: #15803d;
 }
 
 .ratings-score-chip {

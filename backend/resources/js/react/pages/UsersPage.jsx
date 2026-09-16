@@ -5,6 +5,8 @@ import eyeSolidIcon from "../assets/eye-solid-full.svg"
 import eyeRegularIcon from "../assets/eye-regular-full.svg"
 import { getArchiveActorHeaders } from "../utils/archiveActor"
 
+const usersPageSize = 10
+
 function UsersPage({ currentUser = null, onUsersChanged }) {
   const [jobSeekerUsers, setJobSeekerUsers] = useState([])
   const [employerUsers, setEmployerUsers] = useState([])
@@ -12,6 +14,8 @@ function UsersPage({ currentUser = null, onUsersChanged }) {
   const [jobSeekerSearch, setJobSeekerSearch] = useState("")
   const [employerSearch, setEmployerSearch] = useState("")
   const [activeUserTab, setActiveUserTab] = useState("jobseekers")
+  const [jobSeekerPage, setJobSeekerPage] = useState(1)
+  const [employerPage, setEmployerPage] = useState(1)
   const [userEditContext, setUserEditContext] = useState(null)
   const [userForm, setUserForm] = useState({
     fullName: "",
@@ -172,6 +176,33 @@ function UsersPage({ currentUser = null, onUsersChanged }) {
       .toLowerCase()
     return haystack.includes(query)
   })
+
+  const jobSeekerPageCount = Math.max(1, Math.ceil(filteredJobSeekers.length / usersPageSize))
+  const employerPageCount = Math.max(1, Math.ceil(filteredEmployers.length / usersPageSize))
+  const paginatedJobSeekers = filteredJobSeekers.slice(
+    (jobSeekerPage - 1) * usersPageSize,
+    jobSeekerPage * usersPageSize
+  )
+  const paginatedEmployers = filteredEmployers.slice(
+    (employerPage - 1) * usersPageSize,
+    employerPage * usersPageSize
+  )
+
+  useEffect(() => {
+    setJobSeekerPage(1)
+  }, [jobSeekerSearch])
+
+  useEffect(() => {
+    setEmployerPage(1)
+  }, [employerSearch])
+
+  useEffect(() => {
+    setJobSeekerPage((page) => Math.min(page, jobSeekerPageCount))
+  }, [jobSeekerPageCount])
+
+  useEffect(() => {
+    setEmployerPage((page) => Math.min(page, employerPageCount))
+  }, [employerPageCount])
 
   const openEditUser = (type, user) => {
     setUserEditContext({ type, user })
@@ -404,11 +435,11 @@ function UsersPage({ currentUser = null, onUsersChanged }) {
                   <td colSpan={9} className="users-empty">No job seeker users found.</td>
                 </tr>
               ) : (
-                filteredJobSeekers.map((user, index) => {
+                paginatedJobSeekers.map((user, index) => {
                   const verified = isEmailVerified(user)
                   return (
                     <tr key={`jobseeker-${user.id}`}>
-                      <td>{index + 1}</td>
+                      <td>{((jobSeekerPage - 1) * usersPageSize) + index + 1}</td>
                       <td>
                         <div className="applicant-cell">
                           <strong>{user.fullName || "-"}</strong>
@@ -445,6 +476,27 @@ function UsersPage({ currentUser = null, onUsersChanged }) {
           </table>
           </div>
         </div>
+        {filteredJobSeekers.length > usersPageSize && (
+          <div className="users-pagination">
+            <span>Page {jobSeekerPage} of {jobSeekerPageCount}</span>
+            <div>
+              <button
+                type="button"
+                onClick={() => setJobSeekerPage((page) => Math.max(1, page - 1))}
+                disabled={jobSeekerPage === 1}
+              >
+                Previous
+              </button>
+              <button
+                type="button"
+                onClick={() => setJobSeekerPage((page) => Math.min(jobSeekerPageCount, page + 1))}
+                disabled={jobSeekerPage === jobSeekerPageCount}
+              >
+                Next
+              </button>
+            </div>
+          </div>
+        )}
       </section>
       )}
 
@@ -489,9 +541,9 @@ function UsersPage({ currentUser = null, onUsersChanged }) {
                   <td colSpan={9} className="users-empty">No Personnel users found.</td>
                 </tr>
               ) : (
-                filteredEmployers.map((user, index) => (
+                paginatedEmployers.map((user, index) => (
                   <tr key={`employer-${user.id}`}>
-                    <td>{index + 1}</td>
+                    <td>{((employerPage - 1) * usersPageSize) + index + 1}</td>
                     <td>{user.idNumber || user.id_number || "-"}</td>
                     <td>
                       <div className="applicant-cell">
@@ -523,6 +575,27 @@ function UsersPage({ currentUser = null, onUsersChanged }) {
             </table>
           </div>
         </div>
+        {filteredEmployers.length > usersPageSize && (
+          <div className="users-pagination">
+            <span>Page {employerPage} of {employerPageCount}</span>
+            <div>
+              <button
+                type="button"
+                onClick={() => setEmployerPage((page) => Math.max(1, page - 1))}
+                disabled={employerPage === 1}
+              >
+                Previous
+              </button>
+              <button
+                type="button"
+                onClick={() => setEmployerPage((page) => Math.min(employerPageCount, page + 1))}
+                disabled={employerPage === employerPageCount}
+              >
+                Next
+              </button>
+            </div>
+          </div>
+        )}
       </section>
       )}
 

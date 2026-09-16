@@ -313,6 +313,42 @@ h2 {
   padding: 6px 12px;
 }
 
+.applicants-pagination {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 12px 16px;
+  border-top: 1px solid #eef1f6;
+  color: #516079;
+  font-size: var(--fs-13);
+  font-weight: 800;
+}
+
+.applicants-pagination div {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.applicants-pagination button {
+  min-height: 34px;
+  border: 1px solid #cbd5e1;
+  border-radius: 8px;
+  background: #ffffff;
+  color: #112b82;
+  cursor: pointer;
+  padding: 0 12px;
+  font-size: var(--fs-13);
+  font-weight: 800;
+}
+
+.applicants-pagination button:disabled {
+  color: #94a3b8;
+  cursor: not-allowed;
+  opacity: 0.65;
+}
+
 .filters {
   margin-top: 24px;
   display: grid;
@@ -596,10 +632,12 @@ optgroup {
   display: inline-flex;
   align-items: center;
   justify-content: center;
-  padding: 4px 10px;
+  min-height: 30px;
+  padding: 6px 12px;
   border-radius: 999px;
   font-size: var(--fs-13);
   font-weight: 700;
+  line-height: 1;
   color: #fff;
   white-space: nowrap;
 }
@@ -614,6 +652,58 @@ optgroup {
 
 .table-classification.not-qualified {
   background: #dc2626;
+}
+
+.application-status {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-width: 94px;
+  min-height: 30px;
+  padding: 6px 12px;
+  border-radius: 999px;
+  font-size: var(--fs-13);
+  font-weight: 800;
+  line-height: 1;
+  white-space: nowrap;
+  border: 1px solid transparent;
+  box-shadow: inset 0 -1px 0 rgba(15, 23, 42, 0.06);
+}
+
+.application-status.status-pending {
+  background: #f8fafc;
+  border-color: #cbd5e1;
+  color: #334155;
+}
+
+.application-status.status-reviewed {
+  background: #e0f2fe;
+  border-color: #7dd3fc;
+  color: #075985;
+}
+
+.application-status.status-shortlisted {
+  background: #fff7ed;
+  border-color: #fdba74;
+  color: #c2410c;
+}
+
+.application-status.status-interview {
+  background: #eef2ff;
+  border-color: #a5b4fc;
+  color: #3730a3;
+}
+
+.application-status.status-rejected {
+  background: #fee2e2;
+  border-color: #fca5a5;
+  color: #b91c1c;
+}
+
+.application-status.status-hired {
+  background: #dcfce7;
+  border-color: #86efac;
+  color: #15803d;
 }
 
 .applicant-cell {
@@ -2322,6 +2412,15 @@ optgroup {
 
   .sort-wrap {
     flex-wrap: wrap;
+  }
+
+  .applicants-pagination {
+    align-items: stretch;
+    flex-direction: column;
+  }
+
+  .applicants-pagination div {
+    justify-content: space-between;
   }
 
   .modal-modern {

@@ -518,6 +518,50 @@ optgroup {
   background: #dc2626;
 }
 
+.application-status {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-height: 28px;
+  /* margin: 0 0 10px; */
+  padding: 5px 11px;
+  border-radius: 999px;
+  font-size: var(--fs-13);
+  font-weight: 800;
+  line-height: 1;
+  white-space: nowrap;
+}
+
+.application-status.status-pending {
+  background: #eef2ff;
+  color: #3730a3;
+}
+
+.application-status.status-reviewed {
+  background: #e0f2fe;
+  color: #0369a1;
+}
+
+.application-status.status-shortlisted {
+  background: #fff7ed;
+  color: #c2410c;
+}
+
+.application-status.status-interview {
+  background: #eef2ff;
+  color: #3730a3;
+}
+
+.application-status.status-rejected {
+  background: #fee2e2;
+  color: #b91c1c;
+}
+
+.application-status.status-hired {
+  background: #dcfce7;
+  color: #15803d;
+}
+
 .applicant-cell {
   display: flex;
   flex-direction: column;

@@ -2,8 +2,11 @@ import React from 'react'
 import { useEffect, useState } from "react"
 import "../styles/JobSeekerDashboard.css"
 
+const applicationPageSize = 10
+
 function JobSeekerDashboard({ jobSeekerProfile, uploads = [], onBrowseJobs, onViewApplication, onDeleteApplication }) {
   const [actionsId, setActionsId] = useState(null)
+  const [applicationsPage, setApplicationsPage] = useState(1)
   const name = jobSeekerProfile?.fullName || "Applicant"
   const email = jobSeekerProfile?.email || "-"
   const status = jobSeekerProfile?.status || "-"
@@ -15,6 +18,11 @@ function JobSeekerDashboard({ jobSeekerProfile, uploads = [], onBrowseJobs, onVi
       return itemEmail === emailKey && appliedJob
     })
     : []
+  const applicationsPageCount = Math.max(1, Math.ceil(myUploads.length / applicationPageSize))
+  const paginatedUploads = myUploads.slice(
+    (applicationsPage - 1) * applicationPageSize,
+    applicationsPage * applicationPageSize
+  )
 
   const normalizeClassification = (value) => String(value || "").trim().toLowerCase()
   const isQualified = (value) => {
@@ -36,12 +44,21 @@ function JobSeekerDashboard({ jobSeekerProfile, uploads = [], onBrowseJobs, onVi
   const notQualifiedCount = myUploads.filter((item) => isNotQualified(item.classification)).length
 
   const getStatusLabel = (item) => {
-    const cls = normalizeClassification(item?.classification)
-    if (cls.includes("moderately")) return "Moderately Qualified"
-    if (cls.includes("highly")) return "Qualified"
-    if (cls === "qualified") return "Qualified"
-    if (cls.includes("not")) return "Not Qualified"
-    return "Under Review"
+    const rawStatus = String(item?.application_status || item?.applicationStatus || item?.evaluation_status || item?.evaluationStatus || "")
+      .trim()
+      .toLowerCase()
+    const status = rawStatus === "for_evaluation"
+      ? "interview"
+      : rawStatus === "rated"
+        ? "hired"
+        : rawStatus
+    if (["pending", "reviewed", "shortlisted", "interview", "rejected", "hired"].includes(status)) {
+      return status
+        .split("-")
+        .map((part) => part.charAt(0).toUpperCase() + part.slice(1))
+        .join(" ")
+    }
+    return "Pending"
   }
 
   useEffect(() => {
@@ -50,6 +67,14 @@ function JobSeekerDashboard({ jobSeekerProfile, uploads = [], onBrowseJobs, onVi
     document.addEventListener("click", onDocClick)
     return () => document.removeEventListener("click", onDocClick)
   }, [actionsId])
+
+  useEffect(() => {
+    setApplicationsPage(1)
+  }, [emailKey])
+
+  useEffect(() => {
+    setApplicationsPage((page) => Math.min(page, applicationsPageCount))
+  }, [applicationsPageCount])
 
   return (
     <section className="jobseeker-dashboard">
@@ -135,7 +160,7 @@ function JobSeekerDashboard({ jobSeekerProfile, uploads = [], onBrowseJobs, onVi
                   <td colSpan={4} className="js-empty-row">No applications yet.</td>
                 </tr>
               ) : (
-                myUploads.map((item) => {
+                paginatedUploads.map((item) => {
                   const jobTitle = item.applied_job_title || item.matched_job_title || "-"
                   const dateLabel = (() => {
                     const d = new Date(item.uploaded_at)
@@ -200,6 +225,27 @@ function JobSeekerDashboard({ jobSeekerProfile, uploads = [], onBrowseJobs, onVi
               )}
             </tbody>
           </table>
+          {myUploads.length > applicationPageSize && (
+            <div className="js-applications-pagination">
+              <span>Page {applicationsPage} of {applicationsPageCount}</span>
+              <div>
+                <button
+                  type="button"
+                  onClick={() => setApplicationsPage((page) => Math.max(1, page - 1))}
+                  disabled={applicationsPage === 1}
+                >
+                  Previous
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setApplicationsPage((page) => Math.min(applicationsPageCount, page + 1))}
+                  disabled={applicationsPage === applicationsPageCount}
+                >
+                  Next
+                </button>
+              </div>
+            </div>
+          )}
         </div>
       </div>
     </section>

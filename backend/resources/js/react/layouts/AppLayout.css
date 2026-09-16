@@ -440,26 +440,43 @@ body {
   font-weight: 700;
   text-transform: uppercase;
   letter-spacing: 0.02em;
+  border: 1px solid transparent;
 }
 
-.status-qualified {
-  background: #49b7a4;
-  color: #ffffff;
+.notification-status.status-pending {
+  background: #f8fafc;
+  border-color: #cbd5e1;
+  color: #334155;
 }
 
-.status-moderately-qualified {
-  background: #f2b856;
-  color: #ffffff;
+.notification-status.status-reviewed {
+  background: #e0f2fe;
+  border-color: #7dd3fc;
+  color: #075985;
 }
 
-.status-not-qualified {
-  background: #ef4444;
-  color: #ffffff;
+.notification-status.status-shortlisted {
+  background: #fff7ed;
+  border-color: #fdba74;
+  color: #c2410c;
 }
 
-.status-under-review {
-  background: #f2b856;
-  color: #ffffff;
+.notification-status.status-interview {
+  background: #eef2ff;
+  border-color: #a5b4fc;
+  color: #3730a3;
+}
+
+.notification-status.status-rejected {
+  background: #fee2e2;
+  border-color: #fca5a5;
+  color: #b91c1c;
+}
+
+.notification-status.status-hired {
+  background: #dcfce7;
+  border-color: #86efac;
+  color: #15803d;
 }
 
 .profile-menu {
@@ -1331,10 +1348,12 @@ optgroup {
   display: inline-flex;
   align-items: center;
   justify-content: center;
-  padding: 4px 10px;
+  min-height: 30px;
+  padding: 6px 12px;
   border-radius: 999px;
   font-size: var(--fs-13);
   font-weight: 700;
+  line-height: 1;
   color: #fff;
   white-space: nowrap;
 }
@@ -1349,6 +1368,58 @@ optgroup {
 
 .table-classification.not-qualified {
   background: #dc2626;
+}
+
+.application-status {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-width: 94px;
+  min-height: 30px;
+  padding: 6px 12px;
+  border-radius: 999px;
+  font-size: var(--fs-13);
+  font-weight: 800;
+  line-height: 1;
+  white-space: nowrap;
+  border: 1px solid transparent;
+  box-shadow: inset 0 -1px 0 rgba(15, 23, 42, 0.06);
+}
+
+.application-status.status-pending {
+  background: #f8fafc;
+  border-color: #cbd5e1;
+  color: #334155;
+}
+
+.application-status.status-reviewed {
+  background: #e0f2fe;
+  border-color: #7dd3fc;
+  color: #075985;
+}
+
+.application-status.status-shortlisted {
+  background: #fff7ed;
+  border-color: #fdba74;
+  color: #c2410c;
+}
+
+.application-status.status-interview {
+  background: #eef2ff;
+  border-color: #a5b4fc;
+  color: #3730a3;
+}
+
+.application-status.status-rejected {
+  background: #fee2e2;
+  border-color: #fca5a5;
+  color: #b91c1c;
+}
+
+.application-status.status-hired {
+  background: #dcfce7;
+  border-color: #86efac;
+  color: #15803d;
 }
 
 .applicant-cell {

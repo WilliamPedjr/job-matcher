@@ -21,7 +21,10 @@ function getEvaluationStatus(item) {
 }
 
 function getEvaluationStatusLabel(item) {
-  return getEvaluationStatus(item) === 'rated' ? 'Rated' : 'For Evaluation'
+  const status = getEvaluationStatus(item)
+  if (status === 'hired' || status === 'rated') return 'Hired'
+  if (status === 'interview' || status === 'for_evaluation') return 'Interview'
+  return 'Shortlisted'
 }
 
 const defaultRatingCriteria = [
@@ -39,6 +42,7 @@ const defaultRatingCriteria = [
 
 const ratingCriteriaStorageKey = 'ratingsCriteria'
 const boardMembersStorageKey = 'ratingsBoardMembers'
+const applicantsPageSize = 10
 
 function loadRatingCriteria() {
   if (typeof window === 'undefined') return defaultRatingCriteria
@@ -178,6 +182,7 @@ function RatingsPage({ uploads = [], isLoading = false, currentUser = null, onRa
   const [boardMembers, setBoardMembers] = useState(loadBoardMembers)
   const [boardMembersDraft, setBoardMembersDraft] = useState(() => loadBoardMembers())
   const [boardMembersPage, setBoardMembersPage] = useState(1)
+  const [applicantsPage, setApplicantsPage] = useState(1)
   const [selectedApplicant, setSelectedApplicant] = useState(null)
   const [ratingStarted, setRatingStarted] = useState(false)
   const [ratingFormType, setRatingFormType] = useState('interview')
@@ -194,9 +199,10 @@ function RatingsPage({ uploads = [], isLoading = false, currentUser = null, onRa
   const [selectedBoardType, setSelectedBoardType] = useState(() => getDefaultBoardType(currentUser))
   const ratingNoticeTimer = useRef(null)
   const boardMemberRef = useRef(null)
+  const loadedSavedRatingKeyRef = useRef('')
 
   const evaluationUploads = useMemo(() => (
-    uploads.filter((item) => ['for_evaluation', 'rated'].includes(getEvaluationStatus(item)))
+    uploads.filter((item) => ['interview', 'for_evaluation', 'hired', 'rated'].includes(getEvaluationStatus(item)))
   ), [uploads])
 
   const positionOptions = useMemo(() => {
@@ -236,6 +242,22 @@ function RatingsPage({ uploads = [], isLoading = false, currentUser = null, onRa
       return haystack.includes(query)
     })
   }, [cancelledIds, evaluationUploads, positionFilter, searchTerm])
+
+  const applicantsPageCount = Math.max(1, Math.ceil(filteredUploads.length / applicantsPageSize))
+  const paginatedUploads = useMemo(() => {
+    const start = (applicantsPage - 1) * applicantsPageSize
+    return filteredUploads.slice(start, start + applicantsPageSize)
+  }, [applicantsPage, filteredUploads])
+  const applicantsStart = filteredUploads.length === 0 ? 0 : ((applicantsPage - 1) * applicantsPageSize) + 1
+  const applicantsEnd = Math.min(filteredUploads.length, applicantsPage * applicantsPageSize)
+
+  useEffect(() => {
+    setApplicantsPage(1)
+  }, [positionFilter, searchTerm])
+
+  useEffect(() => {
+    setApplicantsPage((page) => Math.min(page, applicantsPageCount))
+  }, [applicantsPageCount])
 
   useEffect(() => {
     if (!actionsMenu) return
@@ -437,6 +459,7 @@ function RatingsPage({ uploads = [], isLoading = false, currentUser = null, onRa
         body: JSON.stringify({
           raterName: boardMemberName,
           raterEmail: '',
+          boardMembers,
           boardType: selectedBoardType,
           formType: ratingFormType,
           scores,
@@ -607,16 +630,44 @@ function RatingsPage({ uploads = [], isLoading = false, currentUser = null, onRa
     const ratings = Array.isArray(item?.ratings) ? item.ratings : []
     return ratings.some((rating) => getSavedRatingFormType(rating) === formType)
   }
-  const hasBoardMemberRated = (item, boardMember, formType = ratingFormType) => {
+  const getSavedBoardMemberRating = (item, boardMember, formType = ratingFormType) => {
     const ratings = Array.isArray(item?.ratings) ? item.ratings : []
     const boardMemberName = String(boardMember || '').trim().toLowerCase()
     const targetFormType = formType === 'demonstration' ? 'demonstration' : 'interview'
 
-    return Boolean(boardMemberName) && ratings.some((rating) => {
+    if (!boardMemberName) return null
+
+    return ratings.find((rating) => {
       const raterName = String(rating.raterName || rating.rater_name || '').trim().toLowerCase()
       return raterName === boardMemberName && getSavedRatingFormType(rating) === targetFormType
-    })
+    }) || null
   }
+  const hasBoardMemberRated = (item, boardMember, formType = ratingFormType) => {
+    return Boolean(getSavedBoardMemberRating(item, boardMember, formType))
+  }
+
+  const selectedBoardMemberSavedRating = useMemo(() => (
+    getSavedBoardMemberRating(selectedApplicant, selectedBoardMember, ratingFormType)
+  ), [selectedApplicant, selectedBoardMember, ratingFormType])
+  const isViewingSavedBoardMemberRating = Boolean(selectedBoardMemberSavedRating)
+
+  useEffect(() => {
+    if (!ratingStarted) return
+
+    if (selectedBoardMemberSavedRating) {
+      const savedRatingKey = `${selectedBoardMemberSavedRating.id || selectedBoardMember}:${ratingFormType}`
+      loadedSavedRatingKeyRef.current = savedRatingKey
+      setRatingScores(selectedBoardMemberSavedRating.scores || {})
+      setRatingRemarks(selectedBoardMemberSavedRating.remarks || '')
+      return
+    }
+
+    if (loadedSavedRatingKeyRef.current) {
+      loadedSavedRatingKeyRef.current = ''
+      setRatingScores({})
+      setRatingRemarks('')
+    }
+  }, [ratingFormType, ratingStarted, selectedBoardMember, selectedBoardMemberSavedRating])
 
   const ratingNoticeNode = ratingNotice ? (
     <div className={`toast toast-${ratingNotice.type}`} role="status" aria-live="polite">
@@ -968,7 +1019,7 @@ function RatingsPage({ uploads = [], isLoading = false, currentUser = null, onRa
               </div>
               {selectedBoardMemberAlreadyRated && (
                 <p className="ratings-board-warning">
-                  {selectedBoardMember} has already rated this {isDemonstrationForm ? 'demonstration' : 'interview'} form.
+                  Showing {selectedBoardMember}'s saved {isDemonstrationForm ? 'demonstration' : 'interview'} rating. This rating cannot be edited.
                 </p>
               )}
             </div>
@@ -995,6 +1046,7 @@ function RatingsPage({ uploads = [], isLoading = false, currentUser = null, onRa
                     <input
                       type={key === 'date' ? 'date' : key === 'time' ? 'time' : 'text'}
                       value={demonstrationDetails[key]}
+                      disabled={isViewingSavedBoardMemberRating}
                       onChange={(event) => setDemonstrationDetails((prev) => ({
                         ...prev,
                         [key]: event.target.value
@@ -1038,8 +1090,10 @@ function RatingsPage({ uploads = [], isLoading = false, currentUser = null, onRa
                                       type="radio"
                                       name={`demo-${criterionKey}`}
                                       value={value}
+                                      disabled={isViewingSavedBoardMemberRating}
                                       checked={Number(ratingScores[criterionKey] ?? -1) === (value === 'NA' ? 0 : value)}
                                       onChange={() => {
+                                        if (isViewingSavedBoardMemberRating) return
                                         setRatingScores((prev) => ({
                                           ...prev,
                                           [criterionKey]: value === 'NA' ? 0 : value
@@ -1080,6 +1134,7 @@ function RatingsPage({ uploads = [], isLoading = false, currentUser = null, onRa
                   <input
                     type="text"
                     value={demonstrationDetails.observer}
+                    disabled={isViewingSavedBoardMemberRating}
                     onChange={(event) => setDemonstrationDetails((prev) => ({
                       ...prev,
                       observer: event.target.value
@@ -1120,8 +1175,10 @@ function RatingsPage({ uploads = [], isLoading = false, currentUser = null, onRa
                                 type="radio"
                                 name={`rating-${index}`}
                                 value={band.value}
+                                disabled={isViewingSavedBoardMemberRating}
                                 checked={Number(ratingScores[criterion] || 0) === band.value}
                                 onChange={() => {
+                                  if (isViewingSavedBoardMemberRating) return
                                   setRatingScores((prev) => ({
                                     ...prev,
                                     [criterion]: band.value
@@ -1144,8 +1201,9 @@ function RatingsPage({ uploads = [], isLoading = false, currentUser = null, onRa
             <span>Remarks <small>(Optional)</small></span>
             <textarea
               value={ratingRemarks}
+              readOnly={isViewingSavedBoardMemberRating}
               onChange={(event) => setRatingRemarks(event.target.value)}
-              placeholder="Add any comments here..."
+              placeholder={isViewingSavedBoardMemberRating ? "No remarks saved." : "Add any comments here..."}
               maxLength={1000}
               rows={4}
             />
@@ -1169,7 +1227,7 @@ function RatingsPage({ uploads = [], isLoading = false, currentUser = null, onRa
             <button
               type="button"
               className="btn"
-              disabled={selectedBoardMemberAlreadyRated}
+              disabled={isViewingSavedBoardMemberRating}
               onClick={requestSaveRating}
             >
               Save Rating
@@ -1331,9 +1389,9 @@ function RatingsPage({ uploads = [], isLoading = false, currentUser = null, onRa
                   <td colSpan={7} className="ratings-empty">No applicants found.</td>
                 </tr>
               ) : (
-                filteredUploads.map((item, index) => (
+                paginatedUploads.map((item, index) => (
                   <tr key={item.id || `${item.email}-${index}`}>
-                    <td>{index + 1}</td>
+                    <td>{((applicantsPage - 1) * applicantsPageSize) + index + 1}</td>
                     <td className="ratings-name">{item.name || '(No name)'}</td>
                     <td>{getPosition(item)}</td>
                     <td>{formatInterviewDate(item.uploaded_at || item.updated_at || item.updatedAt)}</td>
@@ -1370,10 +1428,31 @@ function RatingsPage({ uploads = [], isLoading = false, currentUser = null, onRa
             </tbody>
           </table>
         </div>
+        {filteredUploads.length > applicantsPageSize && (
+          <div className="ratings-table-pager ratings-applicants-pager">
+            <span>Page {applicantsPage} of {applicantsPageCount}</span>
+            <div>
+              <button
+                type="button"
+                onClick={() => setApplicantsPage((page) => Math.max(1, page - 1))}
+                disabled={applicantsPage === 1}
+              >
+                Previous
+              </button>
+              <button
+                type="button"
+                onClick={() => setApplicantsPage((page) => Math.min(applicantsPageCount, page + 1))}
+                disabled={applicantsPage === applicantsPageCount}
+              >
+                Next
+              </button>
+            </div>
+          </div>
+        )}
       </div>
 
       <p className="ratings-count">
-        Showing {filteredUploads.length} of {evaluationUploads.length} entries
+        Showing {applicantsStart}-{applicantsEnd} of {filteredUploads.length} entries
       </p>
 
       {actionsMenu && (

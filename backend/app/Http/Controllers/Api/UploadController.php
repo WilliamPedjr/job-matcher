@@ -36,8 +36,8 @@ class UploadController extends Controller
         $uploads = Upload::query()
             ->applications()
             ->with(['supportingFiles', 'ratings', 'jobSeeker', 'job'])
-            ->orderByDesc('uploaded_at')
-            ->orderByDesc('id')
+            ->orderBy('uploaded_at')
+            ->orderBy('id')
             ->get()
             ->map(fn (Upload $upload) => $this->serializeUpload($upload));
 
@@ -210,6 +210,7 @@ class UploadController extends Controller
             ))),
             'job_seeker_hidden' => false,
             'job_seeker_hidden_at' => null,
+            'evaluation_status' => 'pending',
             'size_bytes' => $stored['size_bytes'],
             'uploaded_at' => now(),
         ]);
@@ -280,6 +281,58 @@ class UploadController extends Controller
     {
         $upload = Upload::query()->with(['supportingFiles', 'ratings', 'jobSeeker', 'job'])->findOrFail($id);
         return response()->json($this->serializeUpload($upload));
+    }
+
+    public function updateStatus(Request $request, int $id): JsonResponse
+    {
+        $upload = Upload::query()
+            ->with(['supportingFiles', 'ratings', 'jobSeeker', 'job'])
+            ->findOrFail($id);
+
+        $data = $request->validate([
+            'status' => ['required', 'string', 'in:pending,reviewed,shortlisted,interview,rejected,hired'],
+        ]);
+
+        $nextStatus = $data['status'];
+        $currentStatus = $this->applicationStatus($upload);
+        if ($nextStatus === 'reviewed' && !in_array($currentStatus, ['pending', 'reviewed'], true)) {
+            return response()->json($this->serializeUpload($upload));
+        }
+
+        $upload->evaluation_status = $nextStatus;
+        if ($nextStatus === 'interview' && !$upload->evaluation_started_at) {
+            $upload->evaluation_started_at = now();
+        }
+        $upload->save();
+
+        $event = match ($nextStatus) {
+            'reviewed' => 'application.reviewed',
+            'shortlisted' => 'application.shortlisted',
+            'interview' => 'application.interviewed',
+            'rejected' => 'application.rejected',
+            'hired' => 'application.hired',
+            default => 'application.status_updated',
+        };
+        $description = match ($nextStatus) {
+            'reviewed' => "Reviewed application for {$upload->name}.",
+            'shortlisted' => "Shortlisted {$upload->name} for interview.",
+            'interview' => "Moved {$upload->name} to interview.",
+            'rejected' => "Rejected application for {$upload->name}.",
+            'hired' => "Marked {$upload->name} as hired.",
+            default => "Updated application status for {$upload->name}.",
+        };
+
+        $this->recordPersonnelActivity($request, $event, $description, [
+            'subject_type' => 'application',
+            'subject_id' => $upload->id,
+            'subject_name' => $upload->name,
+            'metadata' => [
+                'jobTitle' => $upload->applied_job_title ?: $upload->matched_job_title,
+                'status' => $nextStatus,
+            ],
+        ]);
+
+        return response()->json($this->serializeUpload($upload->fresh(['supportingFiles', 'ratings', 'jobSeeker', 'job'])));
     }
 
     public function reanalyze(Request $request, int $id): JsonResponse
@@ -417,9 +470,9 @@ class UploadController extends Controller
     public function exportRatingSummary(Request $request, int $id): mixed
     {
         $upload = Upload::query()->with(['ratings', 'jobSeeker'])->findOrFail($id);
-        if (Str::lower((string) $upload->evaluation_status) !== 'rated' && !$this->hasMinimumBoardMemberRatings($upload)) {
+        if (!in_array($this->applicationStatus($upload), ['hired'], true) && !$this->hasMinimumBoardMemberRatings($upload)) {
             return response()->json([
-                'message' => 'Rating summary can only be exported after the application is rated.',
+                'message' => 'Rating summary can only be exported after the application is hired.',
             ], 422);
         }
 
@@ -439,7 +492,7 @@ class UploadController extends Controller
             ['Phone', $phone, true],
             ['Position Applied', $upload->applied_job_title ?: $upload->matched_job_title ?: '-'],
             ['Date of Interview', $upload->uploaded_at?->format('F j, Y') ?: '-'],
-            ['Application Status', 'Rated'],
+            ['Application Status', 'Hired'],
             ['Classification', $upload->classification ?: '-'],
             ['Match Score', $upload->match_score !== null ? round((float) $upload->match_score, 2) . '%' : '-'],
             ['Average Rating', $stats['average'] !== null ? $stats['average'] . '%' : '-'],
@@ -715,11 +768,11 @@ class UploadController extends Controller
     public function markForEvaluation(Request $request, int $id): JsonResponse
     {
         $upload = Upload::findOrFail($id);
-        $upload->evaluation_status = 'for_evaluation';
+        $upload->evaluation_status = 'interview';
         $upload->evaluation_started_at = now();
         $upload->save();
 
-        ActivityLog::record('application.interviewed', "Moved {$upload->name} to interview evaluation.", $request, [
+        ActivityLog::record('application.interviewed', "Moved {$upload->name} to interview.", $request, [
             'subject_type' => 'application',
             'subject_id' => $upload->id,
             'subject_name' => $upload->name,
@@ -784,7 +837,13 @@ class UploadController extends Controller
         ]);
 
         $upload->load('ratings');
-        $upload->evaluation_status = $this->hasMinimumBoardMemberRatings($upload) ? 'rated' : 'for_evaluation';
+        $boardMembers = array_values(array_filter(array_map(
+            fn ($member) => trim((string) $member),
+            $data['boardMembers'] ?? []
+        )));
+        $upload->evaluation_status = $this->hasCompletedAllBoardMemberRatings($upload, $boardMembers)
+            ? 'hired'
+            : 'interview';
         if (!$upload->evaluation_started_at) {
             $upload->evaluation_started_at = now();
         }
@@ -831,7 +890,7 @@ class UploadController extends Controller
         }
 
         $upload->ratings()->delete();
-        $upload->evaluation_status = null;
+        $upload->evaluation_status = 'reviewed';
         $upload->evaluation_started_at = null;
         $upload->save();
 
@@ -957,9 +1016,7 @@ class UploadController extends Controller
             $resumeSummary['pds'] = $pdsFormat;
         }
         $ratingStats = $this->ratingStats($upload);
-        $evaluationStatus = $this->hasMinimumBoardMemberRatings($upload)
-            ? 'rated'
-            : $upload->evaluation_status;
+        $evaluationStatus = $this->applicationStatus($upload);
 
         return [
             'id' => $upload->id,
@@ -1012,6 +1069,8 @@ class UploadController extends Controller
             'job_seeker_hidden_at' => $upload->job_seeker_hidden_at,
             'evaluation_status' => $evaluationStatus,
             'evaluationStatus' => $evaluationStatus,
+            'application_status' => $evaluationStatus,
+            'applicationStatus' => $evaluationStatus,
             'evaluation_started_at' => $upload->evaluation_started_at?->toISOString(),
             'evaluationStartedAt' => $upload->evaluation_started_at?->toISOString(),
             'ratings' => $this->serializeRatings($upload),
@@ -1085,6 +1144,48 @@ class UploadController extends Controller
             ->filter()
             ->unique()
             ->count() >= self::MINIMUM_RATED_BOARD_MEMBER_COUNT;
+    }
+
+    private function applicationStatus(Upload $upload): string
+    {
+        $status = Str::lower(trim((string) ($upload->evaluation_status ?? '')));
+
+        return match ($status) {
+            'for_evaluation' => 'interview',
+            'rated' => 'hired',
+            'reviewed', 'shortlisted', 'interview', 'rejected', 'hired' => $status,
+            default => 'pending',
+        };
+    }
+
+    private function hasCompletedAllBoardMemberRatings(Upload $upload, array $boardMembers): bool
+    {
+        $requiredMembers = collect($boardMembers)
+            ->map(fn ($member) => $this->normalizeBoardMemberName((string) $member))
+            ->filter()
+            ->unique()
+            ->values();
+
+        if ($requiredMembers->isEmpty()) {
+            return false;
+        }
+
+        $ratings = $upload->relationLoaded('ratings')
+            ? $upload->ratings
+            : $upload->ratings()->get();
+
+        return $requiredMembers->every(function (string $member) use ($ratings): bool {
+            $hasInterview = $ratings->contains(function (ApplicationRating $rating) use ($member): bool {
+                return $this->normalizeBoardMemberName($rating->rater_name) === $member
+                    && $this->ratingFormType($rating) === 'interview';
+            });
+            $hasDemonstration = $ratings->contains(function (ApplicationRating $rating) use ($member): bool {
+                return $this->normalizeBoardMemberName($rating->rater_name) === $member
+                    && $this->ratingFormType($rating) === 'demonstration';
+            });
+
+            return $hasInterview && $hasDemonstration;
+        });
     }
 
     private function excelCell(mixed $value): string
