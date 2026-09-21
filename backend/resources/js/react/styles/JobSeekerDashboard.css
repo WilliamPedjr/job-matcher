@@ -2201,6 +2201,11 @@ optgroup {
   color: #ffffff;
 }
 
+.js-status-pill.status-cancelled {
+  background: #64748b;
+  color: #ffffff;
+}
+
 .js-action-menu {
   position: relative;
   display: inline-flex;

@@ -50,6 +50,7 @@ function ArchivePage({ currentUser = null, onArchiveChanged }) {
   const [typeFilter, setTypeFilter] = useState('all')
   const [notice, setNotice] = useState('')
   const [restoringId, setRestoringId] = useState(null)
+  const [confirmRestoreItem, setConfirmRestoreItem] = useState(null)
   const [archivePage, setArchivePage] = useState(1)
   const archivePageSize = 10
 
@@ -166,6 +167,7 @@ function ArchivePage({ currentUser = null, onArchiveChanged }) {
       }
       setArchives((prev) => prev.filter((item) => item.id !== archiveId))
       setNotice(payload?.message || `${isJobSeeker ? 'Job seeker' : 'Job'} restored successfully.`)
+      setConfirmRestoreItem(null)
       onArchiveChanged?.()
     } catch (err) {
       setError(err.message || `Failed to restore ${fallbackLabel}.`)
@@ -283,7 +285,7 @@ function ArchivePage({ currentUser = null, onArchiveChanged }) {
                           type="button"
                           className="archive-restore-btn"
                           disabled={restoringId === item.id}
-                          onClick={() => restoreArchiveItem(item.id, type)}
+                          onClick={() => setConfirmRestoreItem(item)}
                         >
                           {restoringId === item.id ? 'Restoring...' : 'Restore'}
                         </button>
@@ -323,6 +325,49 @@ function ArchivePage({ currentUser = null, onArchiveChanged }) {
           </button>
         </div>
       </div>
+
+      {confirmRestoreItem && (
+        <div
+          className="modal-overlay"
+          onClick={() => {
+            if (restoringId == null) setConfirmRestoreItem(null)
+          }}
+        >
+          <div className="modal-card archive-confirm-card" onClick={(event) => event.stopPropagation()}>
+            {(() => {
+              const data = confirmRestoreItem.data || {}
+              const type = confirmRestoreItem.record_type || confirmRestoreItem.recordType
+              const recordTitle = getArchiveTitle(confirmRestoreItem, data)
+              return (
+                <>
+                  <h3>Restore {formatType(type)}</h3>
+                  <p>
+                    Are you sure you want to restore <strong>{recordTitle}</strong> from the archive?
+                  </p>
+                  <div className="modal-actions">
+                    <button
+                      type="button"
+                      className="btn btn-secondary"
+                      disabled={restoringId != null}
+                      onClick={() => setConfirmRestoreItem(null)}
+                    >
+                      Cancel
+                    </button>
+                    <button
+                      type="button"
+                      className="btn"
+                      disabled={restoringId === confirmRestoreItem.id}
+                      onClick={() => restoreArchiveItem(confirmRestoreItem.id, type)}
+                    >
+                      {restoringId === confirmRestoreItem.id ? 'Restoring...' : 'Restore'}
+                    </button>
+                  </div>
+                </>
+              )
+            })()}
+          </div>
+        </div>
+      )}
     </section>
   )
 }

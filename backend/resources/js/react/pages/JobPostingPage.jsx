@@ -43,7 +43,7 @@ function getApplicationStatus(item) {
     .toLowerCase()
   if (status === "for_evaluation") return "interview"
   if (status === "rated") return "hired"
-  return ["pending", "reviewed", "shortlisted", "interview", "rejected", "hired"].includes(status) ? status : "pending"
+  return ["pending", "reviewed", "shortlisted", "interview", "rejected", "hired", "cancelled"].includes(status) ? status : "pending"
 }
 
 function getApplicationStatusLabel(item) {
@@ -1834,7 +1834,7 @@ function JobPostingPage({ uploads = [], isEmployer = false, isJobSeeker = false,
                   <th className="jobs-type-col">Type</th>
                   <th className="jobs-deadline-col">Post Deadline</th>
                   {isJobSeeker && <th className="jobs-match-col">Match</th>}
-                  {!isJobSeeker && <th className="jobs-applicants-col">Applicants</th>}
+                  {!isJobSeeker && <th className="jobs-applicants-col">Applications</th>}
                   <th className="jobs-status-col">Status</th>
                   {!isJobSeeker && <th className="actions-col jobs-actions-col">Actions</th>}
                 </tr>
@@ -1874,7 +1874,7 @@ function JobPostingPage({ uploads = [], isEmployer = false, isJobSeeker = false,
                     <td className="jobs-deadline-cell" data-label="Post Deadline">{deadline}</td>
                     {isJobSeeker && <td className="jobs-match-cell" data-label="Match">{matchContent}</td>}
                     {!isJobSeeker && (
-                      <td className="jobs-applicants-cell" data-label="Applicants">
+                      <td className="jobs-applicants-cell" data-label="Applications">
                         <button
                           className="job-applicants"
                           type="button"
@@ -1933,7 +1933,7 @@ function JobPostingPage({ uploads = [], isEmployer = false, isJobSeeker = false,
         <div className="modal-overlay" onClick={() => setSelectedJobTitle("")}>
           <div className="modal-card modal-modern job-applicants-modal" onClick={(e) => e.stopPropagation()}>
             <div className="modal-header">
-              <h3>Applicants for {selectedJobTitle}</h3>
+              <h3>Applications for {selectedJobTitle}</h3>
               <button type="button" className="close-x" onClick={() => setSelectedJobTitle("")}>×</button>
             </div>
 
@@ -1970,7 +1970,7 @@ function JobPostingPage({ uploads = [], isEmployer = false, isJobSeeker = false,
                     <thead>
                       <tr>
                         <th>#</th>
-                        <th>Applicant</th>
+                        <th>Application</th>
                         <th>Phone</th>
                         <th>Job Applied</th>
                         <th>Score</th>

@@ -192,6 +192,8 @@ function RatingsPage({ uploads = [], isLoading = false, currentUser = null, onRa
   const [actionsMenu, setActionsMenu] = useState(null)
   const [confirmRatingAction, setConfirmRatingAction] = useState(null)
   const [confirmSaveRating, setConfirmSaveRating] = useState(false)
+  const [confirmSaveCriteria, setConfirmSaveCriteria] = useState(false)
+  const [confirmDeleteBoardMember, setConfirmDeleteBoardMember] = useState(null)
   const [cancelledIds, setCancelledIds] = useState([])
   const [ratingNotice, setRatingNotice] = useState(null)
   const [selectedBoardMember, setSelectedBoardMember] = useState('')
@@ -364,11 +366,38 @@ function RatingsPage({ uploads = [], isLoading = false, currentUser = null, onRa
       // Keep local settings saved even if activity logging is temporarily unavailable.
     }
     setCriteriaEditorOpen(false)
+    setConfirmSaveCriteria(false)
     showRatingNotice('success', 'Rating settings updated successfully.')
+  }
+
+  const requestSaveCriteriaDraft = () => {
+    const cleaned = criteriaDraft.map((item) => String(item || '').trim())
+    if (cleaned.some((item) => !item)) {
+      showRatingNotice('fail', 'Please complete all rating criteria.')
+      return
+    }
+    const uniqueCount = new Set(cleaned.map((item) => item.toLowerCase())).size
+    if (uniqueCount !== cleaned.length) {
+      showRatingNotice('fail', 'Criteria names must be unique.')
+      return
+    }
+    const cleanedBoardMembers = boardMembersDraft.map((item) => String(item || '').trim()).filter(Boolean)
+    const uniqueBoardMemberCount = new Set(cleanedBoardMembers.map((item) => item.toLowerCase())).size
+    if (uniqueBoardMemberCount !== cleanedBoardMembers.length) {
+      showRatingNotice('fail', 'Board member names must be unique.')
+      return
+    }
+    setConfirmSaveCriteria(true)
   }
 
   const resetCriteriaDraft = () => {
     setCriteriaDraft(defaultRatingCriteria)
+  }
+
+  const deleteBoardMemberDraft = (index) => {
+    const next = boardMembersDraft.filter((_, memberIndex) => memberIndex !== index)
+    setBoardMembersDraft(next.length ? next : [''])
+    setConfirmDeleteBoardMember(null)
   }
 
   const ratingBoardMemberOptions = useMemo(() => {
@@ -715,9 +744,76 @@ function RatingsPage({ uploads = [], isLoading = false, currentUser = null, onRa
   ) : null
 
   if (criteriaEditorOpen) {
+    const criteriaConfirmNode = confirmSaveCriteria ? (
+      <div
+        className="modal-overlay delete-confirm-overlay"
+        onClick={(event) => {
+          if (event.target === event.currentTarget) {
+            setConfirmSaveCriteria(false)
+          }
+        }}
+      >
+        <div className="modal-card delete-confirm-card ratings-save-confirm-card">
+          <h3>Save Rating Settings</h3>
+          <p>Save these rating criteria and board member settings?</p>
+          <div className="ratings-save-confirm-summary">
+            <span>Criteria</span>
+            <strong>{criteriaDraft.map((item) => String(item || '').trim()).filter(Boolean).length} items</strong>
+            <span>Board Members</span>
+            <strong>{boardMembersDraft.map((item) => String(item || '').trim()).filter(Boolean).length} names</strong>
+          </div>
+          <div className="modal-actions">
+            <button type="button" className="btn btn-secondary" onClick={() => setConfirmSaveCriteria(false)}>
+              Cancel
+            </button>
+            <button
+              type="button"
+              className="btn"
+              onClick={async () => {
+                await saveCriteriaDraft()
+              }}
+            >
+              Confirm Save
+            </button>
+          </div>
+        </div>
+      </div>
+    ) : null
+    const boardMemberDeleteConfirmNode = confirmDeleteBoardMember ? (
+      <div
+        className="modal-overlay delete-confirm-overlay"
+        onClick={(event) => {
+          if (event.target === event.currentTarget) {
+            setConfirmDeleteBoardMember(null)
+          }
+        }}
+      >
+        <div className="modal-card delete-confirm-card">
+          <h3>Delete Board Member</h3>
+          <p>
+            Remove {confirmDeleteBoardMember.name || 'this board member'} from the rating settings?
+          </p>
+          <div className="modal-actions">
+            <button type="button" className="btn btn-secondary" onClick={() => setConfirmDeleteBoardMember(null)}>
+              Cancel
+            </button>
+            <button
+              type="button"
+              className="btn btn-danger"
+              onClick={() => deleteBoardMemberDraft(confirmDeleteBoardMember.index)}
+            >
+              Delete
+            </button>
+          </div>
+        </div>
+      </div>
+    ) : null
+
     return (
       <section className="ratings-criteria-page" aria-label="Edit rating criteria">
         {ratingNoticeNode}
+        {criteriaConfirmNode}
+        {boardMemberDeleteConfirmNode}
         <div className="ratings-form-header">
           <div>
             <button
@@ -788,8 +884,10 @@ function RatingsPage({ uploads = [], isLoading = false, currentUser = null, onRa
                         type="button"
                         className="ratings-table-remove-btn"
                         onClick={() => {
-                          const next = boardMembersDraft.filter((_, memberIndex) => memberIndex !== index)
-                          setBoardMembersDraft(next.length ? next : [''])
+                          setConfirmDeleteBoardMember({
+                            index,
+                            name: String(member || '').trim()
+                          })
                         }}
                       >
                         Remove
@@ -843,7 +941,7 @@ function RatingsPage({ uploads = [], isLoading = false, currentUser = null, onRa
           <button type="button" className="btn btn-secondary" onClick={() => setCriteriaEditorOpen(false)}>
             Cancel
           </button>
-          <button type="button" className="btn" onClick={saveCriteriaDraft}>
+          <button type="button" className="btn" onClick={requestSaveCriteriaDraft}>
             Save Settings
           </button>
         </div>
@@ -923,7 +1021,7 @@ function RatingsPage({ uploads = [], isLoading = false, currentUser = null, onRa
 
     if (canOpenRatingForm) {
       return (
-        <section className="ratings-form-page" aria-label={isDemonstrationForm ? 'Applicant demonstration form' : 'Interview rating form'}>
+        <section className="ratings-form-page" aria-label={isDemonstrationForm ? 'Application demonstration form' : 'Interview rating form'}>
           {ratingNoticeNode}
           {saveRatingConfirmNode}
           <div className="ratings-form-header">
@@ -940,9 +1038,9 @@ function RatingsPage({ uploads = [], isLoading = false, currentUser = null, onRa
           setRatingStarted(false)
                 }}
               >
-                Back to Applicant Summary
+                Back to Application Summary
               </button>
-              <h2>{isDemonstrationForm ? 'Applicant Demonstration Form' : 'Interview Rating Form'}</h2>
+              <h2>{isDemonstrationForm ? 'Application Demonstration Form' : 'Interview Rating Form'}</h2>
             </div>
             <div className="ratings-total-box">
               <span>Total Score</span>
@@ -951,7 +1049,7 @@ function RatingsPage({ uploads = [], isLoading = false, currentUser = null, onRa
           </div>
 
           <div className="ratings-form-details">
-            <dl className="ratings-applicant-details" aria-label="Applicant interview details">
+            <dl className="ratings-applicant-details" aria-label="Application interview details">
               <div className="ratings-detail-row">
                 <dt>Name:</dt>
                 <dd>{selectedApplicant.name || '(No name)'}</dd>
@@ -1030,7 +1128,7 @@ function RatingsPage({ uploads = [], isLoading = false, currentUser = null, onRa
           {isDemonstrationForm ? (
             <div className="demonstration-form-shell">
               <div className="demonstration-form-title">
-                <h3>Applicant's Demonstration Form</h3>
+                <h3>Application Demonstration Form</h3>
                 <span>Instructor / Lecture / Demo</span>
               </div>
               <div className="demonstration-meta-grid">
@@ -1388,7 +1486,7 @@ function RatingsPage({ uploads = [], isLoading = false, currentUser = null, onRa
             <thead>
               <tr>
                 <th>#</th>
-                <th>Applicant Name</th>
+                <th>Applicants Name</th>
                 <th>Position Applied</th>
                 <th>Date of Interview</th>
                 <th>Status</th>

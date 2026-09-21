@@ -32,6 +32,7 @@ Route::middleware('api-session')->withoutMiddleware(['throttle:api'])->group(fun
 Route::get('/activity-logs', [ActivityLogController::class, 'index']);
 Route::post('/activity-logs', [ActivityLogController::class, 'store']);
 Route::get('/staff/me', [AuthController::class, 'staffMe']);
+Route::put('/staff/me', [AuthController::class, 'updateStaffMe']);
 
 Route::get('/archives', [ArchiveController::class, 'index']);
 Route::post('/archives/{id}/restore-job', [ArchiveController::class, 'restoreJob']);

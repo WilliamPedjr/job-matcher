@@ -4,7 +4,6 @@ import { useEffect, useMemo, useState } from "react"
 
 function DashboardPage({
   dashboardData,
-  activityLogs = [],
   onViewAllJobs,
   onViewAllApplicants,
   onViewApplicant
@@ -12,8 +11,6 @@ function DashboardPage({
   const [selectedJobType, setSelectedJobType] = useState("Non-Teaching")
   const [selectedJobTitle, setSelectedJobTitle] = useState("all")
   const [isTopApplicantsModalOpen, setIsTopApplicantsModalOpen] = useState(false)
-  const [isActivityModalOpen, setIsActivityModalOpen] = useState(false)
-  const [activityPage, setActivityPage] = useState(1)
   const positionTypes = ["Teaching", "Non-Teaching"]
 
   const jobGroups = useMemo(() => {
@@ -67,123 +64,6 @@ function DashboardPage({
     return (jobGroups[type] || []).reduce((total, job) => total + Number(job.total || 0), 0)
   }
 
-  const allActivity = (Array.isArray(activityLogs) ? activityLogs : [])
-    .filter((item) => String(item.actorRole || item.actor_role || "").toLowerCase() !== "jobseeker")
-  const recentActivity = allActivity.slice(0, 3)
-  const activityPageSize = 10
-  const activityPageCount = Math.max(1, Math.ceil(allActivity.length / activityPageSize))
-  const currentActivityPage = Math.min(activityPage, activityPageCount)
-  const pagedActivity = allActivity.slice(
-    (currentActivityPage - 1) * activityPageSize,
-    currentActivityPage * activityPageSize
-  )
-
-  const formatActivityTime = (value) => {
-    const date = new Date(value)
-    if (Number.isNaN(date.getTime())) return "Just now"
-
-    const diffMs = Date.now() - date.getTime()
-    const diffMinutes = Math.floor(diffMs / 60000)
-    if (diffMinutes < 1) return "Just now"
-    if (diffMinutes < 60) return `${diffMinutes} min ago`
-    const diffHours = Math.floor(diffMinutes / 60)
-    if (diffHours < 24) return `${diffHours} hr ago`
-
-    return date.toLocaleString(undefined, {
-      month: "short",
-      day: "numeric",
-      hour: "numeric",
-      minute: "2-digit"
-    })
-  }
-
-  const formatActivityRole = (value) => {
-    const role = String(value || "").trim().toLowerCase()
-    if (!role) return ""
-    if (role === "jobseeker") return "Job Seeker"
-    return role.replace(/\b\w/g, (char) => char.toUpperCase())
-  }
-
-  const getShortActivityText = (item) => {
-    const event = String(item.event || "").trim().toLowerCase()
-    const subject = item.subjectName || item.subject_name || item.metadata?.jobTitle || "record"
-    const actionLabels = {
-      "job.created": "Posted job",
-      "job.updated": "Edited job",
-      "job.duplicated": "Duplicated job",
-      "job.deleted": "Deleted job",
-      "job.status_changed": "Changed job status",
-      "job.skills_updated": "Updated job skills",
-      "job.restored": "Restored job",
-      "auth.logged_in": "Logged in",
-      "auth.logged_out": "Logged out",
-      "personnel.created": "Added personnel",
-      "personnel.updated": "Updated personnel",
-      "personnel.deleted": "Deleted personnel",
-      "job_seeker.created": "New job seeker",
-      "job_seeker.updated": "Updated job seeker",
-      "job_seeker.deleted": "Deleted job seeker",
-      "job_seeker.restored": "Restored job seeker",
-      "profile.education_created": "Added education",
-      "profile.education_updated": "Updated education",
-      "profile.education_deleted": "Deleted education",
-      "profile.experience_created": "Added experience",
-      "profile.experience_updated": "Updated experience",
-      "profile.experience_deleted": "Deleted experience",
-      "profile.resume_uploaded": "Uploaded resume",
-      "profile.resume_deleted": "Deleted resume",
-      "profile.supporting_uploaded": "Uploaded document",
-      "profile.supporting_deleted": "Deleted document",
-      "application.viewed": "Viewed application",
-      "application.created": "Added application",
-      "application.reanalyzed": "Reanalyzed application",
-      "application.summary_downloaded": "Downloaded summary",
-      "application.demonstration_summary_downloaded": "Downloaded demonstration summary",
-      "application.resume_downloaded": "Downloaded resume",
-      "application.supporting_downloaded": "Downloaded supporting document",
-      "application.interviewed": "Interviewed applicant",
-      "application.reviewed": "Reviewed application",
-      "application.shortlisted": "Shortlisted application",
-      "application.rejected": "Rejected application",
-      "application.hired": "Hired applicant",
-      "application.deleted": "Deleted application",
-      "application.cancelled": "Cancelled application",
-      "application.rated": "Rated application",
-      "rating.deleted": "Deleted rating",
-      "rating.settings_updated": "Edited rating form"
-    }
-    const label = actionLabels[event] || item.description || "Activity recorded"
-    return subject && actionLabels[event] ? `${label}: ${subject}` : label
-  }
-
-  const renderActivityList = (items, variant = "preview") => (
-    <ul className={`dashboard-activity-list ${variant === "modal" ? "dashboard-activity-list-modal" : ""}`}>
-      {items.map((item) => {
-        const actorName = item.actorName || item.actor_name || item.actorLabel || "Unknown account"
-        const actorRole = formatActivityRole(item.actorRole || item.actor_role || item.actorRoleLabel)
-        return (
-          <li key={`activity-${variant}-${item.id}`} className="dashboard-activity-item">
-            {/* <span className="dashboard-activity-dot" aria-hidden="true" /> */}
-            <div className="dashboard-activity-main">
-              <div className="dashboard-activity-row">
-                <p title={item.description || ""}>{getShortActivityText(item)}</p>
-                <time dateTime={item.createdAt || item.created_at}>
-                  {formatActivityTime(item.createdAt || item.created_at)}
-                </time>
-              </div>
-              <div className="dashboard-activity-meta">
-                <strong>{actorName}</strong>
-                {[actorRole].filter(Boolean).map((label) => (
-                  <span key={`${variant}-${item.id}-${label}`}>{label}</span>
-                ))}
-              </div>
-            </div>
-          </li>
-        )
-      })}
-    </ul>
-  )
-
   return (
     <section className="dashboard-page">
       <div className="dashboard-header">
@@ -200,87 +80,17 @@ function DashboardPage({
         </article>
         <article className="kpi-card kpi-large">
           <div className="kpi-head">
-            <h4>Total Applicants Applied</h4>
+            <h4>Total Applications</h4>
             <span className="kpi-icon">🧑‍💼</span>
           </div>
           <p>{dashboardData.totalApplicants}</p>
         </article>
       </div>
 
-      <section className="dashboard-panel dashboard-activity-panel">
-        <div className="dashboard-panel-head dashboard-activity-head">
-          <div>
-            <h3>Recent Activity</h3>
-            <p>Latest actions by users.</p>
-          </div>
-          {allActivity.length > 3 && (
-            <button
-              type="button"
-              className="dashboard-link-btn"
-              onClick={() => {
-                setActivityPage(1)
-                setIsActivityModalOpen(true)
-              }}
-            >
-              View All →
-            </button>
-          )}
-        </div>
-        {recentActivity.length === 0 ? (
-          <p className="muted">No recent activity yet.</p>
-        ) : (
-          renderActivityList(recentActivity)
-        )}
-      </section>
-
-      {isActivityModalOpen && (
-        <div className="modal-overlay" onClick={() => setIsActivityModalOpen(false)}>
-          <div className="modal-card modal-modern dashboard-activity-modal" onClick={(e) => e.stopPropagation()}>
-            <div className="modal-header">
-              <div>
-                <h3>All Recent Activity</h3>
-                <p className="dashboard-activity-modal-subtitle">
-                  Showing {allActivity.length === 0 ? 0 : ((currentActivityPage - 1) * activityPageSize) + 1}
-                  -{Math.min(currentActivityPage * activityPageSize, allActivity.length)} of {allActivity.length} activities
-                </p>
-              </div>
-              <button type="button" className="close-x" onClick={() => setIsActivityModalOpen(false)}>×</button>
-            </div>
-
-            {allActivity.length === 0 ? (
-              <p className="muted">No recent activity yet.</p>
-            ) : (
-              <>
-                {renderActivityList(pagedActivity, "modal")}
-                <div className="dashboard-activity-pagination">
-                  <button
-                    type="button"
-                    className="dashboard-page-btn"
-                    disabled={currentActivityPage === 1}
-                    onClick={() => setActivityPage((page) => Math.max(1, page - 1))}
-                  >
-                    Previous
-                  </button>
-                  <span>Page {currentActivityPage} of {activityPageCount}</span>
-                  <button
-                    type="button"
-                    className="dashboard-page-btn"
-                    disabled={currentActivityPage === activityPageCount}
-                    onClick={() => setActivityPage((page) => Math.min(activityPageCount, page + 1))}
-                  >
-                    Next
-                  </button>
-                </div>
-              </>
-            )}
-          </div>
-        </div>
-      )}
-
       <div className="dashboard-analytics">
         <section className="analytics-card">
           <div className="analytics-card-head">
-            <h3>Applicant Classification Distribution</h3>
+            <h3>Application Classification Distribution</h3>
             <div className="analytics-filter-group">
               <select
                 className="analytics-select analytics-position-select"
@@ -466,7 +276,7 @@ function DashboardPage({
 
         <section className="analytics-card">
           <div className="analytics-card-head">
-            <h3>Applicants Per Year</h3>
+            <h3>Applications Per Year</h3>
           </div>
           <div className="year-bars">
             {(() => {
@@ -494,7 +304,7 @@ function DashboardPage({
 
       <section className="dashboard-panel dashboard-top-applicants">
         <div className="dashboard-panel-head">
-          <h3>Top Applicant per Job</h3>
+          <h3>Top Application per Job</h3>
           <button
             type="button"
             className="dashboard-link-btn"
@@ -550,8 +360,8 @@ function DashboardPage({
           <div className="modal-card modal-modern top-applicants-modal" onClick={(e) => e.stopPropagation()}>
             <div className="modal-header">
               <div>
-                <h3>Top Applicant per Job</h3>
-                <p className="top-applicants-modal-subtitle">Highest-ranked applicant for each job position.</p>
+                <h3>Top Application per Job</h3>
+                <p className="top-applicants-modal-subtitle">Highest-ranked application for each job position.</p>
               </div>
               <button type="button" className="close-x" onClick={() => setIsTopApplicantsModalOpen(false)}>×</button>
             </div>
@@ -564,8 +374,8 @@ function DashboardPage({
                   <thead>
                     <tr>
                       <th>Job Position</th>
-                      <th>Top Applicant</th>
-                      <th>Total Applicants</th>
+                      <th>Top Application</th>
+                      <th>Total Applications</th>
                       <th>Classification</th>
                       <th>Score</th>
                       <th>Action</th>
@@ -683,7 +493,7 @@ function DashboardPage({
 
         <section className="dashboard-panel">
           <div className="dashboard-panel-head">
-            <h3>Recently Applied Applicants</h3>
+            <h3>Recent Applications</h3>
             <button type="button" className="dashboard-link-btn" onClick={onViewAllApplicants}>View All →</button>
           </div>
           {dashboardData.recentApplicants.length === 0 ? <p className="muted">No applicants yet.</p> : (

@@ -948,6 +948,19 @@ optgroup {
   background: #b42318;
 }
 
+.toast-info {
+  background: #1d4ed8;
+}
+
+.profile-form-toast {
+  position: absolute;
+  top: 18px;
+  right: 48px;
+  left: auto;
+  z-index: 5;
+  max-width: min(380px, calc(100vw - 32px));
+}
+
 
 
 
@@ -2105,6 +2118,7 @@ optgroup {
   padding: 7px 14px;
   font-size: 13px;
   font-weight: 600;
+  cursor: pointer;
 }
 
 .js-panel-actions {
@@ -2146,6 +2160,7 @@ optgroup {
   color: #2563eb;
   font-size: 13px;
   padding: 0;
+  cursor: pointer;
 }
 
 .js-text-btn.danger {
@@ -2166,6 +2181,54 @@ optgroup {
 
 .js-edit-modal .input {
   padding: 12px 14px !important;
+}
+
+.js-edit-modal.personnel-edit-modal {
+  width: min(760px, 92vw);
+  padding: 28px 32px 24px;
+}
+
+.personnel-edit-modal .modal-header {
+  margin-bottom: 20px;
+}
+
+.personnel-edit-modal .modal-header h3 {
+  font-size: 24px;
+}
+
+.personnel-edit-modal .close-x {
+  font-size: 24px;
+}
+
+.personnel-edit-body {
+  display: grid;
+  gap: 0;
+}
+
+.personnel-edit-body .modal-grid {
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 16px 18px;
+}
+
+.personnel-edit-body .field-group {
+  margin-bottom: 14px;
+}
+
+.personnel-edit-body .field-group label {
+  font-size: 16px;
+}
+
+.personnel-edit-modal .input {
+  font-size: 16px;
+}
+
+.personnel-edit-modal .modal-actions {
+  padding-top: 6px;
+}
+
+.personnel-edit-modal .modal-actions .btn {
+  min-width: 96px;
+  font-size: 16px;
 }
 
 .academic-block-form {
@@ -2192,7 +2255,18 @@ optgroup {
   display: block;
   font-size: 13px;
   font-weight: 500;
-  margin-top: 2px;
+  line-height: 1.3;
+  margin: -2px 0 8px;
+}
+
+.js-edit-modal .input.input-error {
+  border-color: #dc2626;
+  box-shadow: 0 0 0 3px rgba(220, 38, 38, 0.12);
+}
+
+.js-edit-modal select.input.input-error,
+.js-edit-modal input[type="file"].input-error {
+  border-color: #dc2626;
 }
 
 .academic-section-label {
@@ -2705,6 +2779,50 @@ optgroup {
   overflow-wrap: anywhere;
 }
 
+.personnel-profile-layout {
+  width: 100%;
+  max-width: none;
+}
+
+.personnel-profile-page {
+  width: 100%;
+  max-width: none;
+}
+
+.personnel-profile-sections {
+  display: block;
+  column-count: 1;
+}
+
+.personnel-info-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 12px;
+}
+
+.personnel-info-grid div {
+  min-width: 0;
+  padding: 12px;
+  border: 1px solid #d8e0ec;
+  border-radius: 8px;
+  background: #f8fafc;
+}
+
+.personnel-info-grid span {
+  display: block;
+  margin-bottom: 5px;
+  color: #64748b;
+  font-size: var(--fs-14);
+  font-weight: 700;
+}
+
+.personnel-info-grid strong {
+  display: block;
+  color: #0f172a;
+  font-size: var(--fs-16);
+  overflow-wrap: anywhere;
+}
+
 .js-panel-text {
   color: #334155;
   font-size: 15px;
@@ -2837,6 +2955,18 @@ optgroup {
 
   .js-profile-quick-details {
     grid-template-columns: 1fr;
+  }
+
+  .personnel-info-grid {
+    grid-template-columns: 1fr;
+  }
+
+  .personnel-edit-body .modal-grid {
+    grid-template-columns: 1fr;
+  }
+
+  .js-edit-modal.personnel-edit-modal {
+    padding: 24px 20px 20px;
   }
 
   .js-profile-edit {

@@ -707,6 +707,12 @@ optgroup {
   color: #15803d;
 }
 
+.application-status.status-cancelled {
+  background: #f1f5f9;
+  border-color: #cbd5e1;
+  color: #475569;
+}
+
 .applicant-cell {
   display: flex;
   flex-direction: column;

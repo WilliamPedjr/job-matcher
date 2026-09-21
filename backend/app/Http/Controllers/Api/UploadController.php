@@ -87,13 +87,40 @@ class UploadController extends Controller
             ], 422);
         }
 
+        $jobSeeker = null;
+        if (!empty($data['jobSeekerId'])) {
+            $jobSeeker = JobSeeker::find($data['jobSeekerId']);
+        }
+        if (!$jobSeeker) {
+            $jobSeeker = JobSeeker::query()
+                ->whereRaw('LOWER(email) = ?', [Str::lower(trim($data['email']))])
+                ->first();
+        }
+
+        if (!$jobSeeker) {
+            return response()->json([
+                'message' => 'Unable to associate this upload with a job seeker. Please select or register the applicant first.',
+            ], 422);
+        }
+
         $stored = $this->storeFile($file, 'uploads/resumes');
-        $supportingText = $this->extractSupportingTextFromRequest($request);
+        $supportingText = trim(implode("\n", array_filter([
+            $this->extractExistingSupportingTextForJobSeeker($jobSeeker->id),
+            $this->extractSupportingTextFromRequest($request),
+        ], fn ($text) => trim((string) $text) !== '')));
+        $analysisPath = Storage::disk('local')->path($stored['path']);
+        $analysisMimeType = $stored['mime_type'];
+        $profileResume = $this->getProfileResumeUpload($jobSeeker->id);
+        if ($profileResume?->file_path && Storage::disk('local')->exists($profileResume->file_path)) {
+            $analysisPath = Storage::disk('local')->path($profileResume->file_path);
+            $analysisMimeType = $profileResume->mime_type;
+        }
+
         try {
             $analysis = $this->resumeAnalysisService->analyzeFile(
-                Storage::disk('local')->path($stored['path']),
-                $stored['mime_type'],
-                (string) ($data['appliedJobTitle'] ?? ''),
+                $analysisPath,
+                $analysisMimeType,
+                $appliedJobTitle,
                 $supportingText,
                 $appliedJob?->id
             );
@@ -105,7 +132,7 @@ class UploadController extends Controller
                 'project_score' => 0,
                 'education_match_score' => 0,
                 'experience_match_score' => 0,
-                'matched_job_title' => $data['appliedJobTitle'] ?? null,
+                'matched_job_title' => $appliedJobTitle !== '' ? $appliedJobTitle : null,
                 'matched_skills' => [],
                 'missing_skills' => [],
                 'education_text' => '',
@@ -128,29 +155,19 @@ class UploadController extends Controller
                 'message' => 'Your resume does not match this job enough to apply.',
             ], 422);
         }
-        $finalClassification = $effectiveMatchScore >= 80
-            ? 'Highly Qualified'
-            : ($effectiveMatchScore >= $minimumMatchScore ? 'Moderately Qualified' : 'Not Qualified');
-
-        $jobSeeker = null;
-        if (!empty($data['jobSeekerId'])) {
-            $jobSeeker = JobSeeker::find($data['jobSeekerId']);
-        }
-        if (!$jobSeeker) {
-            $jobSeeker = JobSeeker::query()
-                ->whereRaw('LOWER(email) = ?', [Str::lower(trim($data['email']))])
-                ->first();
-        }
-
-        if (!$jobSeeker) {
-            return response()->json([
-                'message' => 'Unable to associate this upload with a job seeker. Please select or register the applicant first.',
-            ], 422);
-        }
+        $finalClassification = $this->classificationForMatchScore($effectiveMatchScore, $minimumMatchScore);
 
         if ($appliedJob?->id || $appliedJobTitle !== '') {
             $alreadyApplied = Upload::query()
                 ->where('job_seeker_id', $jobSeeker->id)
+                ->where(function ($query) {
+                    $query->where('job_seeker_hidden', false)
+                        ->orWhereNull('job_seeker_hidden');
+                })
+                ->where(function ($query) {
+                    $query->whereNull('evaluation_status')
+                        ->orWhereRaw('LOWER(evaluation_status) <> ?', ['cancelled']);
+                })
                 ->where(function ($query) use ($appliedJob, $appliedJobTitle) {
                     if ($appliedJob?->id) {
                         $query->where('job_id', $appliedJob->id);
@@ -339,16 +356,31 @@ class UploadController extends Controller
     {
         $upload = Upload::query()->with('supportingFiles')->findOrFail($id);
         $data = $request->validate([
-            'file' => ['required', 'file', 'max:6144'],
+            'file' => ['nullable', 'file', 'max:6144'],
         ]);
 
-        /** @var UploadedFile $file */
-        $file = $data['file'];
-        if ($upload->file_path && Storage::disk('local')->exists($upload->file_path)) {
-            Storage::disk('local')->delete($upload->file_path);
+        $stored = [
+            'path' => $upload->file_path,
+            'mime_type' => $upload->mime_type,
+            'original_name' => $upload->original_name,
+            'saved_name' => $upload->saved_name,
+        ];
+
+        if (!empty($data['file'])) {
+            /** @var UploadedFile $file */
+            $file = $data['file'];
+            if ($upload->file_path && Storage::disk('local')->exists($upload->file_path)) {
+                Storage::disk('local')->delete($upload->file_path);
+            }
+            $stored = $this->storeFile($file, 'uploads/resumes');
         }
 
-        $stored = $this->storeFile($file, 'uploads/resumes');
+        if (!$stored['path'] || !Storage::disk('local')->exists($stored['path'])) {
+            return response()->json([
+                'message' => 'Resume file not found for re-analysis.',
+            ], 404);
+        }
+
         try {
             $analysis = $this->resumeAnalysisService->analyzeFile(
                 Storage::disk('local')->path($stored['path']),
@@ -376,13 +408,16 @@ class UploadController extends Controller
             ];
         }
 
+        $reanalyzedScore = (float) ($analysis['overall_score'] ?? 0);
+        $minimumMatchScore = (float) ($analysis['application_minimum_score'] ?? self::APPLICATION_MINIMUM_MATCH_SCORE);
+
         $upload->fill([
             'original_name' => $stored['original_name'],
             'saved_name' => $stored['saved_name'],
             'file_path' => $stored['path'],
             'mime_type' => $stored['mime_type'],
-            'classification' => $analysis['classification'],
-            'match_score' => $analysis['overall_score'],
+            'classification' => $this->classificationForMatchScore($reanalyzedScore, $minimumMatchScore),
+            'match_score' => $reanalyzedScore,
             'project_score' => $analysis['project_score'] ?? $analysis['skills_match_score'] ?? 0,
             'matched_job_title' => $analysis['matched_job_title'],
             'matched_skills' => $analysis['matched_skills'],
@@ -533,6 +568,10 @@ class UploadController extends Controller
             .rating-label-col { width: 185px; }
             .rating-member-col { width: 90px; }
             .rating-average-col { width: 72px; }
+            .signature-wrap { margin-top: 28px; width: 100%; table-layout: fixed; }
+            .signature-wrap td { border: none; padding: 5px; font-size: 10px; text-align: left; }
+            .signature-line { border-bottom: 1px solid #172033 !important; height: 24px; }
+            .signature-caption { color: #172033; font-weight: 700; text-align: center !important; }
         </style>';
         $html .= '</head><body>';
         $html .= '<table class="print-wide">';
@@ -606,7 +645,9 @@ class UploadController extends Controller
         }
         $html .= '<td class="muted">-</td>';
         $html .= '</tr>';
-        $html .= '</table></body></html>';
+        $html .= '</table>';
+        $html .= $this->excelSignatureBlock();
+        $html .= '</body></html>';
 
         ActivityLog::record('application.summary_downloaded', "Downloaded rating summary for {$upload->name}.", $request, [
             'subject_type' => 'application',
@@ -681,6 +722,10 @@ class UploadController extends Controller
             .rating-label-col { width: 215px; }
             .rating-member-col { width: 90px; }
             .rating-average-col { width: 72px; }
+            .signature-wrap { margin-top: 28px; width: 100%; table-layout: fixed; }
+            .signature-wrap td { border: none; padding: 5px; font-size: 10px; text-align: left; }
+            .signature-line { border-bottom: 1px solid #172033 !important; height: 24px; }
+            .signature-caption { color: #172033; font-weight: 700; text-align: center !important; }
         </style>';
         $html .= '</head><body>';
         $html .= '<table class="print-wide">';
@@ -746,7 +791,9 @@ class UploadController extends Controller
             $html .= '<td class="text">' . $this->excelCell($this->userRatingRemarks($rating)) . '</td>';
         }
         $html .= '<td class="muted">-</td></tr>';
-        $html .= '</table></body></html>';
+        $html .= '</table>';
+        $html .= $this->excelSignatureBlock();
+        $html .= '</body></html>';
 
         ActivityLog::record('application.demonstration_summary_downloaded', "Downloaded demonstration summary for {$upload->name}.", $request, [
             'subject_type' => 'application',
@@ -971,6 +1018,7 @@ class UploadController extends Controller
 
         $upload->job_seeker_hidden = true;
         $upload->job_seeker_hidden_at = now();
+        $upload->evaluation_status = 'cancelled';
         $upload->save();
 
         return response()->json($this->serializeUpload($upload));
@@ -1003,6 +1051,26 @@ class UploadController extends Controller
         }
 
         ActivityLog::record($event, $description, $request, $attributes);
+    }
+
+    private function classificationForMatchScore(float $score, float $minimumScore): string
+    {
+        return $score >= 80
+            ? 'Highly Qualified'
+            : ($score >= $minimumScore ? 'Moderately Qualified' : 'Not Qualified');
+    }
+
+    private function getProfileResumeUpload(int $jobSeekerId): ?Upload
+    {
+        return Upload::query()
+            ->where('job_seeker_id', $jobSeekerId)
+            ->where(function ($query) {
+                $query->whereNull('applied_job_title')
+                    ->orWhere('applied_job_title', '');
+            })
+            ->orderByDesc('uploaded_at')
+            ->orderByDesc('id')
+            ->first();
     }
 
     private function serializeUpload(Upload $upload): array
@@ -1148,12 +1216,16 @@ class UploadController extends Controller
 
     private function applicationStatus(Upload $upload): string
     {
+        if ((bool) $upload->job_seeker_hidden) {
+            return 'cancelled';
+        }
+
         $status = Str::lower(trim((string) ($upload->evaluation_status ?? '')));
 
         return match ($status) {
             'for_evaluation' => 'interview',
             'rated' => 'hired',
-            'reviewed', 'shortlisted', 'interview', 'rejected', 'hired' => $status,
+            'reviewed', 'shortlisted', 'interview', 'rejected', 'hired', 'cancelled' => $status,
             default => 'pending',
         };
     }
@@ -1191,6 +1263,15 @@ class UploadController extends Controller
     private function excelCell(mixed $value): string
     {
         return htmlspecialchars((string) $value, ENT_QUOTES | ENT_SUBSTITUTE, 'UTF-8');
+    }
+
+    private function excelSignatureBlock(): string
+    {
+        return '<br><table class="signature-wrap">'
+            . '<colgroup><col style="width:55%"><col style="width:45%"></colgroup>'
+            . '<tr><td>&nbsp;</td><td class="signature-line">&nbsp;</td></tr>'
+            . '<tr><td>&nbsp;</td><td class="signature-caption">Signature over Printed Name</td></tr>'
+            . '</table>';
     }
 
     private function excelTextFormula(mixed $value): string
@@ -1390,6 +1471,39 @@ class UploadController extends Controller
         $files = $upload->relationLoaded('supportingFiles')
             ? $upload->supportingFiles
             : $upload->supportingFiles()->get();
+
+        $texts = [];
+        foreach ($files as $file) {
+            if (trim((string) $file->extracted_text) !== '') {
+                $texts[] = $file->extracted_text;
+                continue;
+            }
+
+            if (!$file->file_path || !Storage::disk('local')->exists($file->file_path)) {
+                continue;
+            }
+
+            try {
+                $text = $this->textExtractionService->extract(Storage::disk('local')->path($file->file_path), $file->mime_type);
+            } catch (\RuntimeException $exception) {
+                $text = '';
+            }
+
+            if (trim($text) !== '') {
+                $file->fill(['extracted_text' => $text])->save();
+                $texts[] = $text;
+            }
+        }
+
+        return trim(implode("\n", $texts));
+    }
+
+    private function extractExistingSupportingTextForJobSeeker(int $jobSeekerId): string
+    {
+        $files = SupportingFile::query()
+            ->where('job_seeker_id', $jobSeekerId)
+            ->orderByDesc('id')
+            ->get();
 
         $texts = [];
         foreach ($files as $file) {

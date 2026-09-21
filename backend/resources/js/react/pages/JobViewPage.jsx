@@ -33,6 +33,10 @@ function formatExperienceYears(value) {
   return `${years} ${years === 1 ? "year" : "years"}`
 }
 
+function isAlreadyAppliedMessage(message) {
+  return String(message || "").toLowerCase().includes("already applied")
+}
+
 function JobViewPage({ job, onBack, onApply, onRequireResume, jobSeekerProfile, jobSeekerResume, jobSeekerSupporting, jobSeekerId, applications = [] }) {
   const [isApplyModalOpen, setIsApplyModalOpen] = useState(false)
   const [applicantName, setApplicantName] = useState("")
@@ -215,7 +219,7 @@ function JobViewPage({ job, onBack, onApply, onRequireResume, jobSeekerProfile, 
     const controller = new AbortController()
     const fetchResume = async () => {
       try {
-        const response = await fetch(`http://localhost:5000/job-seekers/${jobSeekerId}/resume/download`, {
+        const response = await fetch(`/api/job-seekers/${jobSeekerId}/resume/download`, {
           signal: controller.signal
         })
         if (!response.ok) {
@@ -255,7 +259,7 @@ function JobViewPage({ job, onBack, onApply, onRequireResume, jobSeekerProfile, 
         if (!supportId) continue
         try {
           const response = await fetch(
-            `http://localhost:5000/job-seekers/${jobSeekerId}/supporting/${supportId}/download`,
+            `/api/job-seekers/${jobSeekerId}/supporting/${supportId}/download`,
             { signal: controller.signal }
           )
           if (!response.ok) continue
@@ -310,7 +314,7 @@ function JobViewPage({ job, onBack, onApply, onRequireResume, jobSeekerProfile, 
     const fetchMatch = async () => {
       try {
         const response = await fetch(
-          `http://localhost:5000/job-seekers/${jobSeekerId}/resume/match?jobTitle=${encodeURIComponent(job.title)}&jobId=${encodeURIComponent(job.id || "")}`,
+          `/api/job-seekers/${jobSeekerId}/resume/match?jobTitle=${encodeURIComponent(job.title)}&jobId=${encodeURIComponent(job.id || "")}`,
           { signal: controller.signal }
         )
         if (!response.ok) {
@@ -373,6 +377,10 @@ function JobViewPage({ job, onBack, onApply, onRequireResume, jobSeekerProfile, 
   const currentJobId = job?.id != null ? String(job.id) : ""
   const currentJobTitle = String(job?.title || "").trim().toLowerCase()
   const hasAlreadyApplied = applications.some((item) => {
+    if (Number(item?.job_seeker_hidden || item?.jobSeekerHidden || 0) === 1) {
+      return false
+    }
+
     const applicationJobId = item?.job_id ?? item?.jobId
     if (currentJobId && applicationJobId != null && String(applicationJobId) === currentJobId) {
       return true
@@ -382,6 +390,7 @@ function JobViewPage({ job, onBack, onApply, onRequireResume, jobSeekerProfile, 
       .trim()
       .toLowerCase() === currentJobTitle
   })
+  const modalApplyDisabled = isApplyDisabled || hasAlreadyApplied
   const applyBlockedByMatch = resumeMatchReady && !resumeMatchQualified
   const applyGateDisabled = Boolean(hasAlreadyApplied || resumeMatchLoading || applyBlockedByMatch || resumeMatchError)
   const skillItems = parseSkills(job?.requiredSkills || job?.required_skills || job?.required_skills_text || "")
@@ -858,7 +867,7 @@ function JobViewPage({ job, onBack, onApply, onRequireResume, jobSeekerProfile, 
               <button
                 className="btn"
                 type="button"
-                disabled={isApplyDisabled}
+                disabled={modalApplyDisabled}
                 onClick={async () => {
                   const setStepNotice = (message) => {
                     setApplyNotice(message)
@@ -939,6 +948,12 @@ function JobViewPage({ job, onBack, onApply, onRequireResume, jobSeekerProfile, 
                     setIsApplyModalOpen(false)
                     resetApplyForm()
                   } else {
+                    if (isAlreadyAppliedMessage(result?.message)) {
+                      setIsApplyModalOpen(false)
+                      resetApplyForm()
+                      setApplyGateNotice("You already applied to this job.")
+                      return
+                    }
                     if (Array.isArray(result?.invalidSupporting) && result.invalidSupporting.length) {
                       setInvalidSupportingDetails(result.invalidSupporting)
                     } else {

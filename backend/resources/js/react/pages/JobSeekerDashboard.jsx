@@ -54,7 +54,7 @@ function JobSeekerDashboard({ jobSeekerProfile, uploads = [], onBrowseJobs, onVi
       : rawStatus === "rated"
         ? "hired"
         : rawStatus
-    if (["pending", "reviewed", "shortlisted", "interview", "rejected", "hired"].includes(status)) {
+    if (["pending", "reviewed", "shortlisted", "interview", "rejected", "hired", "cancelled"].includes(status)) {
       return status
         .split("-")
         .map((part) => part.charAt(0).toUpperCase() + part.slice(1))

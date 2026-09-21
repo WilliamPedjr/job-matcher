@@ -354,6 +354,11 @@ body {
   border-bottom: none;
 }
 
+.notifications-table tr.notification-row-unread td {
+  background: #eef5ff;
+  font-weight: 700;
+}
+
 .notifications-empty {
   text-align: center;
   color: #9aa4b2;
@@ -366,33 +371,23 @@ body {
   font-size: var(--fs-14);
 }
 
-.notifications-admin-list {
-  margin-top: 12px;
-  display: grid;
-  gap: 10px;
-}
-
-.notifications-admin-item {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  gap: 12px;
-  padding: 12px;
-  background: #ffffff;
-  border: 1px solid #e3e6ee;
-  border-radius: 12px;
-}
-
-.notifications-admin-title {
-  font-size: var(--fs-15);
-  font-weight: 600;
-  color: #1f2937;
-}
-
-.notifications-admin-sub {
-  margin-top: 4px;
+.notification-delete-btn {
+  border: 1px solid #f3c5c5;
+  border-radius: 8px;
+  background: #fff5f5;
+  color: #b42318;
+  cursor: pointer;
   font-size: var(--fs-13);
-  color: #7a8494;
+  font-weight: 700;
+  padding: 6px 10px;
+  white-space: nowrap;
+}
+
+.notification-delete-btn:hover,
+.notification-delete-btn:focus-visible {
+  background: #fee2e2;
+  border-color: #fca5a5;
+  outline: none;
 }
 
 .notifications-footer {
@@ -477,6 +472,12 @@ body {
   background: #dcfce7;
   border-color: #86efac;
   color: #15803d;
+}
+
+.notification-status.status-cancelled {
+  background: #f1f5f9;
+  border-color: #cbd5e1;
+  color: #475569;
 }
 
 .profile-menu {
@@ -1421,6 +1422,12 @@ optgroup {
   background: #dcfce7;
   border-color: #86efac;
   color: #15803d;
+}
+
+.application-status.status-cancelled {
+  background: #f1f5f9;
+  border-color: #cbd5e1;
+  color: #475569;
 }
 
 .applicant-cell {

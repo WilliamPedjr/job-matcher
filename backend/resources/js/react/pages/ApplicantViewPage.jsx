@@ -179,7 +179,10 @@ function ApplicantViewPage({
   const matchedSkills = parseSkills(viewItem?.matched_skills)
   const missingSkills = parseMissingSkills(viewItem?.missing_skills)
   const overall = viewItem?.match_score != null ? Number(viewItem.match_score) : 0
-  const skillsMatch = Math.min(100, matchedSkills.length * 12)
+  const totalRequiredSkills = matchedSkills.length + missingSkills.length
+  const skillsMatch = totalRequiredSkills > 0
+    ? Math.round((matchedSkills.length / totalRequiredSkills) * 100)
+    : 0
   const educationMatch = detectedEducation.length ? 60 : 10
   const experienceMatch = detectedExperience.length ? 55 : 0
 
@@ -219,7 +222,7 @@ function ApplicantViewPage({
         </div>
         <div className="candidate-actions">
           <button className="btn btn-secondary" onClick={onBack}>
-            {backLabel || (readOnly ? "Back" : "Back to Applicants")}
+            {backLabel || (readOnly ? "Back" : "Back to Applications")}
           </button>
           {!readOnly && onReanalyze && (
             <button className="btn btn-secondary" onClick={onReanalyze}>Re-Analyze</button>

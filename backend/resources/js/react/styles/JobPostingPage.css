@@ -653,6 +653,12 @@ optgroup {
   color: #15803d;
 }
 
+.application-status.status-cancelled {
+  background: #f1f5f9;
+  border-color: #cbd5e1;
+  color: #475569;
+}
+
 .applicant-cell {
   display: flex;
   flex-direction: column;
@@ -1307,7 +1313,7 @@ optgroup {
 }
 
 .jobs-card-view {
-  grid-template-columns: repeat(auto-fit, minmax(280px, 1fr));
+  grid-template-columns: repeat(3, minmax(0, 1fr));
   padding: 16px;
 }
 

@@ -37,6 +37,11 @@ function LoginPage({
     }
   }, [loginEmail, loginPassword, loginError])
 
+  useEffect(() => {
+    setShowPassword(false)
+    setShowErrors(false)
+  }, [loginMode])
+
   return (
     <main className={`login-shell ${isJobSeekerMode ? "jobseeker-login-shell" : "staff-login-shell"}`}>
       <header className="topbar login-topbar-shared login-topbar">
@@ -166,6 +171,14 @@ function LoginPage({
               Are you an HR Administrator or Staff?{" "}
               <button type="button" onClick={() => setLoginMode("staff")}>
                 Admin Sign In
+              </button>
+            </p>
+          )}
+          {!isJobSeekerMode && (
+            <p className="login-admin-switch">
+              Are you a Job Seeker?{" "}
+              <button type="button" onClick={() => setLoginMode("jobseeker")}>
+                Job Seeker Sign In
               </button>
             </p>
           )}

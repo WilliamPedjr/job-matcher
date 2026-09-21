@@ -49,6 +49,23 @@ const jobSeekerPages = [
   ['Help', 'Review setup steps and page guidance whenever you need a reminder.']
 ]
 
+const personnelGuideItems = [
+  ['Review the Dashboard', 'Start with Dashboard to scan recent activity, application totals, job counts, and recruitment progress.'],
+  ['Manage job posts', 'Use Jobs to create openings, update job details, view applicants for a position, and archive closed records.'],
+  ['Evaluate applicants', 'Use Applications and Ratings / Evaluation to review qualification results, move applicants through statuses, and record panel ratings.'],
+  ['Maintain records', 'Use Users for personnel and job seeker accounts, Archive for restored records, and Profile for your own account details.']
+]
+
+const personnelPages = [
+  ['Dashboard', 'Overview of recruitment activity, jobs, applicants, and recent system actions.'],
+  ['Jobs', 'Create, edit, view, and archive job postings and view applicants by job.'],
+  ['Applications', 'Review applicant details, qualification scores, documents, and application statuses.'],
+  ['Ratings / Evaluation', 'Manage interview or rating workflows for shortlisted applicants.'],
+  ['Users', 'Manage job seeker and personnel accounts.'],
+  ['Archive', 'Restore archived jobs, job seekers, and other recoverable records.'],
+  ['Profile', 'Edit your personnel account information and password.']
+]
+
 function HelpPage({
   isJobSeeker = false,
   jobSeekerId = null,
@@ -65,7 +82,49 @@ function HelpPage({
           <div>
             <span className="help-kicker">Help Center</span>
             <h2>Recruitment workspace guide</h2>
+            <p>Use this brief guide to move through the main personnel workflows.</p>
           </div>
+        </div>
+
+        <div className="help-grid">
+          <section className="help-panel">
+            <div className="help-panel-head">
+              <h3>Brief Guide</h3>
+            </div>
+            <div className="help-steps">
+              {personnelGuideItems.map(([title, body], index) => (
+                <button
+                  key={title}
+                  type="button"
+                  className="help-step is-pending"
+                  onClick={() => {
+                    const pageMap = ['dashboard', 'jobs', 'applicants', 'users']
+                    onGoToPage?.(pageMap[index] || 'dashboard')
+                  }}
+                >
+                  <span>{index + 1}</span>
+                  <div>
+                    <strong>{title}</strong>
+                    <p>{body}</p>
+                  </div>
+                </button>
+              ))}
+            </div>
+          </section>
+
+          <section className="help-panel">
+            <div className="help-panel-head">
+              <h3>Page Guide</h3>
+            </div>
+            <div className="help-page-list">
+              {personnelPages.map(([title, body]) => (
+                <div key={title}>
+                  <strong>{title}</strong>
+                  <p>{body}</p>
+                </div>
+              ))}
+            </div>
+          </section>
         </div>
       </section>
     )

@@ -191,6 +191,7 @@ class AuthController extends Controller
 
         $user = User::query()
             ->whereRaw('LOWER(email) = ?', [$identifier])
+            ->orWhereRaw('LOWER(username) = ?', [$identifier])
             ->first();
 
         if ($user && Hash::check($data['password'], (string) $user->password)) {
@@ -232,7 +233,7 @@ class AuthController extends Controller
             ]);
         }
 
-        return response()->json(['message' => 'Invalid email or password.'], 401);
+        return response()->json(['message' => 'Invalid personnel credentials.'], 401);
     }
 
     public function staffMe(Request $request): JsonResponse
@@ -246,6 +247,50 @@ class AuthController extends Controller
         if (!$user) {
             return response()->json(['message' => 'Personnel not found.'], 404);
         }
+
+        return response()->json($this->serializeStaff($user));
+    }
+
+    public function updateStaffMe(Request $request): JsonResponse
+    {
+        $id = (int) ($request->input('id') ?: $request->query('id', 0));
+        if ($id <= 0) {
+            return response()->json(['message' => 'Missing personnel id.'], 422);
+        }
+
+        $user = User::query()->find($id);
+        if (!$user) {
+            return response()->json(['message' => 'Personnel not found.'], 404);
+        }
+
+        $data = $request->validate([
+            'name' => ['required', 'string', 'max:255'],
+            'email' => ['required', 'email', 'max:255', Rule::unique('users', 'email')->ignore($user->id)],
+            'username' => ['nullable', 'string', 'max:255', Rule::unique('users', 'username')->ignore($user->id)],
+            'phone' => ['nullable', 'string', 'max:30'],
+            'password' => ['nullable', 'string', 'min:8', 'max:72'],
+        ]);
+
+        $user->name = trim($data['name']);
+        $user->email = Str::lower(trim($data['email']));
+        $user->username = $this->nullableTrim($data['username'] ?? null);
+        $user->phone = $data['phone'] ?? null;
+        if (!empty($data['password'])) {
+            $user->password = Hash::make($data['password']);
+        }
+        $user->save();
+
+        ActivityLog::record('personnel.profile_updated', "Updated personnel profile for {$user->name}.", $request, [
+            'subject_type' => 'personnel',
+            'subject_id' => $user->id,
+            'subject_name' => $user->name,
+            'metadata' => [
+                'email' => $user->email,
+                'username' => $user->username,
+                'phone' => $user->phone,
+                'role' => $user->role,
+            ],
+        ]);
 
         return response()->json($this->serializeStaff($user));
     }
@@ -404,8 +449,22 @@ class AuthController extends Controller
             'id' => $user->id,
             'name' => $user->name,
             'email' => $user->email,
+            'username' => $user->username,
+            'phone' => $user->phone,
             'role' => Str::lower(trim((string) ($user->role ?? 'staff'))) ?: 'staff',
+            'created_at' => $user->created_at?->toISOString(),
+            'createdAt' => $user->created_at?->toISOString(),
         ];
+    }
+
+    private function nullableTrim(mixed $value): ?string
+    {
+        if ($value === null) {
+            return null;
+        }
+
+        $trimmed = trim((string) $value);
+        return $trimmed === '' ? null : $trimmed;
     }
 
     private function serializeJobSeeker(JobSeeker $jobSeeker): array

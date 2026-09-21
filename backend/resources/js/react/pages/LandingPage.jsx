@@ -254,7 +254,7 @@ function LandingPage({ onPersonnelLoginClick, onJobSeekerLoginClick, onRegisterC
                       </div>
                     )}
 
-                    <button type="button" className="btn btn-primary btn-sm landing-job-action" onClick={onJobSeekerLoginClick}>
+                    <button type="button" className="btn btn-primary btn-sm landing-job-action" onClick={onRegisterClick}>
                       Apply now
                     </button>
                   </div>
@@ -410,7 +410,7 @@ function LandingPage({ onPersonnelLoginClick, onJobSeekerLoginClick, onRegisterC
               <strong>Phone:</strong> +639123456789
             </p>
             <p>
-              <strong>Email:</strong> LNURecruitIQ@gmail.com
+              <strong>Email:</strong> lnuhireQ@gmail.com
             </p>
           </div>
 

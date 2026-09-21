@@ -179,13 +179,6 @@ class JobSeekerController extends Controller
             ->orderByDesc('id')
             ->first();
 
-        if ($existing) {
-            return response()->json([
-                'message' => 'Resume/PDS already uploaded and cannot be replaced.',
-                'resume' => $this->serializeResume($existing),
-            ], 409);
-        }
-
         /** @var UploadedFile $file */
         $file = $data['file'];
         $stored = $this->storeFile($file, 'job-seeker/resumes/' . $jobSeeker->id);
@@ -215,7 +208,11 @@ class JobSeekerController extends Controller
             ];
         }
 
-        $resume = new Upload(['job_seeker_id' => $jobSeeker->id]);
+        if ($existing?->file_path && Storage::disk('local')->exists($existing->file_path)) {
+            Storage::disk('local')->delete($existing->file_path);
+        }
+
+        $resume = $existing ?: new Upload(['job_seeker_id' => $jobSeeker->id]);
         $educationLines = array_values(array_filter(array_map(
             'trim',
             preg_split("/\n+/", (string) ($analysis['education_text'] ?? '')) ?: []
@@ -254,7 +251,7 @@ class JobSeekerController extends Controller
         ]);
         $resume->job_seeker_id = $jobSeeker->id;
         $resume->save();
-        ActivityLog::record('profile.resume_uploaded', "Uploaded resume for {$jobSeeker->full_name}.", $request, [
+        ActivityLog::record($existing ? 'profile.resume_updated' : 'profile.resume_uploaded', ($existing ? "Replaced" : "Uploaded") . " PDS/Resume for {$jobSeeker->full_name}.", $request, [
             'subject_type' => 'job_seeker',
             'subject_id' => $jobSeeker->id,
             'subject_name' => $jobSeeker->full_name,
@@ -265,9 +262,9 @@ class JobSeekerController extends Controller
         ]);
 
         return response()->json([
-            'message' => 'Resume uploaded successfully.',
+            'message' => $existing ? 'PDS/Resume replaced successfully.' : 'PDS/Resume uploaded successfully.',
             'resume' => $this->serializeResume($resume),
-        ], 201);
+        ], $existing ? 200 : 201);
     }
 
     public function downloadResume(int $id): mixed
@@ -282,13 +279,24 @@ class JobSeekerController extends Controller
     {
         $resume = $this->getResumeUpload($id);
         if ($resume) {
-            return response()->json([
-                'message' => 'Resume/PDS cannot be removed once uploaded.',
-                'resume' => $this->serializeResume($resume),
-            ], 403);
+            $serialized = $this->serializeResume($resume);
+            if ($resume->file_path && Storage::disk('local')->exists($resume->file_path)) {
+                Storage::disk('local')->delete($resume->file_path);
+            }
+            $resume->delete();
+
+            $jobSeeker = JobSeeker::find($id);
+            ActivityLog::record('profile.resume_deleted', "Deleted PDS/Resume for {$jobSeeker?->full_name}.", $request, [
+                'subject_type' => 'job_seeker',
+                'subject_id' => $id,
+                'subject_name' => $jobSeeker?->full_name,
+                'metadata' => [
+                    'resume' => $serialized,
+                ],
+            ]);
         }
 
-        return response()->json(['message' => 'Resume deleted successfully.']);
+        return response()->json(['message' => 'PDS/Resume deleted successfully.']);
     }
 
     public function resumeMatch(Request $request, int $id): JsonResponse
