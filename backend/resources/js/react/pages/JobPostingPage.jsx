@@ -1638,7 +1638,6 @@ function JobPostingPage({ uploads = [], isEmployer = false, isJobSeeker = false,
     return (
       <span className={`job-chip ${match.qualifies ? "chip-good" : "chip-bad"}`}>
         <span className="job-chip-label">{match.qualifies ? "match" : "not match"}</span>
-        <span className="job-chip-score">{Number(match.score).toFixed(0)}%</span>
       </span>
     )
   }

@@ -1490,14 +1490,12 @@ optgroup {
 .jobs-match-cell .job-chip {
   border-radius: 8px;
   display: inline-flex;
-  flex-direction: column;
-  gap: 2px;
   font-size: 12px;
   align-items: center;
   justify-content: center;
   line-height: 1.2;
   max-width: 100%;
-  min-width: 94px;
+  min-width: 86px;
   padding: 6px 8px;
   text-align: center;
   white-space: normal;
@@ -1506,11 +1504,6 @@ optgroup {
 .jobs-match-cell .job-chip-label {
   font-size: 11px;
   font-weight: 800;
-}
-
-.job-chip-score {
-  font-size: 14px;
-  font-weight: 900;
 }
 
 .jobs-match-cell,
@@ -2246,11 +2239,10 @@ optgroup {
 .job-card-match .job-chip {
   border-radius: 8px;
   display: inline-flex;
-  flex-direction: column;
   align-items: center;
-  gap: 2px;
+  justify-content: center;
   line-height: 1.2;
-  min-width: 94px;
+  min-width: 86px;
   padding: 6px 8px;
   text-align: center;
 }
