@@ -1476,21 +1476,7 @@ function ProfilePage({
               </div>
             )}
 
-            <section className="js-profile-panel">
-              <div className="js-panel-header">
-                <h3>About</h3>
-                <button type="button" className="js-icon-btn" title="Edit" onClick={openEditAbout}>✎</button>
-              </div>
-              {aboutText ? (
-                <p className="js-panel-text">
-                  {aboutText}
-                </p>
-              ) : (
-                <p className="js-panel-text muted">No about information added.</p>
-              )}
-            </section>
-
-            <section className="js-profile-panel" ref={resumeSectionRef}>
+            <section className="js-profile-panel js-profile-pds-panel" ref={resumeSectionRef}>
               <div className="js-panel-header">
                 <div>
                   <h3>PDS/Resume</h3>
@@ -1545,7 +1531,7 @@ function ProfilePage({
               </div>
             </section>
 
-            <section className="js-profile-panel">
+            <section className="js-profile-panel js-profile-supporting-panel">
               <div className="js-panel-header">
                 <div>
                   <h3>Supporting Documents</h3>
@@ -1614,7 +1600,7 @@ function ProfilePage({
               </div>
             </section>
 
-            <section className="js-profile-panel">
+            <section className="js-profile-panel js-profile-eligibility-panel">
               <div className="js-panel-header">
                 <div>
                   <h3>Board / Civil Eligibility</h3>
@@ -1674,7 +1660,7 @@ function ProfilePage({
               </button>
             </section>
 
-            <section className="js-profile-panel">
+            <section className="js-profile-panel js-profile-education-panel">
               <div className="js-panel-header">
                 <div>
                   <h3>Education</h3>
@@ -1715,7 +1701,7 @@ function ProfilePage({
               <button type="button" className="js-outline-btn" onClick={() => openEditEducation()}>Add Education</button>
             </section>
 
-            <section className="js-profile-panel">
+            <section className="js-profile-panel js-profile-work-panel">
               <div className="js-panel-header">
                 <div>
                   <h3>Job Experience</h3>
@@ -1756,7 +1742,7 @@ function ProfilePage({
               <button type="button" className="js-outline-btn" onClick={() => openEditWorkExperience()}>Add Job Experience</button>
             </section>
 
-            <section className="js-profile-panel">
+            <section className="js-profile-panel js-profile-training-panel">
               <div className="js-panel-header">
                 <div>
                   <h3>Learning &amp; Development (Trainings Attended)</h3>

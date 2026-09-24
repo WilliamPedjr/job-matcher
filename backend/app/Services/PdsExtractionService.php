@@ -26,11 +26,17 @@ class PdsExtractionService
             fn ($entry) => $entry['summary'] ?? '',
             $experienceEntries
         )));
+        $eligibilityEntries = $this->extractEligibilityEntries($lines, $joined);
+        $eligibility = array_values(array_filter(array_map(
+            fn ($entry) => $entry['summary'] ?? '',
+            $eligibilityEntries
+        )));
         $skills = $this->extractSkills($lines, $joined, $education, $experience);
         $matchingFields = [
             'skills' => $skills,
             'education' => $education,
             'experience' => $experience,
+            'eligibility' => $eligibility,
         ];
 
         return [
@@ -43,6 +49,8 @@ class PdsExtractionService
             'education_entries' => $educationEntries,
             'experience' => $experience,
             'experience_entries' => $experienceEntries,
+            'eligibility' => $eligibility,
+            'eligibility_entries' => $eligibilityEntries,
             'matching_fields' => $matchingFields,
             'matching_text' => $this->buildMatchingText($matchingFields),
         ];
@@ -313,6 +321,27 @@ class PdsExtractionService
             fn ($entry) => $entry['summary'] ?? '',
             $this->extractExperienceEntries($lines, $text)
         )));
+    }
+
+    private function extractEligibilityEntries(array $lines, string $text): array
+    {
+        $sectionLines = $this->section($lines, ['civil service eligibility'], ['work experience', 'voluntary work', 'learning and development', 'training programs', 'special skills', 'other information']);
+        $rows = $this->extractRows($this->cleanPdsTableLines($sectionLines), 12);
+
+        if (!$rows && preg_match('/\bcivil service eligibility\b\s*(.*?)(?=\b(?:work experience|voluntary work|learning and development|training programs|special skills|other information)\b|$)/iu', $text, $match)) {
+            $value = $this->removePdsTableHeaders($this->trimAtNextLabel($this->cleanValue($match[1] ?? '')));
+            $rows = preg_split("/\n+|;\s*/", $value) ?: [];
+        }
+
+        $entries = [];
+        foreach ($rows as $row) {
+            $summary = $this->formatEligibilityRow((string) $row);
+            if ($summary !== '') {
+                $entries[] = ['summary' => $summary];
+            }
+        }
+
+        return $this->uniqueEntries($entries, 'summary');
     }
 
     private function extractExperienceEntries(array $lines, string $text): array
@@ -1068,6 +1097,13 @@ class PdsExtractionService
             'salary job pay grade',
             'status of appointment',
             'govt service',
+            'career service',
+            'civil service eligibility',
+            'rating',
+            'date of examination',
+            'place of examination',
+            'license number',
+            'date of validity',
         ];
 
         foreach ($headers as $header) {
@@ -1124,6 +1160,22 @@ class PdsExtractionService
         $row = preg_replace('/\s+/u', ' ', (string) $row);
 
         return trim((string) Str::limit($row, 220, ''));
+    }
+
+    private function formatEligibilityRow(string $row): string
+    {
+        $row = $this->removePdsTableHeaders($this->cleanValue($row));
+        if ($row === '' || mb_strlen($row) < 4 || $this->looksLikeLabelOnly($row) || $this->isPdsTableHeaderRemainder($row)) {
+            return '';
+        }
+        if (preg_match('/^(?:none|n\/a|not applicable|date|signature|continue on separate sheet if necessary)$/i', $row)) {
+            return '';
+        }
+        if (!preg_match('/\b(?:career service|civil service|professional|subprofessional|sub professional|ra\s*1080|board|bar|licensed|licensure|eligibility|csp|cssp|teacher|nurse|engineer|accountant|let|blept)\b/i', $row)) {
+            return '';
+        }
+
+        return trim((string) Str::limit(preg_replace('/\s+/u', ' ', $row), 220, ''));
     }
 
     private function isPdsTableHeaderRemainder(string $value): bool

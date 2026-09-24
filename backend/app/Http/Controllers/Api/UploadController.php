@@ -10,14 +10,18 @@ use App\Models\Job;
 use App\Models\JobSeeker;
 use App\Models\SupportingFile;
 use App\Models\Upload;
+use App\Notifications\ApplicationShortlistedNotification;
 use App\Services\PdsExtractionService;
 use App\Services\ResumeAnalysisService;
 use App\Services\TextExtractionService;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 use Illuminate\Http\UploadedFile;
+use Illuminate\Support\Facades\Log;
+use Illuminate\Support\Facades\Notification as NotificationFacade;
 use Illuminate\Support\Facades\Storage;
 use Illuminate\Support\Str;
+use Throwable;
 
 class UploadController extends Controller
 {
@@ -102,6 +106,8 @@ class UploadController extends Controller
                 'message' => 'Unable to associate this upload with a job seeker. Please select or register the applicant first.',
             ], 422);
         }
+        $jobSeeker->loadMissing(['educations', 'experiences', 'supportingFiles']);
+        $profileOverride = $this->profileOverrideForJobSeeker($jobSeeker);
 
         $stored = $this->storeFile($file, 'uploads/resumes');
         $supportingText = trim(implode("\n", array_filter([
@@ -122,11 +128,12 @@ class UploadController extends Controller
                 $analysisMimeType,
                 $appliedJobTitle,
                 $supportingText,
-                $appliedJob?->id
+                $appliedJob?->id,
+                $profileOverride
             );
         } catch (\RuntimeException $exception) {
             $analysis = [
-                'classification' => 'Not Qualified',
+                'classification' => 'Lowly Qualified',
                 'overall_score' => 0,
                 'skills_match_score' => 0,
                 'project_score' => 0,
@@ -155,7 +162,7 @@ class UploadController extends Controller
                 'message' => 'Your resume does not match this job enough to apply.',
             ], 422);
         }
-        $finalClassification = $this->classificationForMatchScore($effectiveMatchScore, $minimumMatchScore);
+        $finalClassification = $this->classificationForMatchScore($effectiveMatchScore);
 
         if ($appliedJob?->id || $appliedJobTitle !== '') {
             $alreadyApplied = Upload::query()
@@ -212,7 +219,10 @@ class UploadController extends Controller
             'mime_type' => $stored['mime_type'],
             'classification' => $finalClassification,
             'match_score' => $effectiveMatchScore,
+            'skills_match_score' => $analysis['skills_match_score'] ?? null,
             'project_score' => $analysis['project_score'] ?? $analysis['skills_match_score'] ?? 0,
+            'education_match_score' => $analysis['education_match_score'] ?? null,
+            'experience_match_score' => $analysis['experience_match_score'] ?? null,
             'matched_job_title' => $analysis['matched_job_title'],
             'matched_skills' => $analysis['matched_skills'],
             'missing_skills' => $analysis['missing_skills'],
@@ -322,6 +332,10 @@ class UploadController extends Controller
         }
         $upload->save();
 
+        if ($nextStatus === 'shortlisted' && $currentStatus !== 'shortlisted') {
+            $this->sendShortlistedNotification($request, $upload->fresh(['jobSeeker', 'job']));
+        }
+
         $event = match ($nextStatus) {
             'reviewed' => 'application.reviewed',
             'shortlisted' => 'application.shortlisted',
@@ -352,9 +366,44 @@ class UploadController extends Controller
         return response()->json($this->serializeUpload($upload->fresh(['supportingFiles', 'ratings', 'jobSeeker', 'job'])));
     }
 
+    private function sendShortlistedNotification(Request $request, ?Upload $upload): void
+    {
+        if (!$upload) {
+            return;
+        }
+
+        $recipientEmail = Str::lower(trim((string) ($upload->email ?: $upload->jobSeeker?->email)));
+        if ($recipientEmail === '') {
+            return;
+        }
+
+        $actor = Archive::actorFromRequest($request);
+        $personnelName = trim((string) ($actor['actor_name'] ?? ''));
+        $personnelEmail = trim((string) ($actor['actor_email'] ?? ''));
+        $jobTitle = trim((string) ($upload->applied_job_title ?: $upload->matched_job_title ?: $upload->job?->title ?: 'your applied position'));
+        $applicantName = trim((string) ($upload->name ?: $upload->jobSeeker?->full_name ?: 'Applicant'));
+
+        try {
+            NotificationFacade::route('mail', $recipientEmail)->notify(
+                new ApplicationShortlistedNotification(
+                    $applicantName,
+                    $jobTitle,
+                    $personnelName !== '' ? $personnelName : null,
+                    $personnelEmail !== '' ? $personnelEmail : null
+                )
+            );
+        } catch (Throwable $error) {
+            Log::warning('Failed to send shortlisted application email.', [
+                'upload_id' => $upload->id,
+                'recipient' => $recipientEmail,
+                'message' => $error->getMessage(),
+            ]);
+        }
+    }
+
     public function reanalyze(Request $request, int $id): JsonResponse
     {
-        $upload = Upload::query()->with('supportingFiles')->findOrFail($id);
+        $upload = Upload::query()->with(['supportingFiles', 'jobSeeker.educations', 'jobSeeker.experiences', 'jobSeeker.supportingFiles'])->findOrFail($id);
         $data = $request->validate([
             'file' => ['nullable', 'file', 'max:6144'],
         ]);
@@ -387,11 +436,12 @@ class UploadController extends Controller
                 $stored['mime_type'],
                 (string) ($upload->applied_job_title ?? ''),
                 $this->extractExistingSupportingText($upload),
-                $upload->job_id
+                $upload->job_id,
+                $upload->jobSeeker ? $this->profileOverrideForJobSeeker($upload->jobSeeker) : []
             );
         } catch (\RuntimeException $exception) {
             $analysis = [
-                'classification' => 'Not Qualified',
+                'classification' => 'Lowly Qualified',
                 'overall_score' => 0,
                 'skills_match_score' => 0,
                 'project_score' => 0,
@@ -416,9 +466,12 @@ class UploadController extends Controller
             'saved_name' => $stored['saved_name'],
             'file_path' => $stored['path'],
             'mime_type' => $stored['mime_type'],
-            'classification' => $this->classificationForMatchScore($reanalyzedScore, $minimumMatchScore),
+            'classification' => $this->classificationForMatchScore($reanalyzedScore),
             'match_score' => $reanalyzedScore,
+            'skills_match_score' => $analysis['skills_match_score'] ?? null,
             'project_score' => $analysis['project_score'] ?? $analysis['skills_match_score'] ?? 0,
+            'education_match_score' => $analysis['education_match_score'] ?? null,
+            'experience_match_score' => $analysis['experience_match_score'] ?? null,
             'matched_job_title' => $analysis['matched_job_title'],
             'matched_skills' => $analysis['matched_skills'],
             'missing_skills' => $analysis['missing_skills'],
@@ -1053,11 +1106,20 @@ class UploadController extends Controller
         ActivityLog::record($event, $description, $request, $attributes);
     }
 
-    private function classificationForMatchScore(float $score, float $minimumScore): string
+    private function classificationForMatchScore(float $score): string
     {
         return $score >= 80
             ? 'Highly Qualified'
-            : ($score >= $minimumScore ? 'Moderately Qualified' : 'Not Qualified');
+            : ($score >= 60 ? 'Moderately Qualified' : 'Lowly Qualified');
+    }
+
+    private function displayClassification(?string $classification): string
+    {
+        $value = trim((string) $classification);
+
+        return Str::lower($value) === 'not qualified'
+            ? 'Lowly Qualified'
+            : ($value !== '' ? $value : 'Lowly Qualified');
     }
 
     private function getProfileResumeUpload(int $jobSeekerId): ?Upload
@@ -1073,8 +1135,116 @@ class UploadController extends Controller
             ->first();
     }
 
+    private function profileOverrideForJobSeeker(JobSeeker $jobSeeker): array
+    {
+        $jobSeeker->loadMissing(['educations', 'experiences', 'supportingFiles']);
+
+        $educationLines = $jobSeeker->educations
+            ->map(fn ($education) => $this->profileEducationLine($education))
+            ->filter()
+            ->values()
+            ->all();
+
+        $workLines = [];
+        $trainingLines = [];
+        foreach ($jobSeeker->experiences as $experience) {
+            $line = $this->profileExperienceLine($experience);
+            if ($line === '') {
+                continue;
+            }
+
+            if ($this->isTrainingProfileExperience((string) $experience->description)) {
+                $trainingLines[] = $line;
+            } else {
+                $workLines[] = $line;
+            }
+        }
+
+        $eligibilityLines = $jobSeeker->supportingFiles
+            ->filter(fn ($file) => Str::startsWith(Str::lower((string) $file->doc_type), 'eligibility:'))
+            ->map(fn ($file) => $this->profileEligibilityLine($file))
+            ->filter()
+            ->values()
+            ->all();
+
+        $sections = [];
+        if ($educationLines) {
+            $sections[] = "PROFILE EDUCATION (PRIMARY SOURCE)\n".implode("\n", $educationLines);
+        }
+        if ($workLines) {
+            $sections[] = "PROFILE WORK EXPERIENCE (PRIMARY SOURCE)\n".implode("\n", $workLines);
+        }
+        if ($trainingLines) {
+            $sections[] = "PROFILE TRAINING (PRIMARY SOURCE)\n".implode("\n", $trainingLines);
+        }
+        if ($eligibilityLines) {
+            $sections[] = "PROFILE ELIGIBILITY (PRIMARY SOURCE)\n".implode("\n", $eligibilityLines);
+        }
+
+        return [
+            'text' => trim(implode("\n\n", $sections)),
+            'education_lines' => $educationLines,
+            'experience_lines' => $workLines,
+            'training_lines' => $trainingLines,
+            'eligibility_lines' => $eligibilityLines,
+        ];
+    }
+
+    private function profileEducationLine(object $education): string
+    {
+        return trim(implode(' | ', array_filter([
+            (string) ($education->school_name ?? ''),
+            (string) ($education->degree ?? ''),
+            trim(implode(' - ', array_filter([(string) ($education->start_year ?? ''), (string) ($education->end_year ?? '')]))),
+            (string) ($education->description ?? ''),
+        ], fn ($value) => trim((string) $value) !== '')));
+    }
+
+    private function profileExperienceLine(object $experience): string
+    {
+        return trim(implode(' | ', array_filter([
+            (string) ($experience->position ?? ''),
+            (string) ($experience->company_name ?? ''),
+            trim(implode(' - ', array_filter([(string) ($experience->start_date ?? ''), (string) ($experience->end_date ?? '')]))),
+            (string) ($experience->description ?? ''),
+        ], fn ($value) => trim((string) $value) !== '')));
+    }
+
+    private function profileEligibilityLine(object $file): string
+    {
+        $classification = trim(Str::after((string) $file->doc_type, ':'));
+
+        return trim(implode(' | ', array_filter([
+            $classification !== '' ? $classification : 'Eligibility',
+            (string) ($file->original_name ?? ''),
+        ], fn ($value) => trim((string) $value) !== '')));
+    }
+
+    private function isTrainingProfileExperience(string $description): bool
+    {
+        $description = Str::lower($description);
+
+        return Str::contains($description, [
+            'record type: training',
+            'number of hours credit:',
+            'type of ld classification:',
+            'certificate file:',
+        ]);
+    }
+
+    private function looksLikeTrainingRequirement(string $value): bool
+    {
+        if (trim($value) === '') {
+            return false;
+        }
+
+        return preg_match('/\b(?:training|trainings|learning|development|seminar|workshop|course|hours?|hrs?|l&d|intervention)\b/i', $value) === 1;
+    }
+
     private function serializeUpload(Upload $upload): array
     {
+        $upload->loadMissing('jobSeeker.supportingFiles');
+
         $uploadedAt = $upload->uploaded_at instanceof \DateTimeInterface
             ? $upload->uploaded_at->toISOString()
             : ($upload->uploaded_at ? (string) $upload->uploaded_at : null);
@@ -1083,8 +1253,40 @@ class UploadController extends Controller
         if ($pdsFormat !== null) {
             $resumeSummary['pds'] = $pdsFormat;
         }
+        $scoreBreakdown = is_array($resumeSummary['score_breakdown'] ?? null) ? $resumeSummary['score_breakdown'] : [];
+        $matchedTraining = is_array($resumeSummary['matched_training'] ?? null) ? $resumeSummary['matched_training'] : [];
+        $missingTraining = is_array($resumeSummary['missing_training'] ?? null) ? $resumeSummary['missing_training'] : [];
+        $staleSkillTraining = array_values(array_filter($missingTraining, fn ($item) => !$this->looksLikeTrainingRequirement((string) $item)));
+        $missingTraining = array_values(array_filter($missingTraining, fn ($item) => $this->looksLikeTrainingRequirement((string) $item)));
+        $missingSkills = array_values(array_unique(array_filter(array_merge($upload->missing_skills ?? [], $staleSkillTraining))));
+        $matchedSkills = is_array($upload->matched_skills ?? null) ? array_values(array_filter($upload->matched_skills)) : [];
+        $skillRequirementCount = count($matchedSkills) + count($missingSkills);
+        $displaySkillsScore = $skillRequirementCount > 0
+            ? round((count($matchedSkills) / max($skillRequirementCount, 1)) * 100, 2)
+            : ($upload->skills_match_score ?? ($scoreBreakdown['skills'] ?? null));
+        $classification = $upload->match_score !== null
+            ? $this->classificationForMatchScore((float) $upload->match_score)
+            : $this->displayClassification($upload->classification);
         $ratingStats = $this->ratingStats($upload);
         $evaluationStatus = $this->applicationStatus($upload);
+        $eligibilityFiles = $upload->jobSeeker?->supportingFiles
+            ? $upload->jobSeeker->supportingFiles
+                ->filter(fn ($file) => Str::startsWith(Str::lower((string) $file->doc_type), 'eligibility:'))
+                ->values()
+            : collect();
+        $eligibilityLines = $eligibilityFiles
+            ->map(fn ($file) => $this->profileEligibilityLine($file))
+            ->filter()
+            ->values()
+            ->all();
+        $eligibilityLines = array_values(array_unique(array_filter(array_merge(
+            $eligibilityLines,
+            $this->extractedEligibilityLines($upload, $resumeSummary)
+        ))));
+        $serializedEligibilityFiles = $eligibilityFiles
+            ->map(fn (SupportingFile $file) => $this->serializeJobSeekerSupportingFile($file))
+            ->values()
+            ->all();
 
         return [
             'id' => $upload->id,
@@ -1109,25 +1311,40 @@ class UploadController extends Controller
             'saved_name' => $upload->saved_name,
             'mimeType' => $upload->mime_type,
             'mime_type' => $upload->mime_type,
-            'classification' => $upload->classification,
+            'classification' => $classification,
             'match_score' => $upload->match_score,
             'overall_score' => $upload->match_score,
             'overallScore' => $upload->match_score,
             'project_score' => $upload->project_score,
-            'skills_match_score' => $upload->project_score,
-            'education_match_score' => null,
-            'experience_match_score' => null,
+            'training_match_score' => $scoreBreakdown['training'] ?? $upload->project_score,
+            'trainingMatchScore' => $scoreBreakdown['training'] ?? $upload->project_score,
+            'skills_match_score' => $displaySkillsScore,
+            'skillsMatchScore' => $displaySkillsScore,
+            'education_match_score' => $upload->education_match_score ?? ($scoreBreakdown['education'] ?? null),
+            'educationMatchScore' => $upload->education_match_score ?? ($scoreBreakdown['education'] ?? null),
+            'experience_match_score' => $upload->experience_match_score ?? ($scoreBreakdown['experience'] ?? null),
+            'experienceMatchScore' => $upload->experience_match_score ?? ($scoreBreakdown['experience'] ?? null),
+            'eligibility_match_score' => $scoreBreakdown['eligibility'] ?? null,
+            'eligibilityMatchScore' => $scoreBreakdown['eligibility'] ?? null,
             'matched_job_title' => $upload->matched_job_title,
-            'matchedSkills' => $upload->matched_skills ?? [],
-            'matched_skills' => $upload->matched_skills ?? [],
-            'missingSkills' => $upload->missing_skills ?? [],
-            'missing_skills' => $upload->missing_skills ?? [],
+            'matchedSkills' => $matchedSkills,
+            'matched_skills' => $matchedSkills,
+            'matchedTraining' => $matchedTraining,
+            'matched_training' => $matchedTraining,
+            'missingSkills' => $missingSkills,
+            'missing_skills' => $missingSkills,
+            'missingTraining' => $missingTraining,
+            'missing_training' => $missingTraining,
             'education_text' => $upload->education_text,
             'education_json' => array_values(array_filter(array_map(
                 'trim',
                 preg_split("/\n+/", (string) ($upload->education_text ?? '')) ?: []
             ))),
             'experience_text' => $upload->experience_text,
+            'eligibility_lines' => $eligibilityLines,
+            'eligibilityLines' => $eligibilityLines,
+            'eligibility_files' => $serializedEligibilityFiles,
+            'eligibilityFiles' => $serializedEligibilityFiles,
             'extracted_text' => $upload->extracted_text,
             'summary_text' => $upload->summary_text,
             'resume_summary' => $resumeSummary,
@@ -1415,6 +1632,53 @@ class UploadController extends Controller
         ];
     }
 
+    private function extractedEligibilityLines(Upload $upload, array $resumeSummary): array
+    {
+        $summaryEligibility = $resumeSummary['eligibility'] ?? $resumeSummary['eligibility_lines'] ?? [];
+        if (is_array($summaryEligibility)) {
+            $lines = array_values(array_filter(array_map(
+                fn ($line) => trim((string) $line),
+                $summaryEligibility
+            )));
+            if ($lines) {
+                return $lines;
+            }
+        }
+
+        $text = str_replace(["\r", "\t"], ["\n", ' '], (string) ($upload->extracted_text ?? ''));
+        if (trim($text) === '') {
+            return [];
+        }
+
+        $block = $text;
+        if (preg_match('/\bcivil service eligibility\b\s*(.*?)(?=\b(?:work experience|voluntary work|learning and development|training programs|special skills|other information|references)\b|$)/isu', $text, $match)) {
+            $block = (string) ($match[1] ?? '');
+        }
+
+        $lines = array_values(array_filter(array_map(
+            fn ($line) => trim((string) preg_replace('/\s+/u', ' ', (string) $line)),
+            preg_split("/\n+/", $block) ?: []
+        )));
+
+        $results = [];
+        foreach ($lines as $line) {
+            $line = preg_replace('/\b(?:career service|civil service eligibility|rating|date of examination|place of examination|license number|date of validity)\b\s*:?\s*/i', ' ', $line);
+            $line = trim((string) preg_replace('/\s+/u', ' ', (string) $line), " \t\n\r\0\x0B:-|");
+            if ($line === '' || mb_strlen($line) < 4) {
+                continue;
+            }
+            if (!preg_match('/\b(?:career service|civil service|professional|subprofessional|sub professional|ra\s*1080|board|bar|licensed|licensure|eligibility|csp|cssp|teacher|nurse|engineer|accountant|let|blept)\b/i', $line)) {
+                continue;
+            }
+            $results[] = Str::limit($line, 220, '');
+            if (count($results) >= 6) {
+                break;
+            }
+        }
+
+        return array_values(array_unique($results));
+    }
+
     private function serializeSupportingFile(SupportingFile $file, ?int $uploadId = null): array
     {
         $routeUploadId = $uploadId ?? $file->job_seeker_id;
@@ -1433,6 +1697,26 @@ class UploadController extends Controller
             'size_bytes' => $file->size_bytes,
             'uploaded_at' => $file->uploaded_at,
             'download_url' => url("/api/uploads/{$routeUploadId}/supporting/{$file->id}/download"),
+        ];
+    }
+
+    private function serializeJobSeekerSupportingFile(SupportingFile $file): array
+    {
+        return [
+            'id' => $file->id,
+            'job_seeker_id' => $file->job_seeker_id,
+            'doc_type' => $file->doc_type,
+            'type' => $file->doc_type,
+            'original_name' => $file->original_name,
+            'originalName' => $file->original_name,
+            'saved_name' => $file->saved_name,
+            'savedName' => $file->saved_name,
+            'mime_type' => $file->mime_type,
+            'mimeType' => $file->mime_type,
+            'extracted_text' => $file->extracted_text,
+            'size_bytes' => $file->size_bytes,
+            'uploaded_at' => $file->uploaded_at,
+            'download_url' => url("/api/job-seekers/{$file->job_seeker_id}/supporting/{$file->id}/download"),
         ];
     }
 

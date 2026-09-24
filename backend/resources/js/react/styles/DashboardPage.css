@@ -514,7 +514,8 @@ optgroup {
   background: #f59e0b;
 }
 
-.table-classification.not-qualified {
+.table-classification.not-qualified,
+.table-classification.lowly-qualified {
   background: #dc2626;
 }
 
@@ -880,7 +881,8 @@ optgroup {
   background: #f59e0b;
 }
 
-.status-chip.not-qualified {
+.status-chip.not-qualified,
+.status-chip.lowly-qualified {
   background: #dc2626;
 }
 
@@ -1347,7 +1349,7 @@ optgroup {
 
 .top-applicants-grid {
   display: grid;
-  grid-template-columns: repeat(auto-fit, minmax(260px, 1fr));
+  grid-template-columns: repeat(3, minmax(0, 1fr));
   gap: 12px;
   margin-top: 14px;
 }
@@ -1414,6 +1416,19 @@ optgroup {
   font-size: 12px;
   font-weight: 800;
   white-space: nowrap;
+}
+
+.top-applicants-pagination {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 12px;
+  margin-top: 14px;
+  padding-top: 14px;
+  border-top: 1px solid #e5e7eb;
+  color: #475569;
+  font-size: 12px;
+  font-weight: 700;
 }
 
 .top-applicants-modal {
@@ -3177,6 +3192,10 @@ optgroup {
   .dashboard-specific-analytics {
     grid-template-columns: 1fr;
   }
+
+  .top-applicants-grid {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
 }
 
 @media (max-width: 980px) {
@@ -3265,6 +3284,15 @@ optgroup {
   }
 
   .dashboard-activity-pagination {
+    align-items: stretch;
+    flex-direction: column;
+  }
+
+  .top-applicants-grid {
+    grid-template-columns: 1fr;
+  }
+
+  .top-applicants-pagination {
     align-items: stretch;
     flex-direction: column;
   }

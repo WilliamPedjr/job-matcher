@@ -31,12 +31,18 @@ class ResumeAnalysisService
         ?string $mimeType = null,
         string $appliedJobTitle = '',
         string $supportingText = '',
-        ?int $appliedJobId = null
+        ?int $appliedJobId = null,
+        array $profileOverride = []
     ): array {
         $extractedText = $this->textExtractionService->extract($path, $mimeType);
 
         if ($supportingText !== '') {
             $extractedText = trim($extractedText . "\n" . $supportingText);
+        }
+
+        $profileText = trim((string) ($profileOverride['text'] ?? ''));
+        if ($profileText !== '') {
+            $extractedText = trim($profileText . "\n" . $extractedText);
         }
 
         if (mb_strlen(trim($extractedText)) < 30) {
@@ -60,12 +66,19 @@ class ResumeAnalysisService
                     ->first();
         }
 
-        $educationLines = $isPds
+        $profileEducationLines = $this->cleanProfileOverrideLines($profileOverride['education_lines'] ?? []);
+        $profileExperienceLines = $this->cleanProfileOverrideLines($profileOverride['experience_lines'] ?? []);
+        $profileEligibilityLines = $this->cleanProfileOverrideLines($profileOverride['eligibility_lines'] ?? []);
+
+        $educationLines = $profileEducationLines ?: ($isPds
             ? $this->pdsSummaryLines($pdsFormat, 'education')
-            : $this->extractEducationLines($extractedText);
-        $experienceLines = $isPds
+            : $this->extractEducationLines($extractedText));
+        $experienceLines = $profileExperienceLines ?: ($isPds
             ? $this->pdsSummaryLines($pdsFormat, 'experience')
-            : $this->extractExperienceLines($extractedText);
+            : $this->extractExperienceLines($extractedText));
+        $eligibilityLines = $profileEligibilityLines ?: ($isPds
+            ? $this->pdsSummaryLines($pdsFormat, 'eligibility')
+            : $this->extractEligibilityLines($extractedText));
 
         if ($this->isUniversalMatchJob($job)) {
             $matchedSkills = ['General qualifications accepted'];
@@ -157,7 +170,7 @@ class ResumeAnalysisService
             );
 
             return [
-                'classification' => 'Not Qualified',
+                'classification' => 'Lowly Qualified',
                 'overall_score' => $overall,
                 'skills_match_score' => 30.0,
                 'project_score' => 30.0,
@@ -196,7 +209,7 @@ class ResumeAnalysisService
             );
 
             return [
-                'classification' => 'Not Qualified',
+                'classification' => 'Lowly Qualified',
                 'overall_score' => $overall,
                 'skills_match_score' => $overall,
                 'project_score' => $overall,
@@ -217,24 +230,26 @@ class ResumeAnalysisService
             ];
         }
 
-        $requiredSkills = $this->splitSkills($job?->required_skills ?? '');
-        if (!$requiredSkills) {
-            $requiredSkills = $this->buildSkillSuggestions($analysisText, $globalSkills);
-        }
-
-        $matchedSkills = $this->findMatchedSkills($analysisText, $requiredSkills ?: $globalSkills);
+        $requirementText = (string) ($job?->required_skills ?? '');
+        $requiredSkills = $this->skillRequirementsFromRequirement($requirementText);
+        $matchedSkills = $this->findMatchedSkills($analysisText, $requiredSkills);
         $missingSkills = array_values(array_diff($requiredSkills, $matchedSkills));
-
         $skillsScore = $this->calculateSkillsScore($requiredSkills, $matchedSkills);
-        $projectScore = $this->calculateProjectScore($analysisText);
+
+        $trainingRequirement = $requirementText;
+        $trainingEvidence = $this->extractTrainingLines($resumeText);
+        $matchedTraining = $this->matchedTrainingEvidence($resumeText, $trainingRequirement, $trainingEvidence);
+        $missingTraining = $this->missingTrainingRequirements($resumeText, $trainingRequirement);
+
+        $trainingScore = $this->calculateTrainingScore($resumeText, $trainingRequirement);
         $minimumEducation = (string) ($job?->minimum_education ?? '');
         $minimumExperienceYears = (int) ($job?->minimum_experience_years ?? 0);
+        $eligibilityRequirement = (string) ($job?->eligibility ?? '');
         $applicationMinimumScore = $this->applicationThresholdForJob($job);
         $educationScore = $this->calculateEducationScore($educationLines, $minimumEducation);
         $experienceScore = $this->calculateExperienceScore($experienceLines, $minimumExperienceYears);
-        $ruleBasedOverall = round(($skillsScore * 0.55) + ($experienceScore * 0.2) + ($educationScore * 0.15) + ($projectScore * 0.1), 2);
-        $semanticScore = $this->xenovaSemanticScore($analysisText, $this->jobTextForSemanticMatch($job, $requiredSkills, $minimumEducation, $minimumExperienceYears));
-        $overall = $this->blendSemanticScore($ruleBasedOverall, $semanticScore);
+        $eligibilityScore = $this->calculateEligibilityScore($resumeText, $eligibilityRequirement);
+        $overall = $this->calculateQualificationStandardsScore($educationScore, $trainingScore, $experienceScore, $eligibilityScore, $skillsScore, $this->scoringWeightsForJob($job));
         $summarySourceText = $isPds && $analysisText !== '' ? $analysisText : $extractedText;
         $summary = $this->buildResumeSummary(
             $summarySourceText,
@@ -242,22 +257,40 @@ class ResumeAnalysisService
             $missingSkills,
             $educationLines,
             $experienceLines,
-            $projectScore,
+            $trainingScore,
             $overall,
             $pdsFormat
         );
+        $summary['score_breakdown'] = [
+            'education' => $educationScore,
+            'training' => $trainingScore,
+            'experience' => $experienceScore,
+            'eligibility' => $eligibilityScore,
+            'skills' => $skillsScore,
+        ];
+        $summary['eligibility'] = $eligibilityLines;
+        $summary['matched_training'] = $matchedTraining;
+        $summary['missing_training'] = $missingTraining;
 
         return [
-            'classification' => $overall >= 80 ? 'Highly Qualified' : ($overall >= 60 ? 'Moderately Qualified' : 'Not Qualified'),
+            'classification' => $overall >= 80 ? 'Highly Qualified' : ($overall >= 60 ? 'Moderately Qualified' : 'Lowly Qualified'),
             'overall_score' => $overall,
             'skills_match_score' => $skillsScore,
-            'semantic_match_score' => $semanticScore,
-            'semantic_model' => $semanticScore !== null ? 'Xenova/all-MiniLM-L6-v2' : null,
-            'project_score' => $projectScore,
+            'training_match_score' => $trainingScore,
+            'semantic_match_score' => null,
+            'semantic_model' => null,
+            'project_score' => $trainingScore,
             'education_match_score' => $educationScore,
             'experience_match_score' => $experienceScore,
+            'eligibility_match_score' => $eligibilityScore,
             'matched_skills' => $matchedSkills,
             'missing_skills' => $missingSkills,
+            'matched_training' => $matchedTraining,
+            'missing_training' => $missingTraining,
+            'training_text' => implode("\n", $trainingEvidence),
+            'eligibility_lines' => $eligibilityLines,
+            'eligibility_text' => implode("\n", $eligibilityLines),
+            'eligibility_requirement' => $eligibilityRequirement,
             'education_text' => implode("\n", $educationLines),
             'experience_text' => implode("\n", $experienceLines),
             'resume_text' => $resumeText,
@@ -349,7 +382,7 @@ class ResumeAnalysisService
                     'minimumEducation' => $this->jobField($job, 'minimumEducation', 'minimum_education', ''),
                     'minimumExperienceYears' => (int) $this->jobField($job, 'minimumExperienceYears', 'minimum_experience_years', 0),
                     'overallScore' => 30.0,
-                    'classification' => 'Not Qualified',
+                    'classification' => 'Lowly Qualified',
                     'matchedSkills' => ['Application accepted for review'],
                     'missingSkills' => ['Marked not qualified by preset'],
                     'skillsScore' => 30.0,
@@ -375,7 +408,7 @@ class ResumeAnalysisService
                     'minimumEducation' => $this->jobField($job, 'minimumEducation', 'minimum_education', ''),
                     'minimumExperienceYears' => (int) $this->jobField($job, 'minimumExperienceYears', 'minimum_experience_years', 0),
                     'overallScore' => 55.0,
-                    'classification' => 'Not Qualified',
+                    'classification' => 'Lowly Qualified',
                     'matchedSkills' => ['Preset 55 percent match'],
                     'missingSkills' => ['Below moderate qualification threshold'],
                     'skillsScore' => 55.0,
@@ -388,14 +421,17 @@ class ResumeAnalysisService
                 continue;
             }
 
-            if (!$requiredSkills) {
-                $requiredSkills = $this->buildSkillSuggestions($analysisText, $globalSkills);
-            }
-
-            $matchedSkills = $this->findMatchedSkills($analysisText, $requiredSkills ?: $globalSkills);
+            $requirementText = (string) $this->jobField($job, 'requiredSkills', 'required_skills', '');
+            $requiredSkills = $this->skillRequirementsFromRequirement($requirementText);
+            $matchedSkills = $this->findMatchedSkills($analysisText, $requiredSkills);
             $missingSkills = array_values(array_diff($requiredSkills, $matchedSkills));
             $skillsScore = $this->calculateSkillsScore($requiredSkills, $matchedSkills);
-            $projectScore = $this->calculateProjectScore($analysisText);
+
+            $trainingRequirement = $requirementText;
+            $trainingEvidence = $this->extractTrainingLines($resumeText);
+            $matchedTraining = $this->matchedTrainingEvidence($resumeText, $trainingRequirement, $trainingEvidence);
+            $missingTraining = $this->missingTrainingRequirements($resumeText, $trainingRequirement);
+            $trainingScore = $this->calculateTrainingScore($resumeText, $trainingRequirement);
             $educationScore = $this->calculateEducationScore(
                 $educationLines,
                 (string) $this->jobField($job, 'minimumEducation', 'minimum_education', '')
@@ -404,13 +440,10 @@ class ResumeAnalysisService
                 $experienceLines,
                 (int) $this->jobField($job, 'minimumExperienceYears', 'minimum_experience_years', 0)
             );
+            $eligibilityRequirement = (string) $this->jobField($job, 'eligibility', null, '');
+            $eligibilityScore = $this->calculateEligibilityScore($resumeText, $eligibilityRequirement);
             $applicationMinimumScore = $this->applicationThresholdForJob($job);
-            $ruleBasedOverall = round(($skillsScore * 0.55) + ($experienceScore * 0.2) + ($educationScore * 0.15) + ($projectScore * 0.1), 2);
-            $semanticScore = $this->xenovaSemanticScore(
-                $analysisText,
-                $this->jobTextForSemanticMatch($job, $requiredSkills, (string) $this->jobField($job, 'minimumEducation', 'minimum_education', ''), (int) $this->jobField($job, 'minimumExperienceYears', 'minimum_experience_years', 0))
-            );
-            $overall = $this->blendSemanticScore($ruleBasedOverall, $semanticScore);
+            $overall = $this->calculateQualificationStandardsScore($educationScore, $trainingScore, $experienceScore, $eligibilityScore, $skillsScore, $this->scoringWeightsForJob($job));
 
             $results[] = [
                 'id' => $this->jobField($job, 'id'),
@@ -420,19 +453,26 @@ class ResumeAnalysisService
                 'department' => $this->jobField($job, 'department'),
                 'location' => $this->jobField($job, 'location'),
                 'type' => $this->jobField($job, 'type'),
-                'requiredSkills' => implode(', ', $requiredSkills),
+                'requiredSkills' => $trainingRequirement,
+                'trainingRequirement' => $trainingRequirement,
+                'eligibility' => $eligibilityRequirement,
                 'minimumEducation' => $this->jobField($job, 'minimumEducation', 'minimum_education', ''),
                 'minimumExperienceYears' => $this->jobField($job, 'minimumExperienceYears', 'minimum_experience_years', 0),
                 'overallScore' => $overall,
-                'classification' => $overall >= 80 ? 'Highly Qualified' : ($overall >= 60 ? 'Moderately Qualified' : 'Not Qualified'),
+                'classification' => $overall >= 80 ? 'Highly Qualified' : ($overall >= 60 ? 'Moderately Qualified' : 'Lowly Qualified'),
                 'matchedSkills' => $matchedSkills,
                 'missingSkills' => $missingSkills,
+                'matchedTraining' => $matchedTraining,
+                'missingTraining' => $missingTraining,
+                'trainingText' => implode("\n", $trainingEvidence),
                 'skillsScore' => $skillsScore,
-                'semanticScore' => $semanticScore,
-                'semanticModel' => $semanticScore !== null ? 'Xenova/all-MiniLM-L6-v2' : null,
-                'projectScore' => $projectScore,
+                'trainingScore' => $trainingScore,
+                'semanticScore' => null,
+                'semanticModel' => null,
+                'projectScore' => $trainingScore,
                 'educationScore' => $educationScore,
                 'experienceScore' => $experienceScore,
+                'eligibilityScore' => $eligibilityScore,
                 'allowApplication' => $overall >= $applicationMinimumScore,
                 'minimumScore' => $applicationMinimumScore,
             ];
@@ -463,6 +503,18 @@ class ResumeAnalysisService
             fn ($item) => trim((string) $item),
             $items
         )));
+    }
+
+    private function cleanProfileOverrideLines(mixed $lines): array
+    {
+        if (!is_array($lines)) {
+            return [];
+        }
+
+        return array_values(array_unique(array_filter(array_map(
+            fn ($line) => trim((string) $line),
+            $lines
+        ), fn ($line) => $line !== '')));
     }
 
     private function jobField(mixed $job, string $camelKey, ?string $snakeKey = null, mixed $default = null): mixed
@@ -715,6 +767,334 @@ class ResumeAnalysisService
         return round(min($matches / max(count($keywords), 1), 1) * 100, 2);
     }
 
+    private function calculateQualificationStandardsScore(
+        float $educationScore,
+        float $trainingScore,
+        float $experienceScore,
+        float $eligibilityScore,
+        float $skillsScore,
+        array $weights = []
+    ): float {
+        $weights = array_merge([
+            'education' => 20,
+            'training' => 20,
+            'experience' => 20,
+            'eligibility' => 20,
+            'skills' => 20,
+        ], $weights);
+        $totalWeight = array_sum($weights);
+        if ($totalWeight <= 0) {
+            $totalWeight = 100;
+            $weights = ['education' => 20, 'training' => 20, 'experience' => 20, 'eligibility' => 20, 'skills' => 20];
+        }
+
+        return round((
+            ($educationScore * $weights['education']) +
+            ($trainingScore * $weights['training']) +
+            ($experienceScore * $weights['experience']) +
+            ($eligibilityScore * $weights['eligibility']) +
+            ($skillsScore * $weights['skills'])
+        ) / $totalWeight, 2);
+    }
+
+    private function scoringWeightsForJob(mixed $job): array
+    {
+        if (!$job) {
+            return [];
+        }
+
+        return [
+            'skills' => (int) $this->jobField($job, 'skillsWeight', 'skills_weight', 20),
+            'training' => (int) $this->jobField($job, 'trainingWeight', 'training_weight', 20),
+            'education' => (int) $this->jobField($job, 'educationWeight', 'education_weight', 20),
+            'experience' => (int) $this->jobField($job, 'experienceWeight', 'experience_weight', 20),
+            'eligibility' => (int) $this->jobField($job, 'eligibilityWeight', 'eligibility_weight', 20),
+        ];
+    }
+
+    private function calculateTrainingScore(string $text, string $requirement): float
+    {
+        if ($this->isNoRequirementValue($requirement) || !$this->isTrainingRequirement($requirement)) {
+            return 100.0;
+        }
+
+        $requiredHours = $this->trainingHoursFromText($requirement);
+        if ($requiredHours > 0) {
+            $candidateHours = $this->candidateTrainingHours($text);
+
+            return round(min(100.0, ($candidateHours / $requiredHours) * 100), 2);
+        }
+
+        $requirements = $this->splitSkills($requirement);
+        if (!$requirements) {
+            return 100.0;
+        }
+
+        $matches = $this->findMatchedSkills($text, $requirements);
+
+        return $this->calculateSkillsScore($requirements, $matches);
+    }
+
+    private function matchedTrainingEvidence(string $text, string $requirement, array $trainingLines): array
+    {
+        if ($this->isNoRequirementValue($requirement) || !$this->isTrainingRequirement($requirement)) {
+            return ['No training required'];
+        }
+
+        $requiredHours = $this->trainingHoursFromText($requirement);
+        if ($requiredHours > 0) {
+            $candidateHours = $this->candidateTrainingHours($text);
+
+            return $candidateHours > 0
+                ? [trim($candidateHours . ' training hours found')]
+                : [];
+        }
+
+        $requirements = $this->splitSkills($requirement);
+        $matches = $requirements ? $this->findMatchedSkills($text, $requirements) : [];
+
+        return $matches ?: array_slice($trainingLines, 0, 3);
+    }
+
+    private function missingTrainingRequirements(string $text, string $requirement): array
+    {
+        if ($this->isNoRequirementValue($requirement) || !$this->isTrainingRequirement($requirement)) {
+            return [];
+        }
+
+        $requiredHours = $this->trainingHoursFromText($requirement);
+        if ($requiredHours > 0) {
+            $candidateHours = $this->candidateTrainingHours($text);
+
+            return $candidateHours >= $requiredHours
+                ? []
+                : [trim($requiredHours . ' required training hours')];
+        }
+
+        $requirements = $this->splitSkills($requirement);
+        $matches = $requirements ? $this->findMatchedSkills($text, $requirements) : [];
+
+        return array_values(array_diff($requirements, $matches));
+    }
+
+    private function extractTrainingLines(string $text): array
+    {
+        $sectionBlock = $this->extractSectionBlock($text, [
+            'learning and development',
+            'training programs',
+            'training',
+            'trainings',
+            'seminars',
+            'certifications',
+            'certification',
+        ], [
+            'civil service eligibility',
+            'eligibility',
+            'work experience',
+            'professional experience',
+            'employment',
+            'education',
+            'educational background',
+            'skills',
+            'special skills',
+            'references',
+        ]);
+
+        $normalized = str_replace(["\r", "\t"], ["\n", ' '], $sectionBlock !== '' ? $sectionBlock : $text);
+        $lines = array_values(array_filter(array_map(
+            fn ($line) => $this->cleanResumeSnippet((string) $line),
+            preg_split("/\n+/", $normalized) ?: []
+        )));
+
+        $results = [];
+        $seen = [];
+        foreach ($lines as $line) {
+            if (!$this->isUsefulTrainingEntry($line)) {
+                continue;
+            }
+
+            $key = Str::lower($line);
+            if (isset($seen[$key])) {
+                continue;
+            }
+
+            $seen[$key] = true;
+            $results[] = Str::limit($line, 220, '');
+            if (count($results) >= 8) {
+                break;
+            }
+        }
+
+        return $results;
+    }
+
+    private function extractEligibilityLines(string $text): array
+    {
+        $sectionBlock = $this->extractSectionBlock($text, [
+            'civil service eligibility',
+            'eligibility',
+            'license',
+            'licensure',
+        ], [
+            'work experience',
+            'voluntary work',
+            'learning and development',
+            'training programs',
+            'training',
+            'education',
+            'educational background',
+            'skills',
+            'special skills',
+            'references',
+        ]);
+
+        $normalized = str_replace(["\r", "\t"], ["\n", ' '], $sectionBlock !== '' ? $sectionBlock : $text);
+        $lines = array_values(array_filter(array_map(
+            fn ($line) => $this->cleanResumeSnippet((string) $line),
+            preg_split("/\n+/", $normalized) ?: []
+        )));
+
+        $results = [];
+        $seen = [];
+        foreach ($lines as $line) {
+            if (!$this->isUsefulEligibilityEntry($line)) {
+                continue;
+            }
+
+            $key = Str::lower($line);
+            if (isset($seen[$key])) {
+                continue;
+            }
+
+            $seen[$key] = true;
+            $results[] = Str::limit($line, 220, '');
+            if (count($results) >= 6) {
+                break;
+            }
+        }
+
+        return $results;
+    }
+
+    private function isUsefulEligibilityEntry(string $line): bool
+    {
+        $line = trim($line);
+        if ($line === '' || mb_strlen($line) < 4 || preg_match('/[{}\\\\]{2,}|["\']{2,}/', $line)) {
+            return false;
+        }
+
+        return preg_match('/\b(?:career service|civil service|professional|subprofessional|sub professional|ra\s*1080|board|bar|licensed|licensure|eligibility|csp|cssp|teacher|nurse|engineer|accountant|let|blept)\b/i', $line) === 1;
+    }
+
+    private function isUsefulTrainingEntry(string $line): bool
+    {
+        $line = trim($line);
+        if ($line === '' || mb_strlen($line) < 4) {
+            return false;
+        }
+
+        if (preg_match('/[{}\\\\]{2,}|["\']{2,}/', $line)) {
+            return false;
+        }
+
+        $letters = preg_match_all('/[a-z]/i', $line);
+        if ($letters < 4) {
+            return false;
+        }
+
+        if (preg_match('/^(?:learning and development|training programs?|training|trainings|seminars?|certifications?)\s*:?\s*$/i', $line)) {
+            return false;
+        }
+
+        return preg_match('/\b(?:training|seminar|workshop|course|certificate|certification|learning|development|hours?|hrs?|conducted|sponsored|ld|l&d)\b/i', $line) === 1;
+    }
+
+    private function isTrainingRequirement(string $requirement): bool
+    {
+        return preg_match('/\b(?:training|trainings|learning|development|seminar|workshop|course|hours?|hrs?|l&d|intervention)\b/i', $requirement) === 1;
+    }
+
+    private function skillRequirementsFromRequirement(string $requirement): array
+    {
+        if ($this->isNoRequirementValue($requirement) || $this->isTrainingRequirement($requirement)) {
+            return [];
+        }
+
+        return $this->splitSkills($requirement);
+    }
+
+    private function candidateTrainingHours(string $text): int
+    {
+        preg_match_all('/(?:number\s+of\s+hours\s+credit\s*:?\s*)?(\d{1,4})\s*(?:hours?|hrs?\.?)/i', $text, $matches);
+        $hours = array_map('intval', $matches[1] ?? []);
+        preg_match_all('/number\s+of\s+hours\s+credit\s*:?\s*(\d{1,4})/i', $text, $creditMatches);
+        $hours = array_merge($hours, array_map('intval', $creditMatches[1] ?? []));
+
+        return array_sum($hours);
+    }
+
+    private function trainingHoursFromText(string $text): int
+    {
+        if (preg_match('/(\d{1,4})\s*(?:hours?|hrs?\.?)/i', $text, $match)) {
+            return (int) $match[1];
+        }
+
+        return 0;
+    }
+
+    private function calculateEligibilityScore(string $text, string $requirement): float
+    {
+        if ($this->isOpenEligibilityRequirement($requirement)) {
+            return 100.0;
+        }
+
+        return $this->textSatisfiesEligibility($text, $requirement) ? 100.0 : 0.0;
+    }
+
+    private function textSatisfiesEligibility(string $text, string $requirement): bool
+    {
+        $haystack = $this->normalizeRequirementText($text);
+        $needle = $this->normalizeRequirementText($requirement);
+
+        if ($needle !== '' && str_contains($haystack, $needle)) {
+            return true;
+        }
+
+        $lowerRequirement = Str::lower($requirement);
+        $lowerText = Str::lower($text);
+
+        if (Str::contains($lowerRequirement, ['sub professional', 'subprofessional', 'first level'])) {
+            return Str::contains($lowerText, ['career service sub professional', 'career service subprofessional', 'first level', 'cssp']);
+        }
+
+        if (Str::contains($lowerRequirement, ['professional', 'second level'])) {
+            return Str::contains($lowerText, ['career service professional', 'second level', 'csp'])
+                && !Str::contains($lowerText, ['sub professional', 'subprofessional', 'first level']);
+        }
+
+        if (Str::contains($lowerRequirement, 'ra 1080')) {
+            if (!Str::contains($lowerText, ['ra 1080', 'board', 'bar', 'licensed', 'licensure', 'eligibility'])) {
+                return false;
+            }
+
+            if (preg_match('/\(([^)]+)\)/', $requirement, $match)) {
+                return Str::contains($lowerText, Str::lower($match[1]));
+            }
+
+            return true;
+        }
+
+        $parts = array_values(array_filter(preg_split('/[,;\/()]+/', $requirement) ?: [], fn ($part) => trim((string) $part) !== ''));
+        foreach ($parts as $part) {
+            $part = trim((string) $part);
+            if (mb_strlen($part) >= 4 && Str::contains($lowerText, Str::lower($part))) {
+                return true;
+            }
+        }
+
+        return false;
+    }
+
     private function buildResumeSummary(
         string $sourceText,
         array $matchedSkills,
@@ -963,6 +1343,29 @@ class ResumeAnalysisService
             'able to read and write',
             'read and write',
         ], true);
+    }
+
+    private function isOpenEligibilityRequirement(string $value): bool
+    {
+        if ($this->isNoRequirementValue($value)) {
+            return true;
+        }
+
+        $normalized = $this->normalizeRequirementText($value);
+
+        return $normalized === ''
+            || str_contains($normalized, 'open to all')
+            || str_contains($normalized, 'open to all qualified applicants');
+    }
+
+    private function normalizeRequirementText(string $value): string
+    {
+        return Str::of($value)
+            ->lower()
+            ->replace('&', ' and ')
+            ->replaceMatches('/[^a-z0-9]+/', ' ')
+            ->squish()
+            ->toString();
     }
 
     private function skillTaxonomy(): array

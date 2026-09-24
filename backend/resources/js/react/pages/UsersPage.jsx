@@ -6,6 +6,50 @@ import eyeRegularIcon from "../assets/eye-regular-full.svg"
 import { getArchiveActorHeaders } from "../utils/archiveActor"
 
 const usersPageSize = 10
+const positionOptions = [
+  { value: "personnel", label: "Personnel" },
+  { value: "board", label: "Board" }
+]
+const pageAccessOptions = [
+  { value: "dashboard", label: "Dashboard" },
+  { value: "jobs", label: "Jobs" },
+  { value: "applicants", label: "Applications" },
+  { value: "ratings", label: "Ratings / Evaluation" },
+  { value: "profile", label: "Profile" },
+  { value: "users", label: "Users" },
+  { value: "archive", label: "Archive" },
+  { value: "help", label: "Help" }
+]
+const allPageAccess = pageAccessOptions.map((option) => option.value)
+const boardDefaultAccess = ["ratings", "profile", "help"]
+
+function normalizePositionType(value) {
+  const normalized = String(value || "").trim().toLowerCase()
+  return normalized === "board" ? "board" : "personnel"
+}
+
+function getPositionTypeLabel(value) {
+  return positionOptions.find((option) => option.value === normalizePositionType(value))?.label || "Personnel"
+}
+
+function defaultPageAccessForPosition(value) {
+  return normalizePositionType(value) === "board" ? boardDefaultAccess : allPageAccess
+}
+
+function normalizePageAccess(value, positionType = "personnel") {
+  if (!Array.isArray(value) || value.length === 0) {
+    return defaultPageAccessForPosition(positionType)
+  }
+  const allowed = new Set(allPageAccess)
+  const cleaned = Array.from(new Set(value.map((page) => String(page || "").trim().toLowerCase()).filter((page) => allowed.has(page))))
+  return cleaned.length ? cleaned : defaultPageAccessForPosition(positionType)
+}
+
+function selectedPageAccess(value, positionType = "personnel") {
+  if (!Array.isArray(value)) return defaultPageAccessForPosition(positionType)
+  const allowed = new Set(allPageAccess)
+  return Array.from(new Set(value.map((page) => String(page || "").trim().toLowerCase()).filter((page) => allowed.has(page))))
+}
 
 function UsersPage({ currentUser = null, onUsersChanged }) {
   const [jobSeekerUsers, setJobSeekerUsers] = useState([])
@@ -24,7 +68,9 @@ function UsersPage({ currentUser = null, onUsersChanged }) {
     phone: "",
     companyName: "",
     contactName: "",
-    idNumber: ""
+    idNumber: "",
+    positionType: "personnel",
+    pageAccess: allPageAccess
   })
   const [confirmDeleteUser, setConfirmDeleteUser] = useState(null)
   const [jobSeekerActionsMenu, setJobSeekerActionsMenu] = useState(null)
@@ -39,7 +85,9 @@ function UsersPage({ currentUser = null, onUsersChanged }) {
     email: "",
     idNumber: "",
     phone: "",
-    password: ""
+    password: "",
+    positionType: "personnel",
+    pageAccess: allPageAccess
   })
   const [toast, setToast] = useState(null)
   const toastTimerRef = useRef(null)
@@ -169,7 +217,9 @@ function UsersPage({ currentUser = null, onUsersChanged }) {
       user.username,
       user.idNumber,
       user.id_number,
-      user.phone
+      user.phone,
+      getPositionTypeLabel(user.positionType || user.position_type || user.contactName),
+      ...(Array.isArray(user.pageAccess || user.page_access) ? (user.pageAccess || user.page_access) : [])
     ]
       .filter(Boolean)
       .join(" ")
@@ -214,9 +264,12 @@ function UsersPage({ currentUser = null, onUsersChanged }) {
         phone: user.phone || "",
         companyName: "",
         contactName: "",
-        idNumber: ""
+        idNumber: "",
+        positionType: "personnel",
+        pageAccess: allPageAccess
       })
     } else {
+      const positionType = normalizePositionType(user.positionType || user.position_type || user.contactName || user.fullName || user.full_name)
       const digitsOnly = String(user.phone || "").replace(/\D/g, "")
       const withoutCountryPrefix = digitsOnly.startsWith("63") ? digitsOnly.slice(2) : digitsOnly
       const withoutLocalPrefix = withoutCountryPrefix.startsWith("0")
@@ -229,7 +282,9 @@ function UsersPage({ currentUser = null, onUsersChanged }) {
         phone: withoutLocalPrefix.slice(0, 10),
         companyName: user.companyName || "",
         contactName: user.contactName || "",
-        idNumber: user.idNumber || user.id_number || ""
+        idNumber: user.idNumber || user.id_number || "",
+        positionType,
+        pageAccess: normalizePageAccess(user.pageAccess || user.page_access, positionType)
       })
     }
     setToast(null)
@@ -262,6 +317,10 @@ function UsersPage({ currentUser = null, onUsersChanged }) {
           throw new Error(payload?.message || "Failed to update job seeker.")
         }
       } else {
+        if (!userForm.pageAccess.length) {
+          showToast("Select at least one page this personnel account can access.", "fail")
+          return
+        }
         const response = await fetch(`http://localhost:5000/employers/${userEditContext.user.id}`, {
           method: "PUT",
           headers: {
@@ -270,7 +329,9 @@ function UsersPage({ currentUser = null, onUsersChanged }) {
           },
           body: JSON.stringify({
             companyName: userForm.companyName,
-            contactName: userForm.contactName,
+            contactName: getPositionTypeLabel(userForm.positionType),
+            positionType: userForm.positionType,
+            pageAccess: userForm.pageAccess,
             username: userForm.username,
             email: userForm.email,
             idNumber: userForm.idNumber,
@@ -312,7 +373,9 @@ function UsersPage({ currentUser = null, onUsersChanged }) {
       email: "",
       idNumber: "",
       phone: "",
-      password: ""
+      password: "",
+      positionType: "personnel",
+      pageAccess: allPageAccess
     })
     setShowEmployerPassword(false)
     setIsEmployerModalOpen(true)
@@ -327,9 +390,15 @@ function UsersPage({ currentUser = null, onUsersChanged }) {
     const normalizedPhone = withoutLocalPrefix ? `+63${withoutLocalPrefix.slice(0, 10)}` : ""
     const idNumber = employerForm.accountIdentifier.trim()
     const emailValue = employerForm.email.trim()
+    if (!employerForm.pageAccess.length) {
+      showToast("Select at least one page this personnel account can access.", "fail")
+      return
+    }
     const payload = {
       companyName: employerForm.companyName.trim(),
-      contactName: employerForm.contactName.trim(),
+      contactName: getPositionTypeLabel(employerForm.positionType),
+      positionType: employerForm.positionType,
+      pageAccess: employerForm.pageAccess,
       username: emailValue,
       email: emailValue,
       idNumber,
@@ -361,6 +430,26 @@ function UsersPage({ currentUser = null, onUsersChanged }) {
     } catch (error) {
       showToast(error.message || "Failed to add Personnel.", "fail")
     }
+  }
+
+  const toggleUserPageAccess = (page) => {
+    setUserForm((prev) => {
+      const current = selectedPageAccess(prev.pageAccess, prev.positionType)
+      const next = current.includes(page)
+        ? current.filter((item) => item !== page)
+        : [...current, page]
+      return { ...prev, pageAccess: next }
+    })
+  }
+
+  const toggleEmployerPageAccess = (page) => {
+    setEmployerForm((prev) => {
+      const current = selectedPageAccess(prev.pageAccess, prev.positionType)
+      const next = current.includes(page)
+        ? current.filter((item) => item !== page)
+        : [...current, page]
+      return { ...prev, pageAccess: next }
+    })
   }
 
 
@@ -550,7 +639,7 @@ function UsersPage({ currentUser = null, onUsersChanged }) {
                         <span>{user.email || "-"}</span>
                       </div>
                     </td>
-                    <td>{user.contactName || "-"}</td>
+                    <td>{getPositionTypeLabel(user.positionType || user.position_type || user.contactName)}</td>
                     <td>{user.phone || "-"}</td>
                     <td>{user.username || "-"}</td>
                     <td>{user.email || "-"}</td>
@@ -659,11 +748,22 @@ function UsersPage({ currentUser = null, onUsersChanged }) {
                     </div>
                     <div className="field-group">
                       <label>Position</label>
-                      <input
+                      <select
                         className="input"
-                        value={userForm.contactName}
-                        onChange={(e) => setUserForm((prev) => ({ ...prev, contactName: e.target.value }))}
-                      />
+                        value={userForm.positionType}
+                        onChange={(e) => {
+                          const positionType = e.target.value
+                          setUserForm((prev) => ({
+                            ...prev,
+                            positionType,
+                            pageAccess: defaultPageAccessForPosition(positionType)
+                          }))
+                        }}
+                      >
+                        {positionOptions.map((option) => (
+                          <option key={option.value} value={option.value}>{option.label}</option>
+                        ))}
+                      </select>
                     </div>
                   </div>
                   <div className="modal-grid">
@@ -710,6 +810,21 @@ function UsersPage({ currentUser = null, onUsersChanged }) {
                           setUserForm((prev) => ({ ...prev, phone: withoutLocalPrefix.slice(0, 10) }))
                         }}
                       />
+                    </div>
+                  </div>
+                  <div className="field-group users-access-group">
+                    <label>Page Access</label>
+                    <div className="users-access-grid">
+                      {pageAccessOptions.map((option) => (
+                        <label key={`edit-access-${option.value}`} className="users-access-option">
+                          <input
+                            type="checkbox"
+                            checked={selectedPageAccess(userForm.pageAccess, userForm.positionType).includes(option.value)}
+                            onChange={() => toggleUserPageAccess(option.value)}
+                          />
+                          <span>{option.label}</span>
+                        </label>
+                      ))}
                     </div>
                   </div>
                 </>
@@ -808,12 +923,22 @@ function UsersPage({ currentUser = null, onUsersChanged }) {
                 </div>
                 <div className="field-group">
                   <label>Position</label>
-                  <input
+                  <select
                     className="input"
-                    placeholder="eg. Administrative Officer ..."
-                    value={employerForm.contactName}
-                    onChange={(e) => setEmployerForm((prev) => ({ ...prev, contactName: e.target.value }))}
-                  />
+                    value={employerForm.positionType}
+                    onChange={(e) => {
+                      const positionType = e.target.value
+                      setEmployerForm((prev) => ({
+                        ...prev,
+                        positionType,
+                        pageAccess: defaultPageAccessForPosition(positionType)
+                      }))
+                    }}
+                  >
+                    {positionOptions.map((option) => (
+                      <option key={option.value} value={option.value}>{option.label}</option>
+                    ))}
+                  </select>
                 </div>
               </div>
               <div className="modal-grid">
@@ -879,6 +1004,21 @@ function UsersPage({ currentUser = null, onUsersChanged }) {
                         <img src={showEmployerPassword ? eyeSolidIcon : eyeRegularIcon} alt="" />
                       </span>
                   </div>
+                </div>
+              </div>
+              <div className="field-group users-access-group">
+                <label>Page Access</label>
+                <div className="users-access-grid">
+                  {pageAccessOptions.map((option) => (
+                    <label key={`new-access-${option.value}`} className="users-access-option">
+                      <input
+                        type="checkbox"
+                        checked={selectedPageAccess(employerForm.pageAccess, employerForm.positionType).includes(option.value)}
+                        onChange={() => toggleEmployerPageAccess(option.value)}
+                      />
+                      <span>{option.label}</span>
+                    </label>
+                  ))}
                 </div>
               </div>
             </div>

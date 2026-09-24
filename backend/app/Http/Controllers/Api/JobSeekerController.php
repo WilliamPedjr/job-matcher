@@ -182,16 +182,19 @@ class JobSeekerController extends Controller
         /** @var UploadedFile $file */
         $file = $data['file'];
         $stored = $this->storeFile($file, 'job-seeker/resumes/' . $jobSeeker->id);
+        $jobSeeker->loadMissing(['educations', 'experiences', 'supportingFiles']);
         try {
             $analysis = $this->resumeAnalysisService->analyzeFile(
                 Storage::disk('local')->path($stored['path']),
                 $stored['mime_type'],
                 '',
-                $this->extractExistingSupportingText($jobSeeker->id)
+                $this->extractExistingSupportingText($jobSeeker->id),
+                null,
+                $this->profileOverrideForJobSeeker($jobSeeker)
             );
         } catch (\RuntimeException $exception) {
             $analysis = [
-                'classification' => 'Not Qualified',
+                'classification' => 'Lowly Qualified',
                 'overall_score' => 0,
                 'skills_match_score' => 0,
                 'project_score' => 0,
@@ -301,7 +304,7 @@ class JobSeekerController extends Controller
 
     public function resumeMatch(Request $request, int $id): JsonResponse
     {
-        $jobSeeker = JobSeeker::findOrFail($id);
+        $jobSeeker = JobSeeker::query()->with(['educations', 'experiences', 'supportingFiles'])->findOrFail($id);
         $data = $request->validate([
             'jobTitle' => ['nullable', 'string'],
             'jobId' => ['nullable', 'integer', 'exists:jobs,id'],
@@ -318,7 +321,8 @@ class JobSeekerController extends Controller
             $resume->mime_type,
             $jobTitle,
             $this->extractExistingSupportingText($jobSeeker->id),
-            !empty($data['jobId']) ? (int) $data['jobId'] : null
+            !empty($data['jobId']) ? (int) $data['jobId'] : null,
+            $this->profileOverrideForJobSeeker($jobSeeker)
         );
 
         return response()->json([
@@ -333,7 +337,7 @@ class JobSeekerController extends Controller
 
     public function resumeMatchBatch(Request $request, int $id): JsonResponse
     {
-        $jobSeeker = JobSeeker::findOrFail($id);
+        $jobSeeker = JobSeeker::query()->with(['educations', 'experiences', 'supportingFiles'])->findOrFail($id);
         $data = $request->validate([
             'jobTitles' => ['required', 'array'],
             'jobTitles.*' => ['nullable', 'string'],
@@ -359,7 +363,8 @@ class JobSeekerController extends Controller
                     $resume->mime_type,
                     $title,
                     $this->extractExistingSupportingText($jobSeeker->id),
-                    !empty($jobIds[$index]) ? (int) $jobIds[$index] : null
+                    !empty($jobIds[$index]) ? (int) $jobIds[$index] : null,
+                    $this->profileOverrideForJobSeeker($jobSeeker)
                 );
 
             $matches[] = [
@@ -833,6 +838,103 @@ class JobSeekerController extends Controller
         }
 
         return trim(implode("\n", $texts));
+    }
+
+    private function profileOverrideForJobSeeker(JobSeeker $jobSeeker): array
+    {
+        $jobSeeker->loadMissing(['educations', 'experiences', 'supportingFiles']);
+
+        $educationLines = $jobSeeker->educations
+            ->map(fn ($education) => $this->profileEducationLine($education))
+            ->filter()
+            ->values()
+            ->all();
+
+        $workLines = [];
+        $trainingLines = [];
+        foreach ($jobSeeker->experiences as $experience) {
+            $line = $this->profileExperienceLine($experience);
+            if ($line === '') {
+                continue;
+            }
+
+            if ($this->isTrainingProfileExperience((string) $experience->description)) {
+                $trainingLines[] = $line;
+            } else {
+                $workLines[] = $line;
+            }
+        }
+
+        $eligibilityLines = $jobSeeker->supportingFiles
+            ->filter(fn ($file) => Str::startsWith(Str::lower((string) $file->doc_type), 'eligibility:'))
+            ->map(fn ($file) => $this->profileEligibilityLine($file))
+            ->filter()
+            ->values()
+            ->all();
+
+        $sections = [];
+        if ($educationLines) {
+            $sections[] = "PROFILE EDUCATION (PRIMARY SOURCE)\n".implode("\n", $educationLines);
+        }
+        if ($workLines) {
+            $sections[] = "PROFILE WORK EXPERIENCE (PRIMARY SOURCE)\n".implode("\n", $workLines);
+        }
+        if ($trainingLines) {
+            $sections[] = "PROFILE TRAINING (PRIMARY SOURCE)\n".implode("\n", $trainingLines);
+        }
+        if ($eligibilityLines) {
+            $sections[] = "PROFILE ELIGIBILITY (PRIMARY SOURCE)\n".implode("\n", $eligibilityLines);
+        }
+
+        return [
+            'text' => trim(implode("\n\n", $sections)),
+            'education_lines' => $educationLines,
+            'experience_lines' => $workLines,
+            'training_lines' => $trainingLines,
+            'eligibility_lines' => $eligibilityLines,
+        ];
+    }
+
+    private function profileEducationLine(object $education): string
+    {
+        return trim(implode(' | ', array_filter([
+            (string) ($education->school_name ?? ''),
+            (string) ($education->degree ?? ''),
+            trim(implode(' - ', array_filter([(string) ($education->start_year ?? ''), (string) ($education->end_year ?? '')]))),
+            (string) ($education->description ?? ''),
+        ], fn ($value) => trim((string) $value) !== '')));
+    }
+
+    private function profileExperienceLine(object $experience): string
+    {
+        return trim(implode(' | ', array_filter([
+            (string) ($experience->position ?? ''),
+            (string) ($experience->company_name ?? ''),
+            trim(implode(' - ', array_filter([(string) ($experience->start_date ?? ''), (string) ($experience->end_date ?? '')]))),
+            (string) ($experience->description ?? ''),
+        ], fn ($value) => trim((string) $value) !== '')));
+    }
+
+    private function profileEligibilityLine(object $file): string
+    {
+        $classification = trim(Str::after((string) $file->doc_type, ':'));
+
+        return trim(implode(' | ', array_filter([
+            $classification !== '' ? $classification : 'Eligibility',
+            (string) ($file->original_name ?? ''),
+        ], fn ($value) => trim((string) $value) !== '')));
+    }
+
+    private function isTrainingProfileExperience(string $description): bool
+    {
+        $description = Str::lower($description);
+
+        return Str::contains($description, [
+            'record type: training',
+            'number of hours credit:',
+            'type of ld classification:',
+            'certificate file:',
+        ]);
     }
 
     private function storeFile(UploadedFile $file, string $directory): array

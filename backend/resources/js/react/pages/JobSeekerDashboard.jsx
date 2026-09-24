@@ -37,7 +37,7 @@ function JobSeekerDashboard({ jobSeekerProfile, uploads = [], onBrowseJobs, onVi
   }
   const isNotQualified = (value) => {
     const cls = normalizeClassification(value)
-    return cls.includes("not")
+    return cls.includes("lowly") || cls.includes("not")
   }
 
   const totalApplications = myUploads.length
@@ -61,6 +61,19 @@ function JobSeekerDashboard({ jobSeekerProfile, uploads = [], onBrowseJobs, onVi
         .join(" ")
     }
     return "Pending"
+  }
+
+  const getClassificationLabel = (item) => {
+    const classification = String(item?.classification || "").trim()
+    return classification || "Unclassified"
+  }
+
+  const classificationClass = (value) => {
+    const normalized = String(value || "")
+      .trim()
+      .toLowerCase()
+      .replace(/\s+/g, "-")
+    return normalized || "unclassified"
   }
 
   useEffect(() => {
@@ -123,7 +136,7 @@ function JobSeekerDashboard({ jobSeekerProfile, uploads = [], onBrowseJobs, onVi
         <div className="js-stat-card">
           <div className="js-stat-label">
             <span className="js-icon js-icon-not">NO</span>
-            <span>Not Qualified</span>
+            <span>Lowly Qualified</span>
           </div>
           <div className="js-stat-value">{notQualifiedCount}</div>
         </div>
@@ -151,6 +164,7 @@ function JobSeekerDashboard({ jobSeekerProfile, uploads = [], onBrowseJobs, onVi
               <tr>
                 <th>Job Position</th>
                 <th>Date Applied</th>
+                <th>Classification</th>
                 <th>Status</th>
                 <th>Action</th>
               </tr>
@@ -158,7 +172,7 @@ function JobSeekerDashboard({ jobSeekerProfile, uploads = [], onBrowseJobs, onVi
             <tbody>
               {myUploads.length === 0 ? (
                 <tr>
-                  <td colSpan={4} className="js-empty-row">No applications yet.</td>
+                  <td colSpan={5} className="js-empty-row">No applications yet.</td>
                 </tr>
               ) : (
                 paginatedUploads.map((item) => {
@@ -173,10 +187,16 @@ function JobSeekerDashboard({ jobSeekerProfile, uploads = [], onBrowseJobs, onVi
                     })
                   })()
                   const statusLabel = getStatusLabel(item)
+                  const classificationLabel = getClassificationLabel(item)
                   return (
                     <tr key={`${item.id}-${jobTitle}`}>
                       <td>{jobTitle}</td>
                       <td>{dateLabel}</td>
+                      <td className="js-classification-cell">
+                        <span className={`js-status-pill status-${classificationClass(classificationLabel)}`}>
+                          {classificationLabel}
+                        </span>
+                      </td>
                       <td>
                         <span className={`js-status-pill status-${statusLabel.toLowerCase().replace(/\s+/g, "-")}`}>
                           {statusLabel}

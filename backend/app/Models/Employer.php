@@ -13,6 +13,8 @@ class Employer extends Authenticatable
     protected $fillable = [
         'company_name',
         'full_name',
+        'position_type',
+        'page_access',
         'email',
         'username',
         'id_number',
@@ -26,6 +28,7 @@ class Employer extends Authenticatable
     ];
 
     protected $casts = [
+        'page_access' => 'array',
         'password' => 'hashed',
     ];
 }

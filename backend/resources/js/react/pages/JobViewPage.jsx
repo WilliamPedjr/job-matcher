@@ -556,7 +556,7 @@ function JobViewPage({ job, onBack, onApply, onRequireResume, jobSeekerProfile, 
               setIsApplyModalOpen(true)
             }}
           >
-            {hasAlreadyApplied ? "Already Applied" : resumeMatchLoading ? "Checking match..." : applyBlockedByMatch ? "Not Qualified" : "Apply"}
+            {hasAlreadyApplied ? "Already Applied" : resumeMatchLoading ? "Checking match..." : applyBlockedByMatch ? "Lowly Qualified" : "Apply"}
           </button>
           {applyGateNotice && (
             <p className="job-view-apply-notice">

@@ -158,6 +158,70 @@ function normalizeLines(value) {
     .filter(Boolean)
 }
 
+function scoreValue(...values) {
+  for (const value of values) {
+    if (value == null || value === "") continue
+    const number = Number(value)
+    if (!Number.isNaN(number)) {
+      return Math.max(0, Math.min(100, Math.round(number)))
+    }
+  }
+
+  return null
+}
+
+function groupCandidateDetailLines(lines, type = "default") {
+  const groups = []
+  const normalizedLines = Array.isArray(lines) ? lines.map((line) => String(line || "").trim()).filter(Boolean) : []
+  if (type === "training") {
+    normalizedLines.forEach((line) => {
+      const startsTrainingRecord = /^training\b/i.test(line)
+      if (startsTrainingRecord || groups.length === 0) {
+        groups.push([line])
+        return
+      }
+      groups[groups.length - 1].push(line)
+    })
+
+    return groups
+  }
+
+  const detailPattern = type === "education"
+    ? /^(graduation status rank|year graduated|academic honors|awards received)\b/i
+    : /^(government service|monthly gross salary|monthly salary|salary|status of appointment|supervisor|reason for leaving|appointment|job grade|coe file)\b/i
+
+  normalizedLines.forEach((line) => {
+    const shouldAttach = groups.length > 0 && detailPattern.test(line)
+    if (shouldAttach) {
+      groups[groups.length - 1].push(line)
+      return
+    }
+    groups.push([line])
+  })
+
+  return groups
+}
+
+function normalizeFileName(value) {
+  return String(value || "")
+    .trim()
+    .toLowerCase()
+    .replace(/\s+/g, " ")
+}
+
+function findSupportingFileForLine(line, files) {
+  const text = String(line || "")
+  const labeledMatch = text.match(/\b((?:coe|certificate)\s+file):\s*(.+)$/i)
+  const fallbackFileName = text.split("|").map((part) => part.trim()).filter(Boolean).pop()
+  const fileName = normalizeFileName(labeledMatch ? labeledMatch[2] : fallbackFileName)
+  if (!fileName) return null
+
+  return (Array.isArray(files) ? files : []).find((file) => {
+    const originalName = normalizeFileName(file?.original_name || file?.originalName || file?.name)
+    return originalName === fileName
+  }) || null
+}
+
 function ApplicantViewPage({
   viewItem,
   onBack,
@@ -176,15 +240,88 @@ function ApplicantViewPage({
       ? normalizeLines(viewItem?.education_text)
       : extractEducationLines(viewItem?.extracted_text)
   const detectedExperience = experienceSource.length ? experienceSource : extractExperienceLines(viewItem?.experience_text || viewItem?.extracted_text)
-  const matchedSkills = parseSkills(viewItem?.matched_skills)
-  const missingSkills = parseMissingSkills(viewItem?.missing_skills)
+  const matchedSkills = parseSkills(viewItem?.matched_skills ?? viewItem?.matchedSkills)
+  const missingSkills = parseMissingSkills(viewItem?.missing_skills ?? viewItem?.missingSkills)
+  const matchedTraining = parseSkills(viewItem?.matched_training ?? viewItem?.matchedTraining)
+  const missingTraining = parseMissingSkills(viewItem?.missing_training ?? viewItem?.missingTraining)
+  const eligibilityLines = Array.isArray(viewItem?.eligibility_lines)
+    ? viewItem.eligibility_lines
+    : Array.isArray(viewItem?.eligibilityLines)
+      ? viewItem.eligibilityLines
+      : []
+  const eligibilityFiles = Array.isArray(viewItem?.eligibility_files)
+    ? viewItem.eligibility_files
+    : Array.isArray(viewItem?.eligibilityFiles)
+      ? viewItem.eligibilityFiles
+      : []
+  const trainingGroups = groupCandidateDetailLines(matchedTraining, "training")
+  const educationGroups = groupCandidateDetailLines(detectedEducation, "education")
+  const experienceGroups = groupCandidateDetailLines(detectedExperience, "experience")
+  const eligibilityGroups = groupCandidateDetailLines(eligibilityLines)
   const overall = viewItem?.match_score != null ? Number(viewItem.match_score) : 0
-  const totalRequiredSkills = matchedSkills.length + missingSkills.length
-  const skillsMatch = totalRequiredSkills > 0
-    ? Math.round((matchedSkills.length / totalRequiredSkills) * 100)
+  const totalSkillRequirements = matchedSkills.length + missingSkills.length
+  const fallbackSkillsMatch = totalSkillRequirements > 0
+    ? Math.round((matchedSkills.length / totalSkillRequirements) * 100)
     : 0
-  const educationMatch = detectedEducation.length ? 60 : 10
-  const experienceMatch = detectedExperience.length ? 55 : 0
+  const resolvedSkillsMatch = totalSkillRequirements > 0
+    ? fallbackSkillsMatch
+    : scoreValue(viewItem?.skills_match_score, viewItem?.skillsMatchScore, fallbackSkillsMatch)
+  const totalTrainingRequirements = matchedTraining.length + missingTraining.length
+  const fallbackTrainingMatch = totalTrainingRequirements > 0
+    ? Math.round((matchedTraining.length / totalTrainingRequirements) * 100)
+    : 0
+  const skillsMatch = resolvedSkillsMatch ?? 0
+  const trainingMatch = scoreValue(viewItem?.training_match_score, viewItem?.trainingMatchScore, viewItem?.project_score, fallbackTrainingMatch) ?? 0
+  const educationMatch = scoreValue(viewItem?.education_match_score, viewItem?.educationMatchScore, detectedEducation.length ? 60 : 10) ?? 0
+  const experienceMatch = scoreValue(viewItem?.experience_match_score, viewItem?.experienceMatchScore, detectedExperience.length ? 55 : 0) ?? 0
+  const eligibilityMatch = scoreValue(
+    viewItem?.eligibility_match_score,
+    viewItem?.eligibilityMatchScore,
+    viewItem?.resume_summary?.score_breakdown?.eligibility
+  )
+  const renderCandidateDetailLine = (line) => {
+    const file = findSupportingFileForLine(line, [...supportingFiles, ...eligibilityFiles])
+    if (!file?.id || !viewItem?.id) return line
+
+    const match = String(line || "").match(/\b((?:coe|certificate)\s+file):\s*(.+)$/i)
+    if (!match) {
+      const parts = String(line || "").split("|").map((part) => part.trim()).filter(Boolean)
+      const fileName = parts.pop()
+      if (!fileName) return line
+
+      return (
+        <>
+          {parts.length ? `${parts.join(" | ")} | ` : ""}
+          <a
+            className="candidate-file-link"
+            href={file.download_url || `/api/uploads/${viewItem.id}/supporting/${file.id}/download`}
+            target="_blank"
+            rel="noreferrer"
+          >
+            {fileName}
+          </a>
+        </>
+      )
+    }
+
+    const label = match[1]
+    const fileName = match[2].trim()
+    const prefix = String(line).slice(0, match.index)
+
+    return (
+      <>
+        {prefix}{label}:{" "}
+        <a
+          className="candidate-file-link"
+          href={file.download_url || `/api/uploads/${viewItem.id}/supporting/${file.id}/download`}
+          target="_blank"
+          rel="noreferrer"
+        >
+          {fileName}
+        </a>
+      </>
+    )
+  }
 
   useEffect(() => {
     if (!viewItem?.id) return
@@ -267,11 +404,11 @@ function ApplicantViewPage({
 
           <section className="candidate-card">
             <h3>Skills</h3>
-            <p className="card-note">Extracted from resume using NLP analysis</p>
+            <p className="card-note">Matched against role skill requirements</p>
             <div className="skills-cloud">
               {matchedSkills.length ? (
-                matchedSkills.map((skill) => (
-                  <span key={skill} className="skill-pill">{skill}</span>
+                matchedSkills.map((item) => (
+                  <span key={item} className="skill-pill">{item}</span>
                 ))
               ) : (
                 <span className="muted">No matched skills found.</span>
@@ -280,10 +417,29 @@ function ApplicantViewPage({
           </section>
 
           <section className="candidate-card">
+            <h3>Work Experience</h3>
+            {experienceGroups.length ? (
+              experienceGroups.map((group, idx) => (
+                <div key={`${group.join("|")}-${idx}`} className="candidate-detail-group">
+                  {group.map((line, lineIdx) => (
+                    <p key={`${line}-${lineIdx}`} className="candidate-detail-line">{renderCandidateDetailLine(line)}</p>
+                  ))}
+                </div>
+              ))
+            ) : (
+              <p className="muted">No clear work experience extracted.</p>
+            )}
+          </section>
+
+          <section className="candidate-card">
             <h3>Education</h3>
-            {detectedEducation.length ? (
-              detectedEducation.map((line, idx) => (
-                <p key={`${line}-${idx}`}>{line}</p>
+            {educationGroups.length ? (
+              educationGroups.map((group, idx) => (
+                <div key={`${group.join("|")}-${idx}`} className="candidate-detail-group">
+                  {group.map((line, lineIdx) => (
+                    <p key={`${line}-${lineIdx}`} className="candidate-detail-line">{renderCandidateDetailLine(line)}</p>
+                  ))}
+                </div>
               ))
             ) : (
               <p className="muted">No education data extracted.</p>
@@ -291,13 +447,32 @@ function ApplicantViewPage({
           </section>
 
           <section className="candidate-card">
-            <h3>Work Experience</h3>
-            {detectedExperience.length ? (
-              detectedExperience.map((line, idx) => (
-                <p key={`${line}-${idx}`}>{line}</p>
+            <h3>Eligibility</h3>
+            {eligibilityGroups.length ? (
+              eligibilityGroups.map((group, idx) => (
+                <div key={`${group.join("|")}-${idx}`} className="candidate-detail-group">
+                  {group.map((line, lineIdx) => (
+                    <p key={`${line}-${lineIdx}`} className="candidate-detail-line">{renderCandidateDetailLine(line)}</p>
+                  ))}
+                </div>
               ))
             ) : (
-              <p className="muted">No clear work experience extracted.</p>
+              <p className="muted">No eligibility document found.</p>
+            )}
+          </section>
+
+          <section className="candidate-card">
+            <h3>Training Evidence</h3>
+            {trainingGroups.length ? (
+              trainingGroups.map((group, idx) => (
+                <div key={`${group.join("|")}-${idx}`} className="candidate-detail-group">
+                  {group.map((line, lineIdx) => (
+                    <p key={`${line}-${lineIdx}`} className="candidate-detail-line">{renderCandidateDetailLine(line)}</p>
+                  ))}
+                </div>
+              ))
+            ) : (
+              <p className="muted">No matching training evidence found.</p>
             )}
           </section>
 
@@ -307,7 +482,7 @@ function ApplicantViewPage({
           <section className="candidate-card">
             <h3>Qualification Status</h3>
             <p className={`status-chip ${(viewItem?.classification || "").toLowerCase().replace(/\s+/g, "-")}`}>
-              {viewItem?.classification || "Not Qualified"}
+              {viewItem?.classification || "Lowly Qualified"}
             </p>
             <div className="overall-box">
               <p className="overall-score">{`${overall.toFixed(0)}%`}</p>
@@ -319,12 +494,12 @@ function ApplicantViewPage({
             <h3>Match Score Breakdown</h3>
             <div className="breakdown-list">
               <div className="bar-row">
-                <div className="bar-label"><span>Overall Match</span><strong>{overall.toFixed(0)}%</strong></div>
-                <div className="bar"><div style={{ width: `${overall}%` }} /></div>
-              </div>
-              <div className="bar-row">
                 <div className="bar-label"><span>Skills Match</span><strong>{skillsMatch}%</strong></div>
                 <div className="bar"><div style={{ width: `${skillsMatch}%` }} /></div>
+              </div>
+              <div className="bar-row">
+                <div className="bar-label"><span>Training Match</span><strong>{trainingMatch}%</strong></div>
+                <div className="bar"><div style={{ width: `${trainingMatch}%` }} /></div>
               </div>
               <div className="bar-row">
                 <div className="bar-label"><span>Education Match</span><strong>{educationMatch}%</strong></div>
@@ -334,6 +509,12 @@ function ApplicantViewPage({
                 <div className="bar-label"><span>Experience Match</span><strong>{experienceMatch}%</strong></div>
                 <div className="bar"><div style={{ width: `${experienceMatch}%` }} /></div>
               </div>
+              {eligibilityMatch != null && (
+                <div className="bar-row">
+                  <div className="bar-label"><span>Eligibility Match</span><strong>{eligibilityMatch}%</strong></div>
+                  <div className="bar"><div style={{ width: `${eligibilityMatch}%` }} /></div>
+                </div>
+              )}
             </div>
           </section>
 
@@ -341,12 +522,25 @@ function ApplicantViewPage({
             <h3>Missing Skills</h3>
             {missingSkills.length ? (
               <div className="skills-cloud">
-                {missingSkills.map((skill) => (
-                  <span key={`missing-${skill}`} className="skill-pill">{skill}</span>
+                {missingSkills.map((item) => (
+                  <span key={`missing-skill-${item}`} className="skill-pill">{item}</span>
                 ))}
               </div>
             ) : (
-              <p className="muted">No missing skills detected.</p>
+              <p className="muted">No missing skill requirement detected.</p>
+            )}
+          </section>
+
+          <section className="candidate-card">
+            <h3>Missing Training</h3>
+            {missingTraining.length ? (
+              <div className="skills-cloud">
+                {missingTraining.map((item) => (
+                  <span key={`missing-${item}`} className="skill-pill">{item}</span>
+                ))}
+              </div>
+            ) : (
+              <p className="muted">No missing training requirement detected.</p>
             )}
           </section>
         </div>

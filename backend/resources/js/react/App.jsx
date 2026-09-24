@@ -26,6 +26,38 @@ import html2canvas from "html2canvas"
 import { jsPDF } from "jspdf"
 
 const applicantsPageSize = 10
+const staffPageAccessOptions = [
+  "dashboard",
+  "jobs",
+  "applicants",
+  "ratings",
+  "profile",
+  "users",
+  "archive",
+  "help"
+]
+const jobSeekerPageAccessOptions = ["dashboard", "jobs", "profile", "job-view", "help"]
+
+function normalizePageAccess(value) {
+  if (!Array.isArray(value)) return null
+  const allowed = new Set(staffPageAccessOptions)
+  return Array.from(new Set(value.map((page) => String(page || "").trim().toLowerCase()).filter((page) => allowed.has(page))))
+}
+
+function resolveAllowedPagesForUser(role, user = null) {
+  const normalizedRole = normalizeRole(role)
+  if (normalizedRole === "jobseeker") return jobSeekerPageAccessOptions
+  if (normalizedRole === "admin") return staffPageAccessOptions
+  const savedAccess = normalizePageAccess(user?.pageAccess || user?.page_access)
+  if (savedAccess && savedAccess.length) return savedAccess
+  return staffPageAccessOptions
+}
+
+function firstAllowedPage(role, user = null) {
+  const preferred = normalizeRole(role) === "jobseeker" ? "dashboard" : "dashboard"
+  const allowed = resolveAllowedPagesForUser(role, user)
+  return allowed.includes(preferred) ? preferred : (allowed[0] || "profile")
+}
 
 const jobSeekerPageIntros = {
   dashboard: {
@@ -118,6 +150,70 @@ function parseMissingSkills(skillsText) {
     .split(/[,;\n|]+/)
     .map((s) => s.trim())
     .filter(Boolean)
+}
+
+function scoreValue(...values) {
+  for (const value of values) {
+    if (value == null || value === "") continue
+    const number = Number(value)
+    if (!Number.isNaN(number)) {
+      return Math.max(0, Math.min(100, Math.round(number)))
+    }
+  }
+
+  return null
+}
+
+function groupCandidateDetailLines(lines, type = "default") {
+  const groups = []
+  const normalizedLines = Array.isArray(lines) ? lines.map((line) => String(line || "").trim()).filter(Boolean) : []
+  if (type === "training") {
+    normalizedLines.forEach((line) => {
+      const startsTrainingRecord = /^training\b/i.test(line)
+      if (startsTrainingRecord || groups.length === 0) {
+        groups.push([line])
+        return
+      }
+      groups[groups.length - 1].push(line)
+    })
+
+    return groups
+  }
+
+  const detailPattern = type === "education"
+    ? /^(graduation status rank|year graduated|academic honors|awards received)\b/i
+    : /^(government service|monthly gross salary|monthly salary|salary|status of appointment|supervisor|reason for leaving|appointment|job grade|coe file)\b/i
+
+  normalizedLines.forEach((line) => {
+    const shouldAttach = groups.length > 0 && detailPattern.test(line)
+    if (shouldAttach) {
+      groups[groups.length - 1].push(line)
+      return
+    }
+    groups.push([line])
+  })
+
+  return groups
+}
+
+function normalizeFileName(value) {
+  return String(value || "")
+    .trim()
+    .toLowerCase()
+    .replace(/\s+/g, " ")
+}
+
+function findSupportingFileForLine(line, files) {
+  const text = String(line || "")
+  const labeledMatch = text.match(/\b((?:coe|certificate)\s+file):\s*(.+)$/i)
+  const fallbackFileName = text.split("|").map((part) => part.trim()).filter(Boolean).pop()
+  const fileName = normalizeFileName(labeledMatch ? labeledMatch[2] : fallbackFileName)
+  if (!fileName) return null
+
+  return (Array.isArray(files) ? files : []).find((file) => {
+    const originalName = normalizeFileName(file?.original_name || file?.originalName || file?.name)
+    return originalName === fileName
+  }) || null
 }
 
 function normalizeEducationItem(item = {}) {
@@ -302,6 +398,26 @@ function getApplicationStatusLabel(item) {
     .join(" ")
 }
 
+function buildApplicantEmailDraft(item, senderEmail = "") {
+  const email = String(item?.email || "").trim().replace(/[\s<>()[\]\\,;:"]+/g, "")
+  if (!email) return null
+  const sender = String(senderEmail || "").trim()
+
+  const applicantName = String(item?.name || "").trim()
+  const jobTitle = String(item?.applied_job_title || item?.matched_job_title || "").trim()
+  const subject = jobTitle
+    ? `Regarding your application for ${jobTitle}`
+    : "Regarding your job application"
+  const greeting = applicantName ? `Hello ${applicantName},` : "Hello,"
+  const body = `${greeting}\n\nWe are contacting you about your application${jobTitle ? ` for ${jobTitle}` : ""}.\n\nThank you,\nLNU-HiRe Personnel`
+
+  return {
+    email,
+    gmail: `https://mail.google.com/mail/?view=cm&fs=1${sender ? `&authuser=${encodeURIComponent(sender)}` : ""}&to=${encodeURIComponent(email)}&su=${encodeURIComponent(subject)}&body=${encodeURIComponent(body)}`,
+    mailto: `mailto:${email}?subject=${encodeURIComponent(subject)}&body=${encodeURIComponent(body)}`
+  }
+}
+
 function isApplicationHiddenFromJobSeeker(item) {
   return Number(item?.job_seeker_hidden || item?.jobSeekerHidden || 0) === 1
 }
@@ -390,6 +506,10 @@ function App() {
       contactName: user.contactName || user.fullName || user.full_name || currentUser?.contactName || currentUser?.fullName || "",
       fullName: user.fullName || user.full_name || user.contactName || currentUser?.fullName || "",
       full_name: user.full_name || user.fullName || user.contactName || currentUser?.full_name || "",
+      positionType: user.positionType || user.position_type || currentUser?.positionType || currentUser?.position_type || "",
+      position_type: user.position_type || user.positionType || currentUser?.position_type || currentUser?.positionType || "",
+      pageAccess: normalizePageAccess(user.pageAccess || user.page_access) ?? normalizePageAccess(currentUser?.pageAccess || currentUser?.page_access),
+      page_access: normalizePageAccess(user.page_access || user.pageAccess) ?? normalizePageAccess(currentUser?.page_access || currentUser?.pageAccess),
       role: normalizeRole(user.role || currentUser?.role || userRole),
       createdAt: user.createdAt || user.created_at || currentUser?.createdAt || null,
     }
@@ -424,6 +544,7 @@ function App() {
   const [selectedJobView, setSelectedJobView] = useState(null)
   const [confirmDeleteId, setConfirmDeleteId] = useState(null)
   const [confirmDeleteContext, setConfirmDeleteContext] = useState("application")
+  const [confirmStatusAction, setConfirmStatusAction] = useState(null)
   const [deleteToast, setDeleteToast] = useState(null)
   const deleteToastTimerRef = useRef(null)
   const [summaryItem, setSummaryItem] = useState(null)
@@ -438,6 +559,11 @@ function App() {
   const isEmployer = userRole === "employer"
   const isAdmin = userRole === "admin"
   const isJobSeeker = userRole === "jobseeker"
+  const allowedPages = useMemo(() => resolveAllowedPagesForUser(userRole, currentUser), [currentUser, userRole])
+  const canAccessPage = useCallback((page) => {
+    if (page === "job-view") return isJobSeeker && allowedPages.includes("jobs")
+    return allowedPages.includes(page)
+  }, [allowedPages, isJobSeeker])
   const showNotificationsBell = (isJobSeeker || isAdmin || isEmployer) && ["dashboard", "profile"].includes(activePage)
   const normalizedPhone = phone.length ? `+63${phone}` : ""
   const resolvedJobSeekerId = jobSeekerId || jobSeekerProfile?.id || null
@@ -459,7 +585,6 @@ function App() {
       }
     }
     const shouldOpenProfile = newJobSeekerRedirectKeys.some((key) => localStorage.getItem(key) === "true")
-    const nextActivePage = shouldOpenProfile ? "profile" : "dashboard"
     if (shouldOpenProfile) {
       newJobSeekerRedirectKeys.forEach((key) => localStorage.removeItem(key))
     }
@@ -483,9 +608,14 @@ function App() {
       contactName: payload?.contactName || payload?.fullName || payload?.full_name || "",
       fullName: payload?.fullName || payload?.full_name || payload?.contactName || "",
       full_name: payload?.full_name || payload?.fullName || payload?.contactName || "",
+      positionType: payload?.positionType || payload?.position_type || "",
+      position_type: payload?.position_type || payload?.positionType || "",
+      pageAccess: normalizePageAccess(payload?.pageAccess || payload?.page_access),
+      page_access: normalizePageAccess(payload?.page_access || payload?.pageAccess),
       role: nextRole,
       createdAt: payload?.createdAt || payload?.created_at || null
     }
+    const nextActivePage = shouldOpenProfile ? "profile" : firstAllowedPage(nextRole, nextCurrentUser)
     setCurrentUser(nextCurrentUser)
     localStorage.setItem("currentUser", JSON.stringify(nextCurrentUser))
 
@@ -865,6 +995,32 @@ function App() {
     }
   }, [currentUser, fetchActivityLogs, isJobSeeker, loginEmail, userRole])
 
+  const emailJobSeeker = useCallback((item) => {
+    const personnelEmail = currentUser?.email || loginEmail || ""
+    const draft = buildApplicantEmailDraft(item, personnelEmail)
+    if (!draft) {
+      showDeleteToast("This applicant has no email address.", "fail")
+      return
+    }
+
+    const emailWindow = window.open(draft.gmail, "_blank", "noopener,noreferrer")
+    if (!emailWindow) {
+      window.location.href = draft.mailto
+    }
+    recordActivity({
+      event: "application.email_started",
+      description: `Started an email to ${item?.name || item?.email || "job seeker"}.`,
+      subjectType: "application",
+      subjectId: item?.id,
+      subjectName: item?.name || item?.email || "Job seeker",
+      metadata: {
+        email: item?.email || "",
+        senderEmail: personnelEmail,
+        jobTitle: item?.applied_job_title || item?.matched_job_title || "-"
+      }
+    })
+  }, [currentUser?.email, loginEmail, recordActivity, showDeleteToast])
+
   const openAddApplicantModal = async () => {
     await fetchJobPosts()
     setIsUploadModalOpen(true)
@@ -951,10 +1107,12 @@ function App() {
 
   useEffect(() => {
     if (!isAuthenticated) return
-    if (userRole === "jobseeker" && activePage !== "jobs" && activePage !== "profile" && activePage !== "dashboard" && activePage !== "job-view" && activePage !== "help") {
-      setActivePage("jobs")
+    if (!canAccessPage(activePage)) {
+      setViewItem(null)
+      setSelectedJobView(null)
+      setActivePage(firstAllowedPage(userRole, currentUser))
     }
-  }, [activePage, isAuthenticated, userRole])
+  }, [activePage, canAccessPage, currentUser, isAuthenticated, userRole])
 
   useEffect(() => {
     const closeActions = () => {
@@ -1010,7 +1168,7 @@ function App() {
 
   const openActionsMenu = (event, item) => {
     const rect = event.currentTarget.getBoundingClientRect()
-    const menuHeight = 120
+    const menuHeight = 240
     const viewportHeight = window.innerHeight || document.documentElement.clientHeight
     const preferredTop = rect.bottom + 2
     const top = preferredTop + menuHeight > viewportHeight
@@ -1365,14 +1523,91 @@ function App() {
   const summaryExperience = Array.isArray(summaryItem?.experience_json) && summaryItem.experience_json.length
     ? summaryItem.experience_json.map((line) => String(line).trim()).filter(Boolean)
     : extractExperienceLines(summaryItem?.experience_text || summaryItem?.extracted_text)
-  const summaryMatchedSkills = parseSkills(summaryItem?.matched_skills)
-  const summaryMissingSkills = parseMissingSkills(summaryItem?.missing_skills)
+  const summaryMatchedSkills = parseSkills(summaryItem?.matched_skills ?? summaryItem?.matchedSkills)
+  const summaryMissingSkills = parseMissingSkills(summaryItem?.missing_skills ?? summaryItem?.missingSkills)
+  const summaryMatchedTraining = parseSkills(summaryItem?.matched_training ?? summaryItem?.matchedTraining)
+  const summaryMissingTraining = parseMissingSkills(summaryItem?.missing_training ?? summaryItem?.missingTraining)
+  const summaryEligibilityLines = Array.isArray(summaryItem?.eligibility_lines)
+    ? summaryItem.eligibility_lines
+    : Array.isArray(summaryItem?.eligibilityLines)
+      ? summaryItem.eligibilityLines
+      : []
+  const summaryEligibilityFiles = Array.isArray(summaryItem?.eligibility_files)
+    ? summaryItem.eligibility_files
+    : Array.isArray(summaryItem?.eligibilityFiles)
+      ? summaryItem.eligibilityFiles
+      : []
+  const summaryTrainingGroups = groupCandidateDetailLines(summaryMatchedTraining, "training")
+  const summaryEducationGroups = groupCandidateDetailLines(summaryEducation, "education")
+  const summaryExperienceGroups = groupCandidateDetailLines(summaryExperience, "experience")
+  const summaryEligibilityGroups = groupCandidateDetailLines(summaryEligibilityLines)
   const summaryOverall = summaryItem?.match_score != null ? Number(summaryItem.match_score) : 0
-  const summarySkillsMatch = Math.min(100, summaryMatchedSkills.length * 12)
-  const summaryEducationMatch = summaryEducation.length ? 60 : 10
-  const summaryExperienceMatch = summaryExperience.length ? 55 : 0
+  const summarySkillRequirements = summaryMatchedSkills.length + summaryMissingSkills.length
+  const summaryFallbackSkillsMatch = summarySkillRequirements > 0
+    ? Math.round((summaryMatchedSkills.length / summarySkillRequirements) * 100)
+    : 0
+  const summaryResolvedSkillsMatch = summarySkillRequirements > 0
+    ? summaryFallbackSkillsMatch
+    : scoreValue(summaryItem?.skills_match_score, summaryItem?.skillsMatchScore, summaryFallbackSkillsMatch)
+  const summaryTrainingRequirements = summaryMatchedTraining.length + summaryMissingTraining.length
+  const summaryFallbackTrainingMatch = summaryTrainingRequirements > 0
+    ? Math.round((summaryMatchedTraining.length / summaryTrainingRequirements) * 100)
+    : 0
+  const summarySkillsMatch = summaryResolvedSkillsMatch ?? 0
+  const summaryTrainingMatch = scoreValue(summaryItem?.training_match_score, summaryItem?.trainingMatchScore, summaryItem?.project_score, summaryFallbackTrainingMatch) ?? 0
+  const summaryEducationMatch = scoreValue(summaryItem?.education_match_score, summaryItem?.educationMatchScore, summaryEducation.length ? 60 : 10) ?? 0
+  const summaryExperienceMatch = scoreValue(summaryItem?.experience_match_score, summaryItem?.experienceMatchScore, summaryExperience.length ? 55 : 0) ?? 0
+  const summaryEligibilityMatch = scoreValue(
+    summaryItem?.eligibility_match_score,
+    summaryItem?.eligibilityMatchScore,
+    summaryItem?.resume_summary?.score_breakdown?.eligibility
+  )
+  const renderSummaryDetailLine = (line) => {
+    const file = findSupportingFileForLine(line, [...summarySupportingFiles, ...summaryEligibilityFiles])
+    if (!file?.id || !summaryItem?.id) return line
+
+    const match = String(line || "").match(/\b((?:coe|certificate)\s+file):\s*(.+)$/i)
+    if (!match) {
+      const parts = String(line || "").split("|").map((part) => part.trim()).filter(Boolean)
+      const fileName = parts.pop()
+      if (!fileName) return line
+
+      return (
+        <>
+          {parts.length ? `${parts.join(" | ")} | ` : ""}
+          <a
+            className="candidate-file-link"
+            href={file.download_url || `/api/uploads/${summaryItem.id}/supporting/${file.id}/download`}
+            target="_blank"
+            rel="noreferrer"
+          >
+            {fileName}
+          </a>
+        </>
+      )
+    }
+
+    const label = match[1]
+    const fileName = match[2].trim()
+    const prefix = String(line).slice(0, match.index)
+
+    return (
+      <>
+        {prefix}{label}:{" "}
+        <a
+          className="candidate-file-link"
+          href={file.download_url || `/api/uploads/${summaryItem.id}/supporting/${file.id}/download`}
+          target="_blank"
+          rel="noreferrer"
+        >
+          {fileName}
+        </a>
+      </>
+    )
+  }
 
   const handleTopNav = (page) => {
+    if (!canAccessPage(page)) return
     setActivePage(page)
     setActionsMenu(null)
     setIsProfileMenuOpen(false)
@@ -1860,7 +2095,7 @@ function App() {
         }
         const bucket = applicantsByJob.get(jobTitle)
         bucket.total += 1
-        if (cls.includes("not qualified")) {
+        if (cls.includes("lowly qualified") || cls.includes("not qualified")) {
           bucket.notQualified += 1
         } else if (cls.includes("moderately qualified")) {
           bucket.moderatelyQualified += 1
@@ -1869,7 +2104,7 @@ function App() {
         }
       }
 
-      if (cls.includes("not qualified")) {
+      if (cls.includes("lowly qualified") || cls.includes("not qualified")) {
         notQualified += 1
       } else if (cls.includes("moderately qualified")) {
         moderatelyQualified += 1
@@ -2213,7 +2448,7 @@ function App() {
   }
 
   const mainContent = (() => {
-    if (activePage === "profile") {
+    if (activePage === "profile" && canAccessPage("profile")) {
       return (
         <ProfilePage
           userRole={userRole}
@@ -2232,7 +2467,7 @@ function App() {
         />
       )
     }
-    if (activePage === "users" && (isAdmin || isEmployer)) {
+    if (activePage === "users" && (isAdmin || isEmployer) && canAccessPage("users")) {
       return (
         <UsersPage
           isEmployer={isEmployer}
@@ -2241,7 +2476,7 @@ function App() {
         />
       )
     }
-    if (activePage === "archive" && (isAdmin || isEmployer)) {
+    if (activePage === "archive" && (isAdmin || isEmployer) && canAccessPage("archive")) {
       return (
         <ArchivePage
           currentUser={currentUser || { name: loginEmail, email: loginEmail, role: userRole }}
@@ -2249,7 +2484,7 @@ function App() {
         />
       )
     }
-    if (activePage === "jobs") {
+    if (activePage === "jobs" && canAccessPage("jobs")) {
       return (
         <JobPostingPage
           uploads={uploads}
@@ -2304,9 +2539,17 @@ function App() {
           headerActions={!isJobSeeker && (
             <>
               <button
+                className="btn btn-secondary"
+                type="button"
+                onClick={() => emailJobSeeker(viewItem)}
+                disabled={!String(viewItem?.email || "").trim()}
+              >
+                Send Email
+              </button>
+              <button
                 className="btn"
                 type="button"
-                onClick={() => updateApplicationStatus(viewItem, "shortlisted")}
+                onClick={() => setConfirmStatusAction({ item: viewItem, status: "shortlisted" })}
                 disabled={["shortlisted", "interview", "rejected", "hired"].includes(getApplicationStatus(viewItem))}
               >
                 Pass
@@ -2314,7 +2557,7 @@ function App() {
               <button
                 className="btn btn-danger"
                 type="button"
-                onClick={() => updateApplicationStatus(viewItem, "rejected")}
+                onClick={() => setConfirmStatusAction({ item: viewItem, status: "rejected" })}
                 disabled={["rejected", "hired"].includes(getApplicationStatus(viewItem))}
               >
                 Reject
@@ -2324,7 +2567,7 @@ function App() {
         />
       )
     }
-    if (activePage === "dashboard" && isJobSeeker) {
+    if (activePage === "dashboard" && isJobSeeker && canAccessPage("dashboard")) {
       return (
         <JobSeekerDashboard
           jobSeekerProfile={jobSeekerProfile}
@@ -2337,7 +2580,7 @@ function App() {
         />
       )
     }
-    if (activePage === "dashboard" && !isJobSeeker) {
+    if (activePage === "dashboard" && !isJobSeeker && canAccessPage("dashboard")) {
       return (
         <DashboardPage
           dashboardData={dashboardData}
@@ -2361,7 +2604,7 @@ function App() {
         />
       )
     }
-    if (activePage === "ratings" && !isJobSeeker) {
+    if (activePage === "ratings" && !isJobSeeker && canAccessPage("ratings")) {
       return (
         <RatingsPage
           uploads={uploads}
@@ -2374,7 +2617,7 @@ function App() {
         />
       )
     }
-    if (activePage === "help") {
+    if (activePage === "help" && canAccessPage("help")) {
       return (
         <HelpPage
           isJobSeeker={isJobSeeker}
@@ -2387,10 +2630,10 @@ function App() {
         />
       )
     }
-    if (isLoadingUploads && !isJobSeeker) {
+    if (isLoadingUploads && !isJobSeeker && activePage === "applicants" && canAccessPage("applicants")) {
       return <p>Loading uploads...</p>
     }
-    if (displayedUploads.length === 0 && !isJobSeeker) {
+    if (displayedUploads.length === 0 && !isJobSeeker && activePage === "applicants" && canAccessPage("applicants")) {
       return (
         <section className="empty-state">
           <h3>No applications found</h3>
@@ -2398,7 +2641,7 @@ function App() {
         </section>
       )
     }
-    if (!isJobSeeker) {
+    if (!isJobSeeker && activePage === "applicants" && canAccessPage("applicants")) {
       return (
         <div className="table-wrap">
           <table className="records-table">
@@ -2493,7 +2736,7 @@ function App() {
     <>
     <main className="page" ref={pageRef} onScroll={updateBackToTopFromScroll}>
       <header className="topbar">
-        <button type="button" className="brand" onClick={() => handleTopNav("dashboard")}>
+        <button type="button" className="brand" onClick={() => handleTopNav(firstAllowedPage(userRole, currentUser))}>
           <img src={brandLogo} alt="LNU-HiRe" />
           <span className="brand-copy">
             <span className="brand-name">LNU-HiRe</span>
@@ -2501,23 +2744,27 @@ function App() {
           </span>
         </button>
         <nav className="topnav">
-          <button
-            type="button"
-            className={`topnav-link ${activePage === "dashboard" ? "active" : ""}`}
-            onClick={() => handleTopNav("dashboard")}
-          >
-            <span className="topnav-icon topnav-icon-dashboard" aria-hidden="true" />
-            <span>Dashboard</span>
-          </button>
-          <button
-            type="button"
-            className={`topnav-link ${activePage === "jobs" ? "active" : ""}`}
-            onClick={() => handleTopNav("jobs")}
-          >
-            <span className="topnav-icon topnav-icon-jobs" aria-hidden="true" />
-            <span>Jobs</span>
-          </button>
-          {!isJobSeeker && (
+          {canAccessPage("dashboard") && (
+            <button
+              type="button"
+              className={`topnav-link ${activePage === "dashboard" ? "active" : ""}`}
+              onClick={() => handleTopNav("dashboard")}
+            >
+              <span className="topnav-icon topnav-icon-dashboard" aria-hidden="true" />
+              <span>Dashboard</span>
+            </button>
+          )}
+          {canAccessPage("jobs") && (
+            <button
+              type="button"
+              className={`topnav-link ${activePage === "jobs" ? "active" : ""}`}
+              onClick={() => handleTopNav("jobs")}
+            >
+              <span className="topnav-icon topnav-icon-jobs" aria-hidden="true" />
+              <span>Jobs</span>
+            </button>
+          )}
+          {!isJobSeeker && canAccessPage("applicants") && (
             <button
               type="button"
               className={`topnav-link ${activePage === "applicants" ? "active" : ""}`}
@@ -2530,7 +2777,7 @@ function App() {
               <span>Applications</span>
             </button>
           )}
-          {!isJobSeeker && (
+          {!isJobSeeker && canAccessPage("ratings") && (
             <button
               type="button"
               className={`topnav-link ${activePage === "ratings" ? "active" : ""}`}
@@ -2540,16 +2787,20 @@ function App() {
               <span>Ratings / Evaluation</span>
             </button>
           )}
-          <button
-            type="button"
-            className={`topnav-link ${activePage === "profile" ? "active" : ""}`}
-            onClick={() => handleTopNav("profile")}
-          >
-            <span className="topnav-icon topnav-icon-profile" aria-hidden="true" />
-            <span>Profile</span>
-          </button>
-          <span className="topnav-section-label">Additional Settings</span>
-          {(isAdmin || isEmployer) && (
+          {canAccessPage("profile") && (
+            <button
+              type="button"
+              className={`topnav-link ${activePage === "profile" ? "active" : ""}`}
+              onClick={() => handleTopNav("profile")}
+            >
+              <span className="topnav-icon topnav-icon-profile" aria-hidden="true" />
+              <span>Profile</span>
+            </button>
+          )}
+          {((isAdmin || isEmployer) && (canAccessPage("users") || canAccessPage("archive"))) || canAccessPage("help") ? (
+            <span className="topnav-section-label">Additional Settings</span>
+          ) : null}
+          {(isAdmin || isEmployer) && canAccessPage("users") && (
             <button
               type="button"
               className={`topnav-link ${activePage === "users" ? "active" : ""}`}
@@ -2559,7 +2810,7 @@ function App() {
               <span>Users</span>
             </button>
           )}
-          {(isAdmin || isEmployer) && (
+          {(isAdmin || isEmployer) && canAccessPage("archive") && (
             <button
               type="button"
               className={`topnav-link ${activePage === "archive" ? "active" : ""}`}
@@ -2569,14 +2820,16 @@ function App() {
               <span>Archive</span>
             </button>
           )}
-          <button
-            type="button"
-            className={`topnav-link ${activePage === "help" ? "active" : ""}`}
-            onClick={() => handleTopNav("help")}
-          >
-            <span className="topnav-icon topnav-icon-help" aria-hidden="true" />
-            <span>Help</span>
-          </button>
+          {canAccessPage("help") && (
+            <button
+              type="button"
+              className={`topnav-link ${activePage === "help" ? "active" : ""}`}
+              onClick={() => handleTopNav("help")}
+            >
+              <span className="topnav-icon topnav-icon-help" aria-hidden="true" />
+              <span>Help</span>
+            </button>
+          )}
           {showNotificationsBell && (
             <div className="notifications-menu sidebar-notifications" onClick={(e) => e.stopPropagation()}>
               <button
@@ -2938,6 +3191,48 @@ function App() {
         </div>
       )}
 
+      {confirmStatusAction && (
+        <div
+          className="modal-overlay delete-confirm-overlay"
+          onClick={(e) => {
+            if (e.target === e.currentTarget) {
+              setConfirmStatusAction(null)
+            }
+          }}
+        >
+          <div className="modal-card delete-confirm-card">
+            <h3>{confirmStatusAction.status === "rejected" ? "Reject Application" : "Pass Application"}</h3>
+            <p>
+              {confirmStatusAction.status === "rejected"
+                ? `Are you sure you want to reject ${confirmStatusAction.item?.name || "this applicant"}'s application?`
+                : `Are you sure you want to pass ${confirmStatusAction.item?.name || "this applicant"} and shortlist this application?`}
+            </p>
+            <div className="modal-actions">
+              <button
+                type="button"
+                className="btn btn-secondary"
+                onClick={() => setConfirmStatusAction(null)}
+              >
+                Cancel
+              </button>
+              <button
+                type="button"
+                className={confirmStatusAction.status === "rejected" ? "btn btn-danger" : "btn"}
+                onClick={async () => {
+                  const action = confirmStatusAction
+                  setConfirmStatusAction(null)
+                  if (action?.item && action?.status) {
+                    await updateApplicationStatus(action.item, action.status)
+                  }
+                }}
+              >
+                {confirmStatusAction.status === "rejected" ? "Reject" : "Pass"}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
       {confirmDeleteId != null && (
         <div
           className="modal-overlay delete-confirm-overlay"
@@ -3245,11 +3540,11 @@ function App() {
 
                   <section className="candidate-card">
                     <h3>Skills</h3>
-                    <p className="card-note">Extracted from resume using NLP analysis</p>
+                    <p className="card-note">Matched against role skill requirements</p>
                     <div className="skills-cloud">
                       {summaryMatchedSkills.length ? (
-                        summaryMatchedSkills.map((skill) => (
-                          <span key={skill} className="skill-pill">{skill}</span>
+                        summaryMatchedSkills.map((item) => (
+                          <span key={item} className="skill-pill">{item}</span>
                         ))
                       ) : (
                         <span className="muted">No matched skills found.</span>
@@ -3258,10 +3553,29 @@ function App() {
                   </section>
 
                   <section className="candidate-card">
+                    <h3>Work Experience</h3>
+                    {summaryExperienceGroups.length ? (
+                      summaryExperienceGroups.map((group, idx) => (
+                        <div key={`${group.join("|")}-${idx}`} className="candidate-detail-group">
+                          {group.map((line, lineIdx) => (
+                            <p key={`${line}-${lineIdx}`} className="candidate-detail-line">{renderSummaryDetailLine(line)}</p>
+                          ))}
+                        </div>
+                      ))
+                    ) : (
+                      <p className="muted">No clear work experience extracted.</p>
+                    )}
+                  </section>
+
+                  <section className="candidate-card">
                     <h3>Education</h3>
-                    {summaryEducation.length ? (
-                      summaryEducation.map((line, idx) => (
-                        <p key={`${line}-${idx}`}>{line}</p>
+                    {summaryEducationGroups.length ? (
+                      summaryEducationGroups.map((group, idx) => (
+                        <div key={`${group.join("|")}-${idx}`} className="candidate-detail-group">
+                          {group.map((line, lineIdx) => (
+                            <p key={`${line}-${lineIdx}`} className="candidate-detail-line">{renderSummaryDetailLine(line)}</p>
+                          ))}
+                        </div>
                       ))
                     ) : (
                       <p className="muted">No education data extracted.</p>
@@ -3269,13 +3583,32 @@ function App() {
                   </section>
 
                   <section className="candidate-card">
-                    <h3>Work Experience</h3>
-                    {summaryExperience.length ? (
-                      summaryExperience.map((line, idx) => (
-                        <p key={`${line}-${idx}`}>{line}</p>
+                    <h3>Eligibility</h3>
+                    {summaryEligibilityGroups.length ? (
+                      summaryEligibilityGroups.map((group, idx) => (
+                        <div key={`${group.join("|")}-${idx}`} className="candidate-detail-group">
+                          {group.map((line, lineIdx) => (
+                            <p key={`${line}-${lineIdx}`} className="candidate-detail-line">{renderSummaryDetailLine(line)}</p>
+                          ))}
+                        </div>
                       ))
                     ) : (
-                      <p className="muted">No clear work experience extracted.</p>
+                      <p className="muted">No eligibility document found.</p>
+                    )}
+                  </section>
+
+                  <section className="candidate-card">
+                    <h3>Training Evidence</h3>
+                    {summaryTrainingGroups.length ? (
+                      summaryTrainingGroups.map((group, idx) => (
+                        <div key={`${group.join("|")}-${idx}`} className="candidate-detail-group">
+                          {group.map((line, lineIdx) => (
+                            <p key={`${line}-${lineIdx}`} className="candidate-detail-line">{renderSummaryDetailLine(line)}</p>
+                          ))}
+                        </div>
+                      ))
+                    ) : (
+                      <p className="muted">No matching training evidence found.</p>
                     )}
                   </section>
                 </div>
@@ -3284,7 +3617,7 @@ function App() {
                   <section className="candidate-card">
                     <h3>Qualification Status</h3>
                     <p className={`status-chip ${(summaryItem?.classification || "").toLowerCase().replace(/\s+/g, "-")}`}>
-                      {summaryItem?.classification || "Not Qualified"}
+                      {summaryItem?.classification || "Lowly Qualified"}
                     </p>
                     <div className="overall-box">
                       <p className="overall-score">{`${summaryOverall.toFixed(0)}%`}</p>
@@ -3296,12 +3629,12 @@ function App() {
                     <h3>Match Score Breakdown</h3>
                     <div className="breakdown-list">
                       <div className="bar-row">
-                        <div className="bar-label"><span>Overall Match</span><strong>{summaryOverall.toFixed(0)}%</strong></div>
-                        <div className="bar"><div style={{ width: `${summaryOverall}%` }} /></div>
-                      </div>
-                      <div className="bar-row">
                         <div className="bar-label"><span>Skills Match</span><strong>{summarySkillsMatch}%</strong></div>
                         <div className="bar"><div style={{ width: `${summarySkillsMatch}%` }} /></div>
+                      </div>
+                      <div className="bar-row">
+                        <div className="bar-label"><span>Training Match</span><strong>{summaryTrainingMatch}%</strong></div>
+                        <div className="bar"><div style={{ width: `${summaryTrainingMatch}%` }} /></div>
                       </div>
                       <div className="bar-row">
                         <div className="bar-label"><span>Education Match</span><strong>{summaryEducationMatch}%</strong></div>
@@ -3311,6 +3644,12 @@ function App() {
                         <div className="bar-label"><span>Experience Match</span><strong>{summaryExperienceMatch}%</strong></div>
                         <div className="bar"><div style={{ width: `${summaryExperienceMatch}%` }} /></div>
                       </div>
+                      {summaryEligibilityMatch != null && (
+                        <div className="bar-row">
+                          <div className="bar-label"><span>Eligibility Match</span><strong>{summaryEligibilityMatch}%</strong></div>
+                          <div className="bar"><div style={{ width: `${summaryEligibilityMatch}%` }} /></div>
+                        </div>
+                      )}
                     </div>
                   </section>
 
@@ -3318,12 +3657,25 @@ function App() {
                     <h3>Missing Skills</h3>
                     {summaryMissingSkills.length ? (
                       <div className="skills-cloud">
-                        {summaryMissingSkills.map((skill) => (
-                          <span key={`missing-${skill}`} className="skill-pill">{skill}</span>
+                        {summaryMissingSkills.map((item) => (
+                          <span key={`missing-skill-${item}`} className="skill-pill">{item}</span>
                         ))}
                       </div>
                     ) : (
-                      <p className="muted">No missing skills detected.</p>
+                      <p className="muted">No missing skill requirement detected.</p>
+                    )}
+                  </section>
+
+                  <section className="candidate-card">
+                    <h3>Missing Training</h3>
+                    {summaryMissingTraining.length ? (
+                      <div className="skills-cloud">
+                        {summaryMissingTraining.map((item) => (
+                          <span key={`missing-${item}`} className="skill-pill">{item}</span>
+                        ))}
+                      </div>
+                    ) : (
+                      <p className="muted">No missing training requirement detected.</p>
                     )}
                   </section>
                 </div>
@@ -3369,6 +3721,18 @@ function App() {
             }}
           >
             Download Summary (PDF)
+          </button>
+          <button
+            type="button"
+            className="actions-menu-item"
+            disabled={!String(actionsMenu.item?.email || "").trim()}
+            onClick={() => {
+              const target = actionsMenu.item
+              setActionsMenu(null)
+              emailJobSeeker(target)
+            }}
+          >
+            Send Email
           </button>
           {getApplicationStatus(actionsMenu.item) === "shortlisted" && (
             <button

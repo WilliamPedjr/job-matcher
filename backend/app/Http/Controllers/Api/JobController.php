@@ -235,12 +235,36 @@ class JobController extends Controller
             'minimum_education' => ['nullable', 'string'],
             'minimum_experience_years' => ['nullable', 'integer', 'min:0'],
             'application_threshold_score' => ['nullable', 'integer', 'min:0', 'max:100'],
+            'skills_weight' => ['nullable', 'integer', 'min:0', 'max:100'],
+            'training_weight' => ['nullable', 'integer', 'min:0', 'max:100'],
+            'education_weight' => ['nullable', 'integer', 'min:0', 'max:100'],
+            'experience_weight' => ['nullable', 'integer', 'min:0', 'max:100'],
+            'eligibility_weight' => ['nullable', 'integer', 'min:0', 'max:100'],
             'salary_min' => ['nullable', 'integer', 'min:0'],
             'salary_max' => ['nullable', 'integer', 'min:0'],
             'universal_match_mode' => ['nullable', 'string', 'in:match_all,moderate,not_qualified,match_55_percent'],
         ];
 
-        return $request->validate($rules);
+        $data = $request->validate($rules);
+        $weights = $this->scoringWeightsFromData($data);
+        if (array_sum($weights) > 100) {
+            throw ValidationException::withMessages([
+                'scoring_weights' => 'Scoring weights must not exceed 100%.',
+            ]);
+        }
+
+        return $data;
+    }
+
+    private function scoringWeightsFromData(array $data): array
+    {
+        return [
+            'skills' => (int) ($data['skills_weight'] ?? 20),
+            'training' => (int) ($data['training_weight'] ?? 20),
+            'education' => (int) ($data['education_weight'] ?? 20),
+            'experience' => (int) ($data['experience_weight'] ?? 20),
+            'eligibility' => (int) ($data['eligibility_weight'] ?? 20),
+        ];
     }
 
     private function mergeJobAliases(Request $request): void
@@ -252,6 +276,11 @@ class JobController extends Controller
             'minimumEducation' => 'minimum_education',
             'minimumExperienceYears' => 'minimum_experience_years',
             'applicationThresholdScore' => 'application_threshold_score',
+            'skillsWeight' => 'skills_weight',
+            'trainingWeight' => 'training_weight',
+            'educationWeight' => 'education_weight',
+            'experienceWeight' => 'experience_weight',
+            'eligibilityWeight' => 'eligibility_weight',
             'salaryMin' => 'salary_min',
             'salaryMax' => 'salary_max',
             'universalMatchMode' => 'universal_match_mode',
@@ -286,6 +315,11 @@ class JobController extends Controller
             'minimum_education' => $data['minimum_education'] ?? '',
             'minimum_experience_years' => (int) ($data['minimum_experience_years'] ?? 0),
             'application_threshold_score' => self::FIXED_APPLICATION_THRESHOLD_SCORE,
+            'skills_weight' => (int) ($data['skills_weight'] ?? 20),
+            'training_weight' => (int) ($data['training_weight'] ?? 20),
+            'education_weight' => (int) ($data['education_weight'] ?? 20),
+            'experience_weight' => (int) ($data['experience_weight'] ?? 20),
+            'eligibility_weight' => (int) ($data['eligibility_weight'] ?? 20),
             'salary_min' => $data['salary_min'] ?? null,
             'salary_max' => $data['salary_max'] ?? null,
         ];
@@ -342,6 +376,11 @@ class JobController extends Controller
             'minimum_education' => $job->minimum_education,
             'minimum_experience_years' => $job->minimum_experience_years,
             'application_threshold_score' => $job->application_threshold_score,
+            'skills_weight' => $job->skills_weight ?? 20,
+            'training_weight' => $job->training_weight ?? 20,
+            'education_weight' => $job->education_weight ?? 20,
+            'experience_weight' => $job->experience_weight ?? 20,
+            'eligibility_weight' => $job->eligibility_weight ?? 20,
             'salary_min' => $job->salary_min,
             'salary_max' => $job->salary_max,
         ]);
@@ -564,6 +603,16 @@ class JobController extends Controller
             'minimumExperienceYears' => (int) $job->minimum_experience_years,
             'application_threshold_score' => self::FIXED_APPLICATION_THRESHOLD_SCORE,
             'applicationThresholdScore' => self::FIXED_APPLICATION_THRESHOLD_SCORE,
+            'skills_weight' => (int) ($job->skills_weight ?? 20),
+            'skillsWeight' => (int) ($job->skills_weight ?? 20),
+            'training_weight' => (int) ($job->training_weight ?? 20),
+            'trainingWeight' => (int) ($job->training_weight ?? 20),
+            'education_weight' => (int) ($job->education_weight ?? 20),
+            'educationWeight' => (int) ($job->education_weight ?? 20),
+            'experience_weight' => (int) ($job->experience_weight ?? 20),
+            'experienceWeight' => (int) ($job->experience_weight ?? 20),
+            'eligibility_weight' => (int) ($job->eligibility_weight ?? 20),
+            'eligibilityWeight' => (int) ($job->eligibility_weight ?? 20),
             'salary_min' => $job->salary_min,
             'salaryMin' => $job->salary_min,
             'salary_max' => $job->salary_max,
@@ -607,6 +656,16 @@ class JobController extends Controller
             'minimumExperienceYears' => (int) $template->minimum_experience_years,
             'application_threshold_score' => self::FIXED_APPLICATION_THRESHOLD_SCORE,
             'applicationThresholdScore' => self::FIXED_APPLICATION_THRESHOLD_SCORE,
+            'skills_weight' => (int) ($template->skills_weight ?? 20),
+            'skillsWeight' => (int) ($template->skills_weight ?? 20),
+            'training_weight' => (int) ($template->training_weight ?? 20),
+            'trainingWeight' => (int) ($template->training_weight ?? 20),
+            'education_weight' => (int) ($template->education_weight ?? 20),
+            'educationWeight' => (int) ($template->education_weight ?? 20),
+            'experience_weight' => (int) ($template->experience_weight ?? 20),
+            'experienceWeight' => (int) ($template->experience_weight ?? 20),
+            'eligibility_weight' => (int) ($template->eligibility_weight ?? 20),
+            'eligibilityWeight' => (int) ($template->eligibility_weight ?? 20),
             'salary_min' => $template->salary_min,
             'salaryMin' => $template->salary_min,
             'salary_max' => $template->salary_max,

@@ -297,10 +297,15 @@
   }
 
   .page > .topbar .notifications-dropdown {
+    position: fixed !important;
     left: 12px !important;
     right: 12px !important;
-    top: 68px !important;
+    top: 64px !important;
+    bottom: 12px !important;
     width: auto !important;
+    max-height: none !important;
+    overflow-y: auto !important;
+    overflow-x: hidden !important;
   }
 
   .page > .topbar .profile-dropdown {

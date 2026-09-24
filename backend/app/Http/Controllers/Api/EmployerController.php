@@ -14,6 +14,9 @@ use Illuminate\Support\Str;
 
 class EmployerController extends Controller
 {
+    private const POSITION_TYPES = ['personnel', 'board'];
+    private const ACCESS_PAGES = ['dashboard', 'jobs', 'applicants', 'ratings', 'profile', 'users', 'archive', 'help'];
+
     public function index(): JsonResponse
     {
         $employers = Employer::query()->orderBy('id')->get()->map(fn (Employer $employer) => $this->serialize($employer));
@@ -27,6 +30,9 @@ class EmployerController extends Controller
         $data = $request->validate([
             'company_name' => ['nullable', 'string', 'max:255'],
             'full_name' => ['nullable', 'string', 'max:255'],
+            'position_type' => ['nullable', 'string', Rule::in(self::POSITION_TYPES)],
+            'page_access' => ['nullable', 'array'],
+            'page_access.*' => ['string', Rule::in(self::ACCESS_PAGES)],
             'email' => ['nullable', 'required_without:id_number', 'email', 'max:255', 'unique:employers,email'],
             'username' => ['nullable', 'string', 'max:255', 'unique:employers,username'],
             'id_number' => ['nullable', 'required_without:email', 'string', 'max:255', 'unique:employers,id_number'],
@@ -37,6 +43,8 @@ class EmployerController extends Controller
         $employer = Employer::create([
             'company_name' => $data['company_name'] ?? null,
             'full_name' => $data['full_name'] ?? null,
+            'position_type' => $this->normalizePositionType($data['position_type'] ?? null),
+            'page_access' => $this->normalizePageAccess($data['page_access'] ?? null),
             'email' => isset($data['email']) ? Str::lower(trim((string) $data['email'])) : null,
             'username' => $this->nullableTrim($data['username'] ?? null),
             'id_number' => $this->nullableTrim($data['id_number'] ?? null),
@@ -52,6 +60,8 @@ class EmployerController extends Controller
             'metadata' => [
                 'email' => $employer->email,
                 'id_number' => $employer->id_number,
+                'position_type' => $employer->position_type,
+                'page_access' => $employer->page_access,
                 'role' => 'employer',
             ],
         ]);
@@ -68,6 +78,9 @@ class EmployerController extends Controller
         $data = $request->validate([
             'company_name' => ['nullable', 'string', 'max:255'],
             'full_name' => ['nullable', 'string', 'max:255'],
+            'position_type' => ['nullable', 'string', Rule::in(self::POSITION_TYPES)],
+            'page_access' => ['nullable', 'array'],
+            'page_access.*' => ['string', Rule::in(self::ACCESS_PAGES)],
             'email' => ['nullable', 'email', 'max:255', Rule::unique('employers', 'email')->ignore($employer->id)],
             'username' => ['nullable', 'string', 'max:255', Rule::unique('employers', 'username')->ignore($employer->id)],
             'id_number' => ['nullable', 'string', 'max:255', Rule::unique('employers', 'id_number')->ignore($employer->id)],
@@ -80,6 +93,12 @@ class EmployerController extends Controller
         }
         if (array_key_exists('full_name', $data)) {
             $employer->full_name = $data['full_name'];
+        }
+        if (array_key_exists('position_type', $data)) {
+            $employer->position_type = $this->normalizePositionType($data['position_type']);
+        }
+        if (array_key_exists('page_access', $data)) {
+            $employer->page_access = $this->normalizePageAccess($data['page_access']);
         }
         if (array_key_exists('email', $data)) {
             $employer->email = Str::lower(trim((string) $data['email']));
@@ -155,6 +174,10 @@ class EmployerController extends Controller
             'full_name' => $employer->full_name,
             'fullName' => $employer->full_name,
             'contactName' => $employer->full_name,
+            'position_type' => $employer->position_type ?: 'personnel',
+            'positionType' => $employer->position_type ?: 'personnel',
+            'page_access' => $employer->page_access,
+            'pageAccess' => $employer->page_access,
             'email' => $employer->email,
             'username' => $employer->username,
             'id_number' => $employer->id_number,
@@ -173,6 +196,8 @@ class EmployerController extends Controller
             'companyName' => 'company_name',
             'contactName' => 'full_name',
             'idNumber' => 'id_number',
+            'positionType' => 'position_type',
+            'pageAccess' => 'page_access',
         ];
 
         $merged = [];
@@ -192,5 +217,26 @@ class EmployerController extends Controller
         $value = trim((string) $value);
 
         return $value !== '' ? $value : null;
+    }
+
+    private function normalizePositionType(?string $value): string
+    {
+        $normalized = Str::lower(trim((string) $value));
+
+        return in_array($normalized, self::POSITION_TYPES, true) ? $normalized : 'personnel';
+    }
+
+    private function normalizePageAccess(mixed $value): array
+    {
+        if (!is_array($value)) {
+            return self::ACCESS_PAGES;
+        }
+
+        $allowed = array_values(array_unique(array_filter(array_map(
+            fn ($page) => Str::lower(trim((string) $page)),
+            $value
+        ), fn ($page) => in_array($page, self::ACCESS_PAGES, true))));
+
+        return $allowed ?: ['profile', 'help'];
     }
 }

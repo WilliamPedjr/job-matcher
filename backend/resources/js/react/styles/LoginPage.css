@@ -523,7 +523,8 @@ optgroup {
   background: #f59e0b;
 }
 
-.table-classification.not-qualified {
+.table-classification.not-qualified,
+.table-classification.lowly-qualified {
   background: #dc2626;
 }
 
@@ -889,7 +890,8 @@ optgroup {
   background: #f59e0b;
 }
 
-.status-chip.not-qualified {
+.status-chip.not-qualified,
+.status-chip.lowly-qualified {
   background: #dc2626;
 }
 

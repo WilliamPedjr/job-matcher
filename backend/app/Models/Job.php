@@ -13,6 +13,11 @@ class Job extends Model
 
     protected $casts = [
         'deadline' => 'date',
+        'skills_weight' => 'integer',
+        'training_weight' => 'integer',
+        'education_weight' => 'integer',
+        'experience_weight' => 'integer',
+        'eligibility_weight' => 'integer',
     ];
 
     protected $fillable = [
@@ -32,6 +37,11 @@ class Job extends Model
         'minimum_education',
         'minimum_experience_years',
         'application_threshold_score',
+        'skills_weight',
+        'training_weight',
+        'education_weight',
+        'experience_weight',
+        'eligibility_weight',
         'salary_min',
         'salary_max',
     ];

@@ -27,6 +27,26 @@ function getEvaluationStatusLabel(item) {
   return 'Shortlisted'
 }
 
+function buildApplicantEmailDraft(item, senderEmail = '') {
+  const email = String(item?.email || '').trim().replace(/[\s<>()[\]\\,;:"]+/g, '')
+  if (!email) return null
+  const sender = String(senderEmail || '').trim()
+
+  const applicantName = String(item?.name || '').trim()
+  const jobTitle = getPosition(item)
+  const subject = jobTitle && jobTitle !== 'No position selected'
+    ? `Regarding your application for ${jobTitle}`
+    : 'Regarding your job application'
+  const greeting = applicantName ? `Hello ${applicantName},` : 'Hello,'
+  const body = `${greeting}\n\nWe are contacting you about your application${jobTitle && jobTitle !== 'No position selected' ? ` for ${jobTitle}` : ''}.\n\nThank you,\nLNU-HiRe Personnel`
+
+  return {
+    email,
+    gmail: `https://mail.google.com/mail/?view=cm&fs=1${sender ? `&authuser=${encodeURIComponent(sender)}` : ''}&to=${encodeURIComponent(email)}&su=${encodeURIComponent(subject)}&body=${encodeURIComponent(body)}`,
+    mailto: `mailto:${email}?subject=${encodeURIComponent(subject)}&body=${encodeURIComponent(body)}`
+  }
+}
+
 const defaultRatingCriteria = [
   'Appearance and Grooming',
   'Technical Knowledge and Mastery',
@@ -434,6 +454,19 @@ function RatingsPage({ uploads = [], isLoading = false, currentUser = null, onRa
       top: rect.bottom + 6,
       left: Math.max(12, rect.right - 150)
     })
+  }
+
+  const emailApplicant = (item) => {
+    const draft = buildApplicantEmailDraft(item, currentUser?.email || '')
+    if (!draft) {
+      showRatingNotice('fail', 'This applicant has no email address.')
+      return
+    }
+
+    const emailWindow = window.open(draft.gmail, '_blank', 'noopener,noreferrer')
+    if (!emailWindow) {
+      window.location.href = draft.mailto
+    }
   }
 
   const demonstrationCriteria = useMemo(() => (
@@ -1592,6 +1625,18 @@ function RatingsPage({ uploads = [], isLoading = false, currentUser = null, onRa
             }}
           >
             View
+          </button>
+          <button
+            type="button"
+            className="actions-menu-item"
+            disabled={!String(actionsMenu.item?.email || '').trim()}
+            onClick={() => {
+              const target = actionsMenu.item
+              setActionsMenu(null)
+              emailApplicant(target)
+            }}
+          >
+            Send Email
           </button>
           {hasSavedFormRating(actionsMenu.item, 'interview') && (
             <button

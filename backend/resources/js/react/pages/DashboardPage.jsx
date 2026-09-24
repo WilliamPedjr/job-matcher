@@ -2,6 +2,8 @@ import React from 'react'
 import "../styles/DashboardPage.css"
 import { useEffect, useMemo, useState } from "react"
 
+const TOP_APPLICANTS_PAGE_SIZE = 6
+
 function DashboardPage({
   dashboardData,
   onViewAllJobs,
@@ -11,7 +13,19 @@ function DashboardPage({
   const [selectedJobType, setSelectedJobType] = useState("Non-Teaching")
   const [selectedJobTitle, setSelectedJobTitle] = useState("all")
   const [isTopApplicantsModalOpen, setIsTopApplicantsModalOpen] = useState(false)
+  const [topApplicantsPage, setTopApplicantsPage] = useState(1)
   const positionTypes = ["Teaching", "Non-Teaching"]
+
+  const topApplicantsByJob = useMemo(() => {
+    return Array.isArray(dashboardData?.topApplicantsByJob) ? dashboardData.topApplicantsByJob : []
+  }, [dashboardData?.topApplicantsByJob])
+
+  const topApplicantsPageCount = Math.max(1, Math.ceil(topApplicantsByJob.length / TOP_APPLICANTS_PAGE_SIZE))
+
+  const paginatedTopApplicants = useMemo(() => {
+    const start = (topApplicantsPage - 1) * TOP_APPLICANTS_PAGE_SIZE
+    return topApplicantsByJob.slice(start, start + TOP_APPLICANTS_PAGE_SIZE)
+  }, [topApplicantsByJob, topApplicantsPage])
 
   const jobGroups = useMemo(() => {
     const jobs = Array.isArray(dashboardData?.applicantJobs) ? dashboardData.applicantJobs : []
@@ -35,6 +49,12 @@ function DashboardPage({
       setSelectedJobTitle("all")
     }
   }, [selectedJobTitle, typedJobs])
+
+  useEffect(() => {
+    if (topApplicantsPage > topApplicantsPageCount) {
+      setTopApplicantsPage(topApplicantsPageCount)
+    }
+  }, [topApplicantsPage, topApplicantsPageCount])
 
   const selectedJobStats = useMemo(() => {
     if (selectedJobTitle !== "all") {
@@ -160,7 +180,7 @@ function DashboardPage({
                     </li>
                     <li>
                       <span className="dot dot-red" />
-                      Not Qualified
+                      Lowly Qualified
                       <strong>{notQualified} ({notPct}%)</strong>
                     </li>
                   </ul>
@@ -313,45 +333,69 @@ function DashboardPage({
             View All →
           </button>
         </div>
-        {dashboardData.topApplicantsByJob?.length === 0 ? (
+        {topApplicantsByJob.length === 0 ? (
           <p className="muted">No applicants ranked by job yet.</p>
         ) : (
-          <div className="top-applicants-grid">
-            {dashboardData.topApplicantsByJob.map(({ jobTitle, applicant, totalApplicants }) => {
-              const cls = String(applicant?.classification || "").toLowerCase()
-              const pillClass = cls.includes("not")
-                ? "dash-pill-bad"
-                : cls.includes("moderately")
-                  ? "dash-pill-warn"
-                  : "dash-pill-good"
+          <>
+            <div className="top-applicants-grid">
+              {paginatedTopApplicants.map(({ jobTitle, applicant, totalApplicants }) => {
+                const cls = String(applicant?.classification || "").toLowerCase()
+                const pillClass = cls.includes("not")
+                  ? "dash-pill-bad"
+                  : cls.includes("moderately")
+                    ? "dash-pill-warn"
+                    : "dash-pill-good"
 
-              return (
-                <article key={`top-applicant-${jobTitle}`} className="top-applicant-card">
-                  <div className="top-applicant-job">
-                    <span>{jobTitle}</span>
-                    <strong>{totalApplicants} applicant{totalApplicants === 1 ? "" : "s"}</strong>
-                  </div>
-                  <div className="top-applicant-person">
-                    <div>
-                      <p className="dashboard-item-title">{applicant?.name || "(No name)"}</p>
-                      <p className="dashboard-item-subtitle">{applicant?.email || "No email"}</p>
+                return (
+                  <article key={`top-applicant-${jobTitle}`} className="top-applicant-card">
+                    <div className="top-applicant-job">
+                      <span>{jobTitle}</span>
+                      <strong>{totalApplicants} applicant{totalApplicants === 1 ? "" : "s"}</strong>
                     </div>
-                    <button
-                      type="button"
-                      className={`dash-pill ${pillClass}`}
-                      onClick={() => onViewApplicant(applicant)}
-                    >
-                      {applicant?.match_score != null ? `${Number(applicant.match_score).toFixed(0)}%` : "View"}
-                    </button>
-                  </div>
-                  <div className="top-applicant-foot">
-                    <span>{applicant?.classification || "Unclassified"}</span>
-                    <button type="button" onClick={() => onViewApplicant(applicant)}>View Summary</button>
-                  </div>
-                </article>
-              )
-            })}
-          </div>
+                    <div className="top-applicant-person">
+                      <div>
+                        <p className="dashboard-item-title">{applicant?.name || "(No name)"}</p>
+                        <p className="dashboard-item-subtitle">{applicant?.email || "No email"}</p>
+                      </div>
+                      <button
+                        type="button"
+                        className={`dash-pill ${pillClass}`}
+                        onClick={() => onViewApplicant(applicant)}
+                      >
+                        {applicant?.match_score != null ? `${Number(applicant.match_score).toFixed(0)}%` : "View"}
+                      </button>
+                    </div>
+                    <div className="top-applicant-foot">
+                      <span>{applicant?.classification || "Unclassified"}</span>
+                      <button type="button" onClick={() => onViewApplicant(applicant)}>View Summary</button>
+                    </div>
+                  </article>
+                )
+              })}
+            </div>
+
+            {topApplicantsPageCount > 1 && (
+              <div className="top-applicants-pagination">
+                <button
+                  type="button"
+                  className="dashboard-page-btn"
+                  disabled={topApplicantsPage === 1}
+                  onClick={() => setTopApplicantsPage((page) => Math.max(1, page - 1))}
+                >
+                  Previous
+                </button>
+                <span>Page {topApplicantsPage} of {topApplicantsPageCount}</span>
+                <button
+                  type="button"
+                  className="dashboard-page-btn"
+                  disabled={topApplicantsPage === topApplicantsPageCount}
+                  onClick={() => setTopApplicantsPage((page) => Math.min(topApplicantsPageCount, page + 1))}
+                >
+                  Next
+                </button>
+              </div>
+            )}
+          </>
         )}
       </section>
 

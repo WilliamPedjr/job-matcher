@@ -25,6 +25,28 @@ const jobEligibilityLabels = [
   otherEligibilityOption
 ]
 const jobEligibilityOptions = jobEligibilityLabels.map((eligibility) => ({ value: eligibility, label: eligibility }))
+const defaultScoringWeights = {
+  skills: "20",
+  training: "20",
+  education: "20",
+  experience: "20",
+  eligibility: "20"
+}
+const scoringCriteria = [
+  { key: "skills", label: "Skills" },
+  { key: "training", label: "Training" },
+  { key: "education", label: "Education" },
+  { key: "experience", label: "Experience" },
+  { key: "eligibility", label: "Eligibility" }
+]
+
+const scoringWeightsFromRecord = (record = {}) => ({
+  skills: String(record.skillsWeight ?? record.skills_weight ?? defaultScoringWeights.skills),
+  training: String(record.trainingWeight ?? record.training_weight ?? defaultScoringWeights.training),
+  education: String(record.educationWeight ?? record.education_weight ?? defaultScoringWeights.education),
+  experience: String(record.experienceWeight ?? record.experience_weight ?? defaultScoringWeights.experience),
+  eligibility: String(record.eligibilityWeight ?? record.eligibility_weight ?? defaultScoringWeights.eligibility)
+})
 
 const resolveJobEligibilitySelection = (value) => {
   const cleaned = String(value || "").trim()
@@ -91,6 +113,7 @@ function JobPostingPage({ uploads = [], isEmployer = false, isJobSeeker = false,
   const [newMinimumEducation, setNewMinimumEducation] = useState("Bachelor's Degree")
   const [newMinimumExperienceYears, setNewMinimumExperienceYears] = useState("0")
   const [newApplicationThresholdScore, setNewApplicationThresholdScore] = useState("50")
+  const [newScoringWeights, setNewScoringWeights] = useState(defaultScoringWeights)
   const [newSalaryMin, setNewSalaryMin] = useState("")
   const [newSalaryMax, setNewSalaryMax] = useState("")
   const [isCreatingJob, setIsCreatingJob] = useState(false)
@@ -117,6 +140,8 @@ function JobPostingPage({ uploads = [], isEmployer = false, isJobSeeker = false,
   const [deleteToast, setDeleteToast] = useState(null)
   const deleteToastTimerRef = useRef(null)
   const isEditingJob = editingJobId != null
+  const scoringTotal = scoringCriteria.reduce((sum, item) => sum + (Number(newScoringWeights[item.key]) || 0), 0)
+  const scoringTotalIsValid = scoringTotal <= 100
   const CARD_PAGE_SIZE = 6
   const TABLE_PAGE_SIZE = 10
   const descriptionRef = useRef(null)
@@ -932,6 +957,7 @@ function JobPostingPage({ uploads = [], isEmployer = false, isJobSeeker = false,
     setNewMinimumEducation(selected.minimumEducation || "")
     setNewMinimumExperienceYears(String(selected.minimumExperienceYears ?? 0))
     setNewApplicationThresholdScore(String(selected.applicationThresholdScore ?? selected.application_threshold_score ?? 50))
+    setNewScoringWeights(scoringWeightsFromRecord(selected))
     setNewSalaryMin(selected.salaryMin != null ? String(selected.salaryMin) : "")
     setNewSalaryMax(selected.salaryMax != null ? String(selected.salaryMax) : "")
   }
@@ -951,6 +977,7 @@ function JobPostingPage({ uploads = [], isEmployer = false, isJobSeeker = false,
     setNewMinimumEducation(record.minimumEducation || "")
     setNewMinimumExperienceYears(String(record.minimumExperienceYears ?? 0))
     setNewApplicationThresholdScore(String(record.applicationThresholdScore ?? record.application_threshold_score ?? 50))
+    setNewScoringWeights(scoringWeightsFromRecord(record))
     setNewSalaryMin(record.salaryMin != null ? String(record.salaryMin) : "")
     setNewSalaryMax(record.salaryMax != null ? String(record.salaryMax) : "")
   }
@@ -1125,6 +1152,24 @@ function JobPostingPage({ uploads = [], isEmployer = false, isJobSeeker = false,
     ? newJobCustomEligibility.trim()
     : newJobEligibility.trim()
 
+  const setScoringWeight = (key, value) => {
+    const normalizedValue = String(value || "").replace(/[^\d]/g, "")
+    setNewScoringWeights((prev) => {
+      if (normalizedValue === "") {
+        return { ...prev, [key]: "" }
+      }
+      const otherTotal = scoringCriteria.reduce((sum, item) => {
+        if (item.key === key) return sum
+        return sum + (Number(prev[item.key]) || 0)
+      }, 0)
+      const maxForField = Math.max(0, 100 - otherTotal)
+      return {
+        ...prev,
+        [key]: String(Math.min(maxForField, Number(normalizedValue)))
+      }
+    })
+  }
+
   const resetJobForm = () => {
     setNewJobTitle("")
     setNewJobDescription("")
@@ -1143,6 +1188,7 @@ function JobPostingPage({ uploads = [], isEmployer = false, isJobSeeker = false,
     setNewMinimumEducation("")
     setNewMinimumExperienceYears("0")
     setNewApplicationThresholdScore("50")
+    setNewScoringWeights(defaultScoringWeights)
     setNewSalaryMin("")
     setNewSalaryMax("")
     setSkillDraft("")
@@ -1167,6 +1213,7 @@ function JobPostingPage({ uploads = [], isEmployer = false, isJobSeeker = false,
     minimumEducation: newMinimumEducation,
     minimumExperienceYears: newMinimumExperienceYears,
     applicationThresholdScore: newApplicationThresholdScore,
+    scoringWeights: newScoringWeights,
     salaryMin: newSalaryMin,
     salaryMax: newSalaryMax,
     savedAt: new Date().toISOString()
@@ -1184,6 +1231,7 @@ function JobPostingPage({ uploads = [], isEmployer = false, isJobSeeker = false,
       draft.minimumEducation,
       draft.minimumExperienceYears !== "0" ? draft.minimumExperienceYears : "",
       draft.applicationThresholdScore !== "50" ? draft.applicationThresholdScore : "",
+      JSON.stringify(draft.scoringWeights || {}) !== JSON.stringify(defaultScoringWeights) ? "scoring" : "",
       draft.salaryMin,
       draft.salaryMax
     ].some((value) => String(value ?? "").trim())
@@ -1234,6 +1282,7 @@ function JobPostingPage({ uploads = [], isEmployer = false, isJobSeeker = false,
     setNewMinimumEducation(draft?.minimumEducation || "")
     setNewMinimumExperienceYears(String(draft?.minimumExperienceYears ?? 0))
     setNewApplicationThresholdScore(String(draft?.applicationThresholdScore ?? 50))
+    setNewScoringWeights({ ...defaultScoringWeights, ...(draft?.scoringWeights || {}) })
     setNewSalaryMin(draft?.salaryMin != null ? String(draft.salaryMin) : "")
     setNewSalaryMax(draft?.salaryMax != null ? String(draft.salaryMax) : "")
     setSkillDraft("")
@@ -1296,6 +1345,7 @@ function JobPostingPage({ uploads = [], isEmployer = false, isJobSeeker = false,
     setNewMinimumEducation(job.minimumEducation || "")
     setNewMinimumExperienceYears(String(job.minimumExperienceYears ?? 0))
     setNewApplicationThresholdScore(String(job.applicationThresholdScore ?? job.application_threshold_score ?? 50))
+    setNewScoringWeights(scoringWeightsFromRecord(job))
     setNewSalaryMin(job.salaryMin != null ? String(job.salaryMin) : "")
     setNewSalaryMax(job.salaryMax != null ? String(job.salaryMax) : "")
     setSkillDraft("")
@@ -1338,6 +1388,7 @@ function JobPostingPage({ uploads = [], isEmployer = false, isJobSeeker = false,
       !newRequiredSkills.trim() ||
       !newMinimumEducation.trim() ||
       newMinimumExperienceYears === "" ||
+      !scoringTotalIsValid ||
       newSalaryMin === "" ||
       newSalaryMax === ""
     )
@@ -1355,6 +1406,12 @@ function JobPostingPage({ uploads = [], isEmployer = false, isJobSeeker = false,
 
     if (Number.isNaN(minExp) || minExp < 0) {
       showCreateJobNotice("fail", "Minimum experience must be a valid non-negative number.")
+      scrollCreateJobModalToTop()
+      return
+    }
+
+    if (!scoringTotalIsValid) {
+      showCreateJobNotice("fail", "Scoring weights must not exceed 100%.")
       scrollCreateJobModalToTop()
       return
     }
@@ -1396,6 +1453,11 @@ function JobPostingPage({ uploads = [], isEmployer = false, isJobSeeker = false,
           universalMatchMode: newUniversalMatchMode,
           minimumEducation: newMinimumEducation,
           minimumExperienceYears: minExp,
+          skillsWeight: Number(newScoringWeights.skills) || 0,
+          trainingWeight: Number(newScoringWeights.training) || 0,
+          educationWeight: Number(newScoringWeights.education) || 0,
+          experienceWeight: Number(newScoringWeights.experience) || 0,
+          eligibilityWeight: Number(newScoringWeights.eligibility) || 0,
           salaryMin,
           salaryMax
         })
@@ -1435,6 +1497,7 @@ function JobPostingPage({ uploads = [], isEmployer = false, isJobSeeker = false,
       !newRequiredSkills.trim() ||
       !newMinimumEducation.trim() ||
       newMinimumExperienceYears === "" ||
+      !scoringTotalIsValid ||
       newSalaryMin === "" ||
       newSalaryMax === ""
     )
@@ -1452,6 +1515,12 @@ function JobPostingPage({ uploads = [], isEmployer = false, isJobSeeker = false,
 
     if (Number.isNaN(minExp) || minExp < 0) {
       showCreateJobNotice("fail", "Minimum experience must be a valid non-negative number.")
+      scrollCreateJobModalToTop()
+      return
+    }
+
+    if (!scoringTotalIsValid) {
+      showCreateJobNotice("fail", "Scoring weights must not exceed 100%.")
       scrollCreateJobModalToTop()
       return
     }
@@ -1493,6 +1562,11 @@ function JobPostingPage({ uploads = [], isEmployer = false, isJobSeeker = false,
           universalMatchMode: newUniversalMatchMode,
           minimumEducation: newMinimumEducation,
           minimumExperienceYears: minExp,
+          skillsWeight: Number(newScoringWeights.skills) || 0,
+          trainingWeight: Number(newScoringWeights.training) || 0,
+          educationWeight: Number(newScoringWeights.education) || 0,
+          experienceWeight: Number(newScoringWeights.experience) || 0,
+          eligibilityWeight: Number(newScoringWeights.eligibility) || 0,
           salaryMin,
           salaryMax
         })
@@ -1564,6 +1638,7 @@ function JobPostingPage({ uploads = [], isEmployer = false, isJobSeeker = false,
     return (
       <span className={`job-chip ${match.qualifies ? "chip-good" : "chip-bad"}`}>
         <span className="job-chip-label">{match.qualifies ? "match" : "not match"}</span>
+        <span className="job-chip-score">{Number(match.score).toFixed(0)}%</span>
       </span>
     )
   }
@@ -1783,6 +1858,13 @@ function JobPostingPage({ uploads = [], isEmployer = false, isJobSeeker = false,
 
                     <p className="job-description">{job.description || "-"}</p>
 
+                    {isJobSeeker && (
+                      <div className="job-card-match">
+                        <span>Match Percentage</span>
+                        {getJobMatchContent(job)}
+                      </div>
+                    )}
+
                     <div className="job-card-skill-preview">
                       <span className="job-card-skill-label">Required Skills</span>
                       <div className="job-card-chips job-card-skill-chips">
@@ -2000,8 +2082,8 @@ function JobPostingPage({ uploads = [], isEmployer = false, isJobSeeker = false,
                             </span>
                           </td>
                           <td>
-                            <span className={`table-classification ${(item.classification || "Not Qualified").toLowerCase().replace(/\s+/g, "-")}`}>
-                              {item.classification || "Not Qualified"}
+                            <span className={`table-classification ${(item.classification || "Lowly Qualified").toLowerCase().replace(/\s+/g, "-")}`}>
+                              {item.classification || "Lowly Qualified"}
                             </span>
                           </td>
                           <td>{item.original_name || "-"}</td>
@@ -2456,6 +2538,28 @@ function JobPostingPage({ uploads = [], isEmployer = false, isJobSeeker = false,
                       />
                     </div>
 
+                  </div>
+
+                  <div className="field-group">
+                    <label>Scoring Criteria</label>
+                    <div className="scoring-weight-grid">
+                      {scoringCriteria.map((criterion) => (
+                        <div key={criterion.key} className="scoring-weight-field">
+                          <span>{criterion.label}</span>
+                          <input
+                            className={requiredInputClass(newScoringWeights[criterion.key])}
+                            type="number"
+                            min="0"
+                            max="100"
+                            value={newScoringWeights[criterion.key]}
+                            onChange={(e) => setScoringWeight(criterion.key, e.target.value)}
+                          />
+                        </div>
+                      ))}
+                    </div>
+                    <div className={`scoring-weight-total ${scoringTotalIsValid ? "valid" : "invalid"}`}>
+                      Total: {scoringTotal}% {scoringTotal >= 100 ? "(reduce another criterion to add more)" : ""}
+                    </div>
                   </div>
 
                   <div className="modal-grid">

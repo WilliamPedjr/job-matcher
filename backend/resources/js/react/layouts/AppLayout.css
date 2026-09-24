@@ -354,6 +354,175 @@ body {
   border-bottom: none;
 }
 
+@media (max-width: 640px) {
+  .page > .topbar .notifications-dropdown {
+    position: fixed !important;
+    left: 12px !important;
+    right: 12px !important;
+    top: 64px !important;
+    bottom: 12px !important;
+    width: auto !important;
+    max-height: none !important;
+    padding: 14px !important;
+    overflow-y: auto !important;
+    overflow-x: hidden !important;
+    border-radius: 12px !important;
+  }
+
+  .notifications-header {
+    flex-direction: column;
+    gap: 10px;
+  }
+
+  .notifications-header-actions {
+    width: 100%;
+  }
+
+  .notifications-mark-read {
+    width: 100%;
+    min-height: 38px;
+  }
+
+  .notifications-controls {
+    grid-template-columns: 1fr;
+    padding: 10px;
+  }
+
+  .notifications-search,
+  .notifications-select {
+    width: 100%;
+    min-width: 0;
+  }
+
+  .notifications-table {
+    overflow: visible;
+  }
+
+  .notifications-table table,
+  .notifications-table thead,
+  .notifications-table tbody,
+  .notifications-table tr,
+  .notifications-table th,
+  .notifications-table td {
+    display: block;
+  }
+
+  .notifications-table thead {
+    display: none;
+  }
+
+  .notifications-table tbody tr {
+    display: grid;
+    grid-template-columns: minmax(0, 1fr) auto;
+    gap: 8px 12px;
+    padding: 12px;
+    border-bottom: 1px solid #edf0f5;
+  }
+
+  .notifications-table tbody tr:last-child {
+    border-bottom: none;
+  }
+
+  .notifications-table th,
+  .notifications-table td {
+    padding: 0;
+    border-bottom: none;
+    min-width: 0;
+  }
+
+  .notifications-table td:first-child {
+    grid-column: 1 / -1;
+    color: #111827;
+    font-weight: 800;
+    line-height: 1.35;
+    word-break: break-word;
+  }
+
+  .notifications-table td:nth-child(2),
+  .notifications-table td:nth-child(3) {
+    color: #516079;
+    font-size: var(--fs-13);
+    line-height: 1.35;
+  }
+
+  .notifications-table td:nth-child(2)::before {
+    content: "Department/Units";
+    display: block;
+    margin-bottom: 2px;
+    color: #8a94a6;
+    font-size: 11px;
+    font-weight: 800;
+    text-transform: uppercase;
+    letter-spacing: 0.03em;
+  }
+
+  .notifications-table td:nth-child(3)::before {
+    content: "Date Applied";
+    display: block;
+    margin-bottom: 2px;
+    color: #8a94a6;
+    font-size: 11px;
+    font-weight: 800;
+    text-transform: uppercase;
+    letter-spacing: 0.03em;
+  }
+
+  .notifications-table td:nth-child(4) {
+    justify-self: end;
+    align-self: end;
+  }
+
+  .notifications-table td:nth-child(4)::before {
+    content: "Status";
+    display: block;
+    margin-bottom: 4px;
+    color: #8a94a6;
+    font-size: 11px;
+    font-weight: 800;
+    text-align: right;
+    text-transform: uppercase;
+    letter-spacing: 0.03em;
+  }
+
+  .notifications-table td:nth-child(5) {
+    grid-column: 1 / -1;
+    justify-self: end;
+  }
+
+  .notification-status {
+    max-width: 130px;
+    min-height: 24px;
+    padding: 5px 9px;
+    font-size: 10px;
+    line-height: 1;
+    white-space: nowrap;
+  }
+
+  .notification-delete-btn {
+    min-height: 32px;
+  }
+
+  .notifications-empty {
+    grid-column: 1 / -1;
+    padding: 10px 0;
+  }
+
+  .notifications-footer {
+    align-items: stretch;
+    flex-direction: column;
+    gap: 10px;
+  }
+
+  .notifications-pagination {
+    justify-content: space-between;
+    width: 100%;
+  }
+
+  .notifications-pagination button {
+    min-height: 34px;
+  }
+}
+
 .notifications-table tr.notification-row-unread td {
   background: #eef5ff;
   font-weight: 700;
@@ -1368,7 +1537,8 @@ optgroup {
   background: #f59e0b;
 }
 
-.table-classification.not-qualified {
+.table-classification.not-qualified,
+.table-classification.lowly-qualified {
   background: #dc2626;
 }
 
@@ -1443,6 +1613,7 @@ optgroup {
 
 .actions-cell {
   text-align: center;
+  white-space: nowrap;
 }
 
 .actions-col {
@@ -1469,6 +1640,13 @@ optgroup {
   background: #eef2f7;
   border-color: #d0d9e5;
   color: #263242;
+}
+
+.action-btn:disabled {
+  color: #98a2b3;
+  cursor: not-allowed;
+  background: #f8fafc;
+  border-color: #d8dee8;
 }
 
 .actions-dropdown {
@@ -2053,7 +2231,8 @@ optgroup {
   background: #f59e0b;
 }
 
-.status-chip.not-qualified {
+.status-chip.not-qualified,
+.status-chip.lowly-qualified {
   background: #dc2626;
 }
 

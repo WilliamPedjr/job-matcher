@@ -597,7 +597,8 @@ optgroup {
   background: #f59e0b;
 }
 
-.table-classification.not-qualified {
+.table-classification.not-qualified,
+.table-classification.lowly-qualified {
   background: #dc2626;
 }
 
@@ -1031,7 +1032,8 @@ optgroup {
   background: #f59e0b;
 }
 
-.status-chip.not-qualified {
+.status-chip.not-qualified,
+.status-chip.lowly-qualified {
   background: #dc2626;
 }
 
@@ -1504,6 +1506,11 @@ optgroup {
 .jobs-match-cell .job-chip-label {
   font-size: 11px;
   font-weight: 800;
+}
+
+.job-chip-score {
+  font-size: 14px;
+  font-weight: 900;
 }
 
 .jobs-match-cell,
@@ -1985,6 +1992,46 @@ optgroup {
   font-size: 14px;
   line-height: 1;
   padding: 0;
+}
+
+.scoring-weight-grid {
+  display: grid;
+  grid-template-columns: repeat(5, minmax(0, 1fr));
+  gap: 10px;
+}
+
+.scoring-weight-field {
+  display: grid;
+  gap: 6px;
+}
+
+.scoring-weight-field span {
+  color: #475569;
+  font-size: 12px;
+  font-weight: 800;
+}
+
+.scoring-weight-field input {
+  width: 100%;
+  border: 1px solid #cbd5e1;
+  border-radius: 8px;
+  padding: 10px 8px;
+  font-size: 14px;
+  font-weight: 800;
+}
+
+.scoring-weight-total {
+  margin-top: 8px;
+  font-size: 13px;
+  font-weight: 800;
+}
+
+.scoring-weight-total.valid {
+  color: #15803d;
+}
+
+.scoring-weight-total.invalid {
+  color: #dc2626;
 }
 
 .create-job-description {
@@ -3250,4 +3297,16 @@ optgroup {
   margin-top: 16px;
   display: flex;
   justify-content: flex-end;
+}
+
+@media (max-width: 900px) {
+  .scoring-weight-grid {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+}
+
+@media (max-width: 480px) {
+  .scoring-weight-grid {
+    grid-template-columns: 1fr;
+  }
 }
