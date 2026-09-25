@@ -45,7 +45,7 @@ function LandingPage({ onPersonnelLoginClick, onJobSeekerLoginClick, onRegisterC
   const paginatedJobs = availableJobs.slice((activeJobsPage - 1) * jobsPerPage, activeJobsPage * jobsPerPage)
 
   const highlights = [
-    "Resume screening",
+    "Personal Data Sheet(PDS) screening",
     "Applicant shortlisting",
     "Job posting tools",
     "Role-based workspace",
@@ -174,7 +174,7 @@ function LandingPage({ onPersonnelLoginClick, onJobSeekerLoginClick, onRegisterC
             </div>
           </div>
           {/* <p className="landing-subtitle">
-            Manage job posts, applicants, resumes, and evaluations in one simple place.
+            Manage job posts, applicants, Personal Data Sheet(PDS) files, and evaluations in one simple place.
           </p> */}
 
 
@@ -204,7 +204,7 @@ function LandingPage({ onPersonnelLoginClick, onJobSeekerLoginClick, onRegisterC
 
       {/* <section className="landing-trustbar" aria-label="Key capabilities">
         <div className="landing-trustbar-inner">
-          <span>Resume parsing</span>
+          <span>Personal Data Sheet(PDS) parsing</span>
           <span>Skill matching</span>
           <span>Applicant ranking</span>
           <span>Secure records</span>
@@ -303,7 +303,7 @@ function LandingPage({ onPersonnelLoginClick, onJobSeekerLoginClick, onRegisterC
         <div className="landing-features-grid">
           <article className="landing-feature-card">
             <div className="landing-feature-icon">01</div>
-            <h3>Resume & document analysis</h3>
+            <h3>Personal Data Sheet(PDS) & document analysis</h3>
             <p>Read submitted files faster.</p>
           </article>
 
@@ -344,7 +344,7 @@ function LandingPage({ onPersonnelLoginClick, onJobSeekerLoginClick, onRegisterC
           <article className="landing-step">
             <span className="landing-step-number">2</span>
             <h3>Collect applications</h3>
-            <p>Receive resumes and files.</p>
+            <p>Receive Personal Data Sheet(PDS) files and other files.</p>
           </article>
           <article className="landing-step-arrow">→</article>
           <article className="landing-step">

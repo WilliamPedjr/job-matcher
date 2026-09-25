@@ -59,6 +59,44 @@
   font-weight: 800;
 }
 
+.ratings-date-card {
+  display: grid;
+  gap: 12px;
+}
+
+.ratings-date-card p {
+  margin: 0;
+  color: #475569;
+  font-size: 14px;
+  line-height: 1.45;
+}
+
+.ratings-date-field {
+  display: grid;
+  gap: 7px;
+}
+
+.ratings-date-field span {
+  color: #516079;
+  font-size: 13px;
+  font-weight: 900;
+}
+
+.ratings-date-field input {
+  min-height: 42px;
+  border: 1px solid #d8dee8;
+  border-radius: 6px;
+  background: #ffffff;
+  color: #172033;
+  padding: 9px 10px;
+  font: inherit;
+}
+
+.ratings-date-field input:focus {
+  border-color: #112b82;
+  outline: 3px solid rgba(17, 43, 130, 0.12);
+}
+
 .ratings-result-grid {
   display: grid;
   grid-template-columns: repeat(2, minmax(0, 1fr));

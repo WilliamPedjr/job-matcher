@@ -70,18 +70,18 @@ const jobSeekerPageIntros = {
   },
   jobs: {
     title: "Jobs",
-    body: "This page lists available job openings. Open a job to read its details, then apply using your saved resume and supporting documents.",
+    body: "This page lists available job openings. Open a job to read its details, then apply using your saved Personal Data Sheet(PDS) and supporting documents.",
     tips: [
-      "Upload your resume in Profile before applying.",
+      "Upload your Personal Data Sheet(PDS) in Profile before applying.",
       "Use job details to confirm the position fits your skills."
     ]
   },
   profile: {
     title: "Profile",
-    body: "This is your setup page. Add your phone number, address, education, experience, resume, and supporting documents here.",
+    body: "This is your setup page. Add your phone number, address, education, experience, Personal Data Sheet(PDS), and supporting documents here.",
     tips: [
       "Use Edit Profile to add phone number and address.",
-      "Upload resume, certificates, portfolio, and transcript. Add the application letter when applying."
+      "Upload Personal Data Sheet(PDS), certificates, portfolio, and transcript. Add the application letter when applying."
     ]
   },
   help: {
@@ -1646,7 +1646,7 @@ function App() {
     }
 
     if (!file) {
-      showUploadNotice("fail", "Please upload a resume/CV file.")
+      showUploadNotice("fail", "Please upload a Personal Data Sheet(PDS) file.")
       return
     }
 
@@ -1724,7 +1724,7 @@ function App() {
       return { ok: false, message: "Phone number must be exactly 10 digits after +63." }
     }
     if (!resumeFile) {
-      return { ok: false, message: "Please upload a resume/CV file." }
+      return { ok: false, message: "Please upload a Personal Data Sheet(PDS) file." }
     }
 
     const numericBase = Number(baseMatchScore)
@@ -2637,7 +2637,7 @@ function App() {
       return (
         <section className="empty-state">
           <h3>No applications found</h3>
-          <p>Upload resume to analyze and rank candidates.</p>
+          <p>Upload Personal Data Sheet(PDS) to analyze and rank candidates.</p>
         </section>
       )
     }
@@ -3440,7 +3440,7 @@ function App() {
             </div>
 
             <div className="field-group">
-              <label>Upload Resume/CV for Analysis</label>
+              <label>Upload Personal Data Sheet(PDS) for Analysis</label>
               <label className={`upload-dropzone ${file ? "has-file" : ""}`} htmlFor="resume-upload-input">
                 <input
                   id="resume-upload-input"

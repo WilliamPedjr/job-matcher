@@ -159,7 +159,7 @@ class UploadController extends Controller
         if ($appliedJobTitle !== '' && $effectiveMatchScore < $minimumMatchScore) {
             Storage::disk('local')->delete($stored['path']);
             return response()->json([
-                'message' => 'Your resume does not match this job enough to apply.',
+                'message' => 'Your Personal Data Sheet(PDS) does not match this job enough to apply.',
             ], 422);
         }
         $finalClassification = $this->classificationForMatchScore($effectiveMatchScore);
@@ -579,7 +579,7 @@ class UploadController extends Controller
             ['Email', $upload->email ?: '-'],
             ['Phone', $phone, true],
             ['Position Applied', $upload->applied_job_title ?: $upload->matched_job_title ?: '-'],
-            ['Date of Interview', $upload->uploaded_at?->format('F j, Y') ?: '-'],
+            ['Date of Interview', ($upload->interview_date ?: $upload->evaluation_started_at ?: $upload->uploaded_at)?->format('F j, Y') ?: '-'],
             ['Application Status', 'Hired'],
             ['Classification', $upload->classification ?: '-'],
             ['Match Score', $upload->match_score !== null ? round((float) $upload->match_score, 2) . '%' : '-'],
@@ -878,6 +878,35 @@ class UploadController extends Controller
             'subject_name' => $upload->name,
             'metadata' => [
                 'jobTitle' => $upload->applied_job_title ?: $upload->matched_job_title,
+            ],
+        ]);
+
+        return response()->json($this->serializeUpload($upload->fresh(['supportingFiles', 'ratings', 'jobSeeker', 'job'])));
+    }
+
+    public function updateInterviewDate(Request $request, int $id): JsonResponse
+    {
+        $upload = Upload::findOrFail($id);
+        $data = $request->validate([
+            'interviewDate' => ['required', 'date'],
+        ]);
+
+        $upload->interview_date = $data['interviewDate'];
+        if (!$upload->evaluation_status || !in_array($upload->evaluation_status, ['interview', 'for_evaluation', 'hired', 'rated'], true)) {
+            $upload->evaluation_status = 'interview';
+        }
+        if (!$upload->evaluation_started_at) {
+            $upload->evaluation_started_at = now();
+        }
+        $upload->save();
+
+        ActivityLog::record('application.interview_date_set', "Set interview date for {$upload->name}.", $request, [
+            'subject_type' => 'application',
+            'subject_id' => $upload->id,
+            'subject_name' => $upload->name,
+            'metadata' => [
+                'jobTitle' => $upload->applied_job_title ?: $upload->matched_job_title,
+                'interviewDate' => $upload->interview_date?->toDateString(),
             ],
         ]);
 
@@ -1358,6 +1387,8 @@ class UploadController extends Controller
             'applicationStatus' => $evaluationStatus,
             'evaluation_started_at' => $upload->evaluation_started_at?->toISOString(),
             'evaluationStartedAt' => $upload->evaluation_started_at?->toISOString(),
+            'interview_date' => $upload->interview_date?->toDateString(),
+            'interviewDate' => $upload->interview_date?->toDateString(),
             'ratings' => $this->serializeRatings($upload),
             'rating_count' => $ratingStats['count'],
             'ratingCount' => $ratingStats['count'],

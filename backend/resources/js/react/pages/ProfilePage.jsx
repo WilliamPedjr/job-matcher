@@ -1169,7 +1169,7 @@ function ProfilePage({
       .then(async (response) => {
         if (!response.ok) {
           const payload = await response.json().catch(() => null)
-          throw new Error(payload?.message || "Failed to upload resume.")
+          throw new Error(payload?.message || "Failed to upload Personal Data Sheet(PDS).")
         }
         return response.json()
       })
@@ -1179,7 +1179,7 @@ function ProfilePage({
         setTimeout(() => setResumeStatus(""), 2000)
       })
       .catch((error) => {
-        setResumeStatus(error.message || "Failed to upload resume.")
+        setResumeStatus(error.message || "Failed to upload Personal Data Sheet(PDS).")
       })
       .finally(() => {
         if (resumeInputRef.current) {
@@ -1201,13 +1201,13 @@ function ProfilePage({
       })
       if (!response.ok) {
         const payload = await response.json().catch(() => null)
-        throw new Error(payload?.message || "Failed to delete PDS/Resume.")
+        throw new Error(payload?.message || "Failed to delete Personal Data Sheet(PDS).")
       }
       onJobSeekerResumeUpdate?.(null)
       setResumeStatus("Deleted.")
       setTimeout(() => setResumeStatus(""), 2000)
     } catch (error) {
-      setResumeStatus(error.message || "Failed to delete PDS/Resume.")
+      setResumeStatus(error.message || "Failed to delete Personal Data Sheet(PDS).")
     }
   }
 
@@ -1479,8 +1479,8 @@ function ProfilePage({
             <section className="js-profile-panel js-profile-pds-panel" ref={resumeSectionRef}>
               <div className="js-panel-header">
                 <div>
-                  <h3>PDS/Resume</h3>
-                  <p className="js-panel-subtitle">Upload a PDS or resume to reuse for job applications</p>
+                  <h3>Personal Data Sheet(PDS)</h3>
+                  <p className="js-panel-subtitle">Upload a Personal Data Sheet(PDS) to reuse for job applications</p>
                 </div>
               </div>
               <div className={`js-resume-body ${resumeAttentionActive && !jobSeekerResume ? "attention" : ""}`}>
@@ -1494,8 +1494,8 @@ function ProfilePage({
                 />
                 <div className={`js-panel-subtext ${jobSeekerResume ? "js-supporting-ready" : "js-supporting-missing"}`}>
                   {jobSeekerResume
-                    ? "PDS/Resume is uploaded and ready for applications."
-                    : "Upload PDS/Resume before applying to jobs."}
+                    ? "Personal Data Sheet(PDS) is uploaded and ready for applications."
+                    : "Upload Personal Data Sheet(PDS) before applying to jobs."}
                 </div>
                 {jobSeekerResume ? (
                   <>
@@ -1504,7 +1504,7 @@ function ProfilePage({
                       <div>
                         <strong>{jobSeekerResume.name}</strong>
                         <div className="js-panel-subtext">
-                          {resumeUpdatedAt ? `Updated ${resumeUpdatedAt}` : "PDS/Resume on file"}
+                          {resumeUpdatedAt ? `Updated ${resumeUpdatedAt}` : "Personal Data Sheet(PDS) on file"}
                         </div>
                         <div className="js-panel-actions">
                           <label htmlFor="job-seeker-resume" className="js-text-btn">Replace</label>
@@ -1520,11 +1520,11 @@ function ProfilePage({
                     <div className="js-panel-row">
                       <div className="js-panel-icon">PDS</div>
                       <div>
-                        <strong>No PDS/Resume uploaded</strong>
-                        <div className="js-panel-subtext">Upload your PDS or resume to speed up applications.</div>
+                        <strong>No Personal Data Sheet(PDS) uploaded</strong>
+                        <div className="js-panel-subtext">Upload your Personal Data Sheet(PDS) to speed up applications.</div>
                       </div>
                     </div>
-                    <label htmlFor="job-seeker-resume" className="js-outline-btn">Upload PDS/Resume</label>
+                    <label htmlFor="job-seeker-resume" className="js-outline-btn">Upload Personal Data Sheet(PDS)</label>
                   </>
                 )}
                 {resumeStatus && <span className="js-resume-status">{resumeStatus}</span>}
@@ -2464,8 +2464,8 @@ function ProfilePage({
           }}
         >
           <div className="modal-card">
-            <h3>Delete PDS/Resume</h3>
-            <p>Are you sure you want to delete this PDS/Resume? You can upload a new one after deleting it.</p>
+            <h3>Delete Personal Data Sheet(PDS)</h3>
+            <p>Are you sure you want to delete this Personal Data Sheet(PDS)? You can upload a new one after deleting it.</p>
             <div className="modal-actions">
               <button type="button" className="btn btn-secondary" onClick={() => setConfirmDeleteResume(false)}>
                 Cancel

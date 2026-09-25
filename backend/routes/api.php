@@ -97,6 +97,7 @@ Route::get('/uploads/{id}/rating-summary/export', [UploadController::class, 'exp
 Route::get('/uploads/{id}/demonstration-summary/export', [UploadController::class, 'exportDemonstrationSummary']);
 Route::put('/uploads/{id}/status', [UploadController::class, 'updateStatus']);
 Route::put('/uploads/{id}/evaluation', [UploadController::class, 'markForEvaluation']);
+Route::put('/uploads/{id}/interview-date', [UploadController::class, 'updateInterviewDate']);
 Route::put('/uploads/{id}/evaluation/cancel', [UploadController::class, 'cancelEvaluation']);
 Route::post('/uploads/{id}/ratings', [UploadController::class, 'storeRating']);
 Route::delete('/uploads/{id}', [UploadController::class, 'destroy']);

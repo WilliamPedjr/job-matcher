@@ -19,8 +19,8 @@ const jobSeekerSetupItems = [
   {
     key: 'resume',
     page: 'profile',
-    title: 'Upload your resume',
-    body: 'Save your resume once so the system can use it when you apply for jobs.'
+    title: 'Upload your Personal Data Sheet(PDS)',
+    body: 'Save your Personal Data Sheet(PDS) once so the system can use it when you apply for jobs.'
   },
   {
     key: 'supporting',
@@ -32,7 +32,7 @@ const jobSeekerSetupItems = [
     key: 'jobs',
     page: 'jobs',
     title: 'Discover the Jobs page',
-    body: 'Browse openings, view job details, and apply when your resume and documents are ready.'
+    body: 'Browse openings, view job details, and apply when your Personal Data Sheet(PDS) and documents are ready.'
   },
   {
     key: 'applications',
@@ -44,8 +44,8 @@ const jobSeekerSetupItems = [
 
 const jobSeekerPages = [
   ['Dashboard', 'Track submitted applications, dates applied, qualification results, and application actions.'],
-  ['Jobs', 'Browse job openings, view job details, and apply using your saved resume, reusable documents, and an application letter.'],
-  ['Profile', 'Update personal information, phone number, address, resume, documents, education, and experience.'],
+  ['Jobs', 'Browse job openings, view job details, and apply using your saved Personal Data Sheet(PDS), reusable documents, and an application letter.'],
+  ['Profile', 'Update personal information, phone number, address, Personal Data Sheet(PDS), documents, education, and experience.'],
   ['Help', 'Review setup steps and page guidance whenever you need a reminder.']
 ]
 

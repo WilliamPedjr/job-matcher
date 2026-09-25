@@ -45,6 +45,7 @@ class Upload extends Model
         'job_seeker_hidden_at',
         'evaluation_status',
         'evaluation_started_at',
+        'interview_date',
         'size_bytes',
         'uploaded_at',
     ];
@@ -65,6 +66,7 @@ class Upload extends Model
         'uploaded_at' => 'datetime',
         'job_seeker_hidden_at' => 'datetime',
         'evaluation_started_at' => 'datetime',
+        'interview_date' => 'date',
     ];
 
     public function scopeApplications(Builder $query): Builder

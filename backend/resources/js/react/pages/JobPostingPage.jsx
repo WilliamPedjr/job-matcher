@@ -545,7 +545,7 @@ function JobPostingPage({ uploads = [], isEmployer = false, isJobSeeker = false,
         )
 
         if (!response.ok) {
-          throw new Error("Failed to check resume matches.")
+          throw new Error("Failed to check Personal Data Sheet(PDS) matches.")
         }
 
         const payload = await response.json()
@@ -1623,7 +1623,7 @@ function JobPostingPage({ uploads = [], isEmployer = false, isJobSeeker = false,
   const getJobMatchContent = (job) => {
     if (!isJobSeeker) return null
     if (!jobSeekerResume) {
-      return <span className="job-chip chip-warning">Upload resume</span>
+      return <span className="job-chip chip-warning">Upload PDS</span>
     }
     if (jobMatchStatus === "loading") {
       return <span className="job-chip chip-muted">Checking</span>

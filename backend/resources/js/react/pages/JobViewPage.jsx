@@ -226,7 +226,7 @@ function JobViewPage({ job, onBack, onApply, onRequireResume, jobSeekerProfile, 
           return
         }
         const blob = await response.blob()
-        const file = new File([blob], jobSeekerResume.name || "resume", {
+        const file = new File([blob], jobSeekerResume.name || "personal-data-sheet", {
           type: jobSeekerResume.mimeType || blob.type || "application/octet-stream"
         })
         setResumeFiles([file])
@@ -298,7 +298,7 @@ function JobViewPage({ job, onBack, onApply, onRequireResume, jobSeekerProfile, 
         score: null,
         qualifies: false,
         minimumScore: 50,
-        message: "Resume is required."
+        message: "Personal Data Sheet(PDS) is required."
       })
       return
     }
@@ -319,7 +319,7 @@ function JobViewPage({ job, onBack, onApply, onRequireResume, jobSeekerProfile, 
         )
         if (!response.ok) {
           const payload = await response.json().catch(() => null)
-          throw new Error(payload?.message || "Failed to check resume match.")
+          throw new Error(payload?.message || "Failed to check Personal Data Sheet(PDS) match.")
         }
         const payload = await response.json()
         if (!isMounted) return
@@ -343,7 +343,7 @@ function JobViewPage({ job, onBack, onApply, onRequireResume, jobSeekerProfile, 
           qualifies: false,
           allowApplication: false,
           minimumScore: 50,
-          message: error.message || "Failed to check resume match."
+          message: error.message || "Failed to check Personal Data Sheet(PDS) match."
         })
       }
     }
@@ -402,16 +402,16 @@ function JobViewPage({ job, onBack, onApply, onRequireResume, jobSeekerProfile, 
     if (resumeMatch.status === "missing") {
       nextPopup = {
         type: "fail",
-        text: "No PDS/Resume uploaded. Go to your Profile and upload your PDS/Resume."
+        text: "No Personal Data Sheet(PDS) uploaded. Go to your Profile and upload your Personal Data Sheet(PDS)."
       }
     } else if (hasAlreadyApplied) {
       nextPopup = { type: "fail", text: "You already applied to this job." }
     } else if (resumeMatchReady) {
       nextPopup = resumeMatchQualified
-        ? { type: "success", text: "Your resume matches this job well. You can apply now." }
-        : { type: "fail", text: "Your resume does not match this job enough to apply." }
+        ? { type: "success", text: "Your Personal Data Sheet(PDS) matches this job well. You can apply now." }
+        : { type: "fail", text: "Your Personal Data Sheet(PDS) does not match this job enough to apply." }
     } else if (resumeMatchError) {
-      nextPopup = { type: "fail", text: resumeMatch.message || "Unable to verify resume match. Please try again later." }
+      nextPopup = { type: "fail", text: resumeMatch.message || "Unable to verify Personal Data Sheet(PDS) match. Please try again later." }
     }
 
     if (!nextPopup) return
@@ -537,7 +537,7 @@ function JobViewPage({ job, onBack, onApply, onRequireResume, jobSeekerProfile, 
             disabled={applyGateDisabled}
             onClick={() => {
               if (!jobSeekerResume) {
-                setApplyGateNotice("Please upload your resume in Profile before applying.")
+                setApplyGateNotice("Please upload your Personal Data Sheet(PDS) in Profile before applying.")
                 onRequireResume?.()
                 return
               }
@@ -546,11 +546,11 @@ function JobViewPage({ job, onBack, onApply, onRequireResume, jobSeekerProfile, 
                 return
               }
               if (applyBlockedByMatch) {
-                setApplyGateNotice("Your resume does not match this job enough to apply.")
+                setApplyGateNotice("Your Personal Data Sheet(PDS) does not match this job enough to apply.")
                 return
               }
               if (resumeMatchError) {
-                setApplyGateNotice(resumeMatch.message || "Unable to verify resume match. Please try again later.")
+                setApplyGateNotice(resumeMatch.message || "Unable to verify Personal Data Sheet(PDS) match. Please try again later.")
                 return
               }
               setIsApplyModalOpen(true)
@@ -603,7 +603,7 @@ function JobViewPage({ job, onBack, onApply, onRequireResume, jobSeekerProfile, 
                   setShowErrors(false)
                 }}
               >
-                PDS/Resume
+                Personal Data Sheet(PDS)
               </button>
               <button
                 type="button"
@@ -673,7 +673,7 @@ function JobViewPage({ job, onBack, onApply, onRequireResume, jobSeekerProfile, 
             {applyTab === "resume" && (
               <div className="apply-panel">
                 <div className="field-group">
-                  <label>PDS/Resume on File</label>
+                  <label>Personal Data Sheet(PDS) on File</label>
                   <div
                     className={`resume-table-wrap ${showErrors && resumeError && applyTab === "resume" ? "input-error" : ""}`}
                   >
@@ -690,7 +690,7 @@ function JobViewPage({ job, onBack, onApply, onRequireResume, jobSeekerProfile, 
                         {resumeFiles.length ? (
                           resumeFiles.map((file) => (
                             <tr key={`${file.name}-${file.size}-${file.lastModified}`}>
-                              <td>PDS/Resume</td>
+                              <td>Personal Data Sheet(PDS)</td>
                               <td>{file.name}</td>
                               <td>{file.type || "Unknown"}</td>
                               <td>{formatFileSize(file.size)}</td>
@@ -698,14 +698,14 @@ function JobViewPage({ job, onBack, onApply, onRequireResume, jobSeekerProfile, 
                           ))
                         ) : (
                           <tr className="supporting-docs-empty">
-                            <td colSpan={4}>No PDS/Resume found. Upload one in Profile before applying.</td>
+                            <td colSpan={4}>No Personal Data Sheet(PDS) found. Upload one in Profile before applying.</td>
                           </tr>
                         )}
                       </tbody>
                       <tfoot>
                         <tr>
                           <td colSpan={4}>
-                            <span className="resume-locked-note">PDS/Resume cannot be added or replaced during application.</span>
+                            <span className="resume-locked-note">Personal Data Sheet(PDS) cannot be added or replaced during application.</span>
                           </td>
                         </tr>
                       </tfoot>
@@ -885,7 +885,7 @@ function JobViewPage({ job, onBack, onApply, onRequireResume, jobSeekerProfile, 
                     }
                     if (applyTab === "resume") {
                       if (!resumeComplete) {
-                        setStepNotice("Please upload your resume to continue.")
+                        setStepNotice("Please upload your Personal Data Sheet(PDS) to continue.")
                         return
                       }
                       setShowErrors(false)
@@ -900,7 +900,7 @@ function JobViewPage({ job, onBack, onApply, onRequireResume, jobSeekerProfile, 
                   }
 
                   if (!resumeMatchQualified) {
-                    setApplyNotice("Your resume does not match this job enough to apply.")
+                    setApplyNotice("Your Personal Data Sheet(PDS) does not match this job enough to apply.")
                     return
                   }
                   if (hasAlreadyApplied) {

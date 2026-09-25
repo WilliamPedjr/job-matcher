@@ -12,6 +12,21 @@ function formatInterviewDate(value) {
   return date.toLocaleDateString(undefined, { month: 'long', day: 'numeric', year: 'numeric' })
 }
 
+function getInterviewDateValue(item) {
+  return item?.interview_date || item?.interviewDate || item?.evaluation_started_at || item?.evaluationStartedAt || item?.uploaded_at || item?.updated_at || item?.updatedAt
+}
+
+function formatDateInputValue(value) {
+  if (!value) return ''
+  if (/^\d{4}-\d{2}-\d{2}$/.test(String(value))) return String(value)
+  const date = new Date(value)
+  if (Number.isNaN(date.getTime())) return ''
+  const year = date.getFullYear()
+  const month = String(date.getMonth() + 1).padStart(2, '0')
+  const day = String(date.getDate()).padStart(2, '0')
+  return `${year}-${month}-${day}`
+}
+
 function getPosition(item) {
   return item.applied_job_title || item.appliedJobTitle || item.matched_job_title || 'No position selected'
 }
@@ -214,6 +229,9 @@ function RatingsPage({ uploads = [], isLoading = false, currentUser = null, onRa
   const [confirmSaveRating, setConfirmSaveRating] = useState(false)
   const [confirmSaveCriteria, setConfirmSaveCriteria] = useState(false)
   const [confirmDeleteBoardMember, setConfirmDeleteBoardMember] = useState(null)
+  const [interviewDateModal, setInterviewDateModal] = useState(null)
+  const [interviewDateDraft, setInterviewDateDraft] = useState('')
+  const [isSavingInterviewDate, setIsSavingInterviewDate] = useState(false)
   const [cancelledIds, setCancelledIds] = useState([])
   const [ratingNotice, setRatingNotice] = useState(null)
   const [selectedBoardMember, setSelectedBoardMember] = useState('')
@@ -466,6 +484,54 @@ function RatingsPage({ uploads = [], isLoading = false, currentUser = null, onRa
     const emailWindow = window.open(draft.gmail, '_blank', 'noopener,noreferrer')
     if (!emailWindow) {
       window.location.href = draft.mailto
+    }
+  }
+
+  const openInterviewDateModal = (item) => {
+    if (!item?.id) return
+    setActionsMenu(null)
+    setInterviewDateModal(item)
+    setInterviewDateDraft(formatDateInputValue(getInterviewDateValue(item)))
+  }
+
+  const closeInterviewDateModal = () => {
+    if (isSavingInterviewDate) return
+    setInterviewDateModal(null)
+    setInterviewDateDraft('')
+  }
+
+  const saveInterviewDate = async () => {
+    if (!interviewDateModal?.id) return
+    if (!interviewDateDraft) {
+      showRatingNotice('fail', 'Please select an interview date.')
+      return
+    }
+
+    setIsSavingInterviewDate(true)
+    try {
+      const response = await fetch(`http://localhost:5000/uploads/${interviewDateModal.id}/interview-date`, {
+        method: 'PUT',
+        headers: {
+          'Content-Type': 'application/json',
+          ...getArchiveActorHeaders(currentUser)
+        },
+        body: JSON.stringify({ interviewDate: interviewDateDraft })
+      })
+      const payload = await response.json().catch(() => null)
+      if (!response.ok) {
+        throw new Error(payload?.message || 'Failed to set interview date.')
+      }
+      if (selectedApplicant?.id === interviewDateModal.id) {
+        setSelectedApplicant(payload || selectedApplicant)
+      }
+      setInterviewDateModal(null)
+      setInterviewDateDraft('')
+      await onRatingsChanged?.()
+      showRatingNotice('success', 'Interview date saved successfully.')
+    } catch (error) {
+      showRatingNotice('fail', error.message || 'Failed to set interview date.')
+    } finally {
+      setIsSavingInterviewDate(false)
     }
   }
 
@@ -776,6 +842,38 @@ function RatingsPage({ uploads = [], isLoading = false, currentUser = null, onRa
     </div>
   ) : null
 
+  const interviewDateNode = interviewDateModal ? (
+    <div
+      className="modal-overlay delete-confirm-overlay"
+      onClick={(event) => {
+        if (event.target === event.currentTarget) {
+          closeInterviewDateModal()
+        }
+      }}
+    >
+      <div className="modal-card delete-confirm-card ratings-date-card">
+        <h3>Set Interview Date</h3>
+        <p>Select the interview date for {interviewDateModal.name || 'this applicant'}.</p>
+        <label className="ratings-date-field">
+          <span>Date of Interview</span>
+          <input
+            type="date"
+            value={interviewDateDraft}
+            onChange={(event) => setInterviewDateDraft(event.target.value)}
+          />
+        </label>
+        <div className="modal-actions">
+          <button type="button" className="btn btn-secondary" onClick={closeInterviewDateModal} disabled={isSavingInterviewDate}>
+            Cancel
+          </button>
+          <button type="button" className="btn" onClick={saveInterviewDate} disabled={isSavingInterviewDate}>
+            {isSavingInterviewDate ? 'Saving...' : 'Save Date'}
+          </button>
+        </div>
+      </div>
+    </div>
+  ) : null
+
   if (criteriaEditorOpen) {
     const criteriaConfirmNode = confirmSaveCriteria ? (
       <div
@@ -1009,7 +1107,7 @@ function RatingsPage({ uploads = [], isLoading = false, currentUser = null, onRa
     const demonstrationStats = getRatingGroupStats('demonstration')
     const canOpenRatingForm = ratingStarted
     const isDemonstrationForm = ratingFormType === 'demonstration'
-    const interviewDate = formatInterviewDate(selectedApplicant.uploaded_at || selectedApplicant.updated_at || selectedApplicant.updatedAt)
+    const interviewDate = formatInterviewDate(getInterviewDateValue(selectedApplicant))
     const selectedBoardMemberAlreadyRated = hasBoardMemberRated(selectedApplicant, selectedBoardMember, ratingFormType)
     const saveRatingConfirmNode = confirmSaveRating ? (
       <div
@@ -1480,6 +1578,7 @@ function RatingsPage({ uploads = [], isLoading = false, currentUser = null, onRa
       <section className="ratings-page" aria-label="Ratings / Evaluation">
       {ratingNoticeNode}
       {ratingConfirmNode}
+      {interviewDateNode}
       <div className="ratings-header">
         <div>
           <h2>Ratings / Evaluation</h2>
@@ -1542,7 +1641,7 @@ function RatingsPage({ uploads = [], isLoading = false, currentUser = null, onRa
                     <td>{((applicantsPage - 1) * applicantsPageSize) + index + 1}</td>
                     <td className="ratings-name">{item.name || '(No name)'}</td>
                     <td>{getPosition(item)}</td>
-                    <td>{formatInterviewDate(item.uploaded_at || item.updated_at || item.updatedAt)}</td>
+                    <td>{formatInterviewDate(getInterviewDateValue(item))}</td>
                     <td>
                       <span className={`ratings-status ${getEvaluationStatus(item)}`}>
                         {getEvaluationStatusLabel(item)}
@@ -1637,6 +1736,13 @@ function RatingsPage({ uploads = [], isLoading = false, currentUser = null, onRa
             }}
           >
             Send Email
+          </button>
+          <button
+            type="button"
+            className="actions-menu-item"
+            onClick={() => openInterviewDateModal(actionsMenu.item)}
+          >
+            Set Interview Date
           </button>
           {hasSavedFormRating(actionsMenu.item, 'interview') && (
             <button

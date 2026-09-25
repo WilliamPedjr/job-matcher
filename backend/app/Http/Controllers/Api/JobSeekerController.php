@@ -254,7 +254,7 @@ class JobSeekerController extends Controller
         ]);
         $resume->job_seeker_id = $jobSeeker->id;
         $resume->save();
-        ActivityLog::record($existing ? 'profile.resume_updated' : 'profile.resume_uploaded', ($existing ? "Replaced" : "Uploaded") . " PDS/Resume for {$jobSeeker->full_name}.", $request, [
+        ActivityLog::record($existing ? 'profile.resume_updated' : 'profile.resume_uploaded', ($existing ? "Replaced" : "Uploaded") . " Personal Data Sheet(PDS) for {$jobSeeker->full_name}.", $request, [
             'subject_type' => 'job_seeker',
             'subject_id' => $jobSeeker->id,
             'subject_name' => $jobSeeker->full_name,
@@ -265,7 +265,7 @@ class JobSeekerController extends Controller
         ]);
 
         return response()->json([
-            'message' => $existing ? 'PDS/Resume replaced successfully.' : 'PDS/Resume uploaded successfully.',
+            'message' => $existing ? 'Personal Data Sheet(PDS) replaced successfully.' : 'Personal Data Sheet(PDS) uploaded successfully.',
             'resume' => $this->serializeResume($resume),
         ], $existing ? 200 : 201);
     }
@@ -273,7 +273,7 @@ class JobSeekerController extends Controller
     public function downloadResume(int $id): mixed
     {
         $resume = $this->getResumeUpload($id);
-        abort_if(!$resume || !$resume->file_path || !Storage::disk('local')->exists($resume->file_path), 404, 'Resume not found.');
+        abort_if(!$resume || !$resume->file_path || !Storage::disk('local')->exists($resume->file_path), 404, 'Personal Data Sheet(PDS) not found.');
 
         return Storage::disk('local')->download($resume->file_path, $resume->original_name ?: basename($resume->file_path));
     }
@@ -289,7 +289,7 @@ class JobSeekerController extends Controller
             $resume->delete();
 
             $jobSeeker = JobSeeker::find($id);
-            ActivityLog::record('profile.resume_deleted', "Deleted PDS/Resume for {$jobSeeker?->full_name}.", $request, [
+            ActivityLog::record('profile.resume_deleted', "Deleted Personal Data Sheet(PDS) for {$jobSeeker?->full_name}.", $request, [
                 'subject_type' => 'job_seeker',
                 'subject_id' => $id,
                 'subject_name' => $jobSeeker?->full_name,
@@ -299,7 +299,7 @@ class JobSeekerController extends Controller
             ]);
         }
 
-        return response()->json(['message' => 'PDS/Resume deleted successfully.']);
+        return response()->json(['message' => 'Personal Data Sheet(PDS) deleted successfully.']);
     }
 
     public function resumeMatch(Request $request, int $id): JsonResponse
