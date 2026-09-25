@@ -1857,13 +1857,6 @@ function JobPostingPage({ uploads = [], isEmployer = false, isJobSeeker = false,
 
                     <p className="job-description">{job.description || "-"}</p>
 
-                    {isJobSeeker && (
-                      <div className="job-card-match">
-                        <span>Match Percentage</span>
-                        {getJobMatchContent(job)}
-                      </div>
-                    )}
-
                     <div className="job-card-skill-preview">
                       <span className="job-card-skill-label">Required Skills</span>
                       <div className="job-card-chips job-card-skill-chips">

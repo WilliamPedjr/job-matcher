@@ -49,6 +49,36 @@ const jobSeekerPages = [
   ['Help', 'Review setup steps and page guidance whenever you need a reminder.']
 ]
 
+const jobSeekerGuidelines = [
+  {
+    title: 'PDS Guidelines',
+    downloads: [
+      {
+        fileName: 'CS-Form-No.-212-Revised-2026-Personal-Data-Sheet-PDS.xlsx',
+        href: '/guidelines/CS-Form-No.-212-Revised-2026-Personal-Data-Sheet-PDS.xlsx'
+      },
+      {
+        fileName: 'Guide-to-Filling-Up-the-Personal-Data-Sheet-Revised-2026.pdf',
+        href: '/guidelines/Guide-to-Filling-Up-the-Personal-Data-Sheet-Revised-2026.pdf'
+      }
+    ],
+    intro: 'Use this when filling out your Personal Data Sheet before uploading it with your application.',
+    tips: [
+    ]
+  },
+  {
+    title: 'Work Experience Sheet Guidelines',
+    downloads: [
+      {
+        fileName: 'CS-Form-No.-212-Attachment-Work-Experience-Sheet-Updated-July-10-2026.docx',
+        href: '/guidelines/CS-Form-No.-212-Attachment-Work-Experience-Sheet-Updated-July-10-2026.docx'
+      }
+    ],
+    intro: 'Use this to describe your previous roles in a way the recruitment team can evaluate consistently.',
+    tips: []
+  }
+]
+
 const personnelGuideItems = [
   ['Review the Dashboard', 'Start with Dashboard to scan recent activity, application totals, job counts, and recruitment progress.'],
   ['Manage job posts', 'Use Jobs to create openings, update job details, view applicants for a position, and archive closed records.'],
@@ -158,6 +188,18 @@ function HelpPage({
   }
 
   const completedCount = jobSeekerSetupItems.filter((item) => stepDone[item.key]).length
+  const downloadGuidelineFiles = (downloads = []) => {
+    downloads.forEach((file, index) => {
+      window.setTimeout(() => {
+        const link = document.createElement('a')
+        link.href = file.href
+        link.download = file.fileName
+        document.body.appendChild(link)
+        link.click()
+        document.body.removeChild(link)
+      }, index * 150)
+    })
+  }
 
   return (
     <section className="help-page" aria-label="Job seeker help">
@@ -217,6 +259,36 @@ function HelpPage({
           </div>
         </section>
       </div>
+
+      <section className="help-panel help-guidelines-panel">
+        <div className="help-panel-head">
+          <h3>Form Guidelines</h3>
+        </div>
+        <div className="help-guidelines-list">
+          {jobSeekerGuidelines.map((guide) => (
+            <article key={guide.title} className="help-guideline-card">
+              <div className="help-guideline-top">
+                <div>
+                  <strong>{guide.title}</strong>
+                  <p>{guide.intro}</p>
+                </div>
+                <button
+                  type="button"
+                  className="help-download-btn"
+                  onClick={() => downloadGuidelineFiles(guide.downloads)}
+                >
+                  Download
+                </button>
+              </div>
+              <ul>
+                {guide.tips.map((tip) => (
+                  <li key={tip}>{tip}</li>
+                ))}
+              </ul>
+            </article>
+          ))}
+        </div>
+      </section>
     </section>
   )
 }

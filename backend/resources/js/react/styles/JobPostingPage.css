@@ -2204,16 +2204,14 @@ optgroup {
   gap: 12px;
 }
 
-.job-card-meta-grid div,
-.job-card-match {
+.job-card-meta-grid div {
   border: 1px solid #e2e8f0;
   border-radius: 8px;
   background: #f8fafc;
   padding: 10px 12px;
 }
 
-.job-card-meta-grid span,
-.job-card-match > span:first-child {
+.job-card-meta-grid span {
   display: block;
   margin-bottom: 4px;
   color: #64748b;
@@ -2228,25 +2226,6 @@ optgroup {
   line-height: 1.35;
   overflow-wrap: anywhere;
 }
-
-.job-card-match {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  gap: 10px;
-}
-
-.job-card-match .job-chip {
-  border-radius: 8px;
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-  line-height: 1.2;
-  min-width: 86px;
-  padding: 6px 8px;
-  text-align: center;
-}
-
 
 .job-status {
   border-radius: 999px;
