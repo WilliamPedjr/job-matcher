@@ -1289,13 +1289,13 @@ class ResumeAnalysisService
         $score = 0.0;
 
         if (Str::contains($min, 'phd') || Str::contains($min, 'doctor')) {
-            $score = Str::contains($haystack, ['phd', 'doctor']) ? 100.0 : 0.0;
+            $score = preg_match('/\b(?:ph\.?d\.?|doctor(?:ate)?)\b/i', $haystack) === 1 ? 100.0 : 0.0;
         } elseif (Str::contains($min, 'master')) {
-            $score = Str::contains($haystack, ['master', 'msc', 'ma', 'ms']) ? 100.0 : 50.0;
+            $score = preg_match('/\b(?:master(?:\'s)?|msc|m\.?s\.?|m\.?a\.?|mba)\b/i', $haystack) === 1 ? 100.0 : 50.0;
         } elseif (Str::contains($min, 'bachelor') || Str::contains($min, 'college') || Str::contains($min, 'university')) {
-            $score = Str::contains($haystack, ['bachelor', 'college', 'university', 'bs', 'ba']) ? 100.0 : 50.0;
+            $score = preg_match('/\b(?:bachelor(?:\'s)?|college|university|b\.?s\.?|b\.?a\.?)\b/i', $haystack) === 1 ? 100.0 : 50.0;
         } elseif (Str::contains($min, 'high school')) {
-            $score = Str::contains($haystack, ['high school', 'secondary']) ? 100.0 : 60.0;
+            $score = preg_match('/\b(?:high school|secondary)\b/i', $haystack) === 1 ? 100.0 : 60.0;
         } else {
             $score = Str::contains($haystack, $min) ? 100.0 : 50.0;
         }

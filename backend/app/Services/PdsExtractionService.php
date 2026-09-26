@@ -262,7 +262,7 @@ class PdsExtractionService
             return '';
         }
 
-        if (mb_strtoupper($value) === $value) {
+        if (mb_strtoupper($value) === $value || mb_strtolower($value) === $value) {
             $value = Str::title(Str::lower($value));
             $value = preg_replace_callback('/\b(?:Of|And|In|For|The|At|On)\b/', fn ($match) => Str::lower($match[0]), $value);
         }
@@ -1097,7 +1097,6 @@ class PdsExtractionService
             'salary job pay grade',
             'status of appointment',
             'govt service',
-            'career service',
             'civil service eligibility',
             'rating',
             'date of examination',
@@ -1110,6 +1109,7 @@ class PdsExtractionService
             $value = preg_replace('/\b' . preg_quote($header, '/') . '\b\s*:?\s*/i', ' ', (string) $value);
         }
 
+        $value = preg_replace('/\bcareer service\s*(?=\/|\bra\s*1080\b|\brating\b|\bdate of examination\b|\bplace of examination\b)/i', ' ', (string) $value);
         $value = preg_replace('/\b(?:from|to)\b\s*(?=\b(?:from|to|position|department|monthly|status|govt)\b)/i', ' ', (string) $value);
         $value = preg_replace('/\s+/u', ' ', (string) $value);
 

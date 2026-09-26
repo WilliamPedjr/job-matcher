@@ -410,7 +410,7 @@ function LandingPage({ onPersonnelLoginClick, onJobSeekerLoginClick, onRegisterC
               <strong>Phone:</strong> +639123456789
             </p>
             <p>
-              <strong>Email:</strong> lnuhireQ@gmail.com
+              <strong>Email:</strong> lnuhire@gmail.com
             </p>
           </div>
 
