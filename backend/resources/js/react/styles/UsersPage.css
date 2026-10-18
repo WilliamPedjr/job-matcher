@@ -191,11 +191,11 @@
 }
 
 .users-pagination {
-  display: flex;
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto minmax(0, 1fr);
   align-items: center;
-  justify-content: space-between;
-  gap: 12px;
-  margin-top: 12px;
+  gap: 14px;
+  margin-top: 16px;
   padding-top: 12px;
   border-top: 1px solid #eef1f6;
   color: #516079;
@@ -203,28 +203,40 @@
   font-weight: 800;
 }
 
+.users-page-count {
+  margin: 0;
+  font-size: 14px;
+  font-weight: 600;
+}
+
 .users-pagination div {
   display: flex;
   align-items: center;
-  gap: 8px;
+  justify-content: center;
+  gap: 10px;
 }
 
 .users-pagination button {
-  min-height: 34px;
+  min-width: 84px;
   border: 1px solid #cbd5e1;
-  border-radius: 8px;
+  border-radius: 6px;
   background: #ffffff;
-  color: #112b82;
+  color: #1d4ed8;
   cursor: pointer;
-  padding: 0 12px;
-  font-size: 13px;
+  padding: 8px 12px;
+  font-size: 12px;
   font-weight: 800;
 }
 
+.users-pagination button:hover:not(:disabled) {
+  border-color: #1d4ed8;
+  background: #eff6ff;
+}
+
 .users-pagination button:disabled {
-  color: #94a3b8;
+  color: #98a2b3;
   cursor: not-allowed;
-  opacity: 0.65;
+  background: #f8fafc;
 }
 
 .users-status-badge {
@@ -262,6 +274,88 @@
 
 .users-page .records-table tbody tr:hover td {
   background: #f1f5f9;
+}
+
+.users-inline-actions {
+  text-align: center;
+  white-space: nowrap;
+}
+
+.users-inline-actions .action-btn + .action-btn {
+  margin-left: 8px;
+}
+
+.users-edit-action {
+  border-color: #bfdbfe;
+  background: #eff6ff;
+  color: #1d4ed8;
+  font-weight: 800;
+}
+
+.users-edit-action:hover {
+  background: #dbeafe;
+  border-color: #93c5fd;
+}
+
+.users-delete-action {
+  border-color: #fecaca;
+  background: #fff1f1;
+  color: #b91c1c;
+  font-weight: 800;
+}
+
+.users-delete-action:hover {
+  background: #fee2e2;
+  border-color: #fca5a5;
+}
+
+.users-delete-action:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
+.users-delete-control {
+  position: relative;
+  display: inline-flex;
+}
+
+.users-delete-control.is-disabled {
+  cursor: not-allowed;
+}
+
+.users-delete-control.is-disabled .users-delete-action {
+  pointer-events: none;
+}
+
+.users-delete-control:focus-visible {
+  outline: 2px solid #2563eb;
+  outline-offset: 3px;
+  border-radius: 6px;
+}
+
+.users-delete-tooltip {
+  display: none;
+  position: absolute;
+  right: 0;
+  bottom: calc(100% + 8px);
+  z-index: 20;
+  width: 260px;
+  max-width: calc(100vw - 40px);
+  padding: 10px 12px;
+  border-radius: 8px;
+  background: #0f172a;
+  color: #ffffff;
+  font-size: 12px;
+  font-weight: 400;
+  line-height: 1.5;
+  text-align: left;
+  white-space: normal;
+  box-shadow: 0 4px 12px rgba(15, 23, 42, 0.2);
+}
+
+.users-delete-control:hover .users-delete-tooltip,
+.users-delete-control:focus-visible .users-delete-tooltip {
+  display: block;
 }
 
 .users-page .js-edit-body {
@@ -341,12 +435,11 @@
   }
 
   .users-pagination {
-    align-items: stretch;
-    flex-direction: column;
+    grid-template-columns: 1fr;
   }
 
   .users-pagination div {
-    justify-content: space-between;
+    flex-wrap: wrap;
   }
 
   .users-page .js-edit-modal {

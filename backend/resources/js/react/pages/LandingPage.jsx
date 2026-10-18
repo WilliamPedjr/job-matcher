@@ -222,7 +222,9 @@ function LandingPage({ onPersonnelLoginClick, onJobSeekerLoginClick, onRegisterC
         <div className="landing-jobs-grid">
           {loadingJobs ? (
             <div className="landing-empty-state landing-full-span">
-              <p>Loading jobs...</p>
+              <p>
+                <span className="loading-indicator"><span className="loading-spinner" aria-hidden="true" />Loading jobs...</span>
+              </p>
             </div>
           ) : availableJobs.length ? (
             paginatedJobs.map((job) => {
@@ -254,7 +256,7 @@ function LandingPage({ onPersonnelLoginClick, onJobSeekerLoginClick, onRegisterC
                       </div>
                     )}
 
-                    <button type="button" className="btn btn-primary btn-sm landing-job-action" onClick={onRegisterClick}>
+                    <button type="button" className="btn btn-primary btn-sm landing-job-action" onClick={onJobSeekerLoginClick}>
                       Apply now
                     </button>
                   </div>
@@ -295,34 +297,34 @@ function LandingPage({ onPersonnelLoginClick, onJobSeekerLoginClick, onRegisterC
 
       <section className="landing-features" id="landing-features">
         <div className="landing-section-header">
-          <p className="landing-section-eyebrow">What it does</p>
-          <h2>Tools for daily hiring work</h2>
-          <p>Screen, match, rank, and manage applicants.</p>
+          <p className="landing-section-eyebrow">For Job Seekers</p>
+          <h2>Everything you need to apply</h2>
+          <p>Find openings, submit requirements, and track your application.</p>
         </div>
 
         <div className="landing-features-grid">
           <article className="landing-feature-card">
             <div className="landing-feature-icon">01</div>
-            <h3>Personal Data Sheet(PDS) & document analysis</h3>
-            <p>Read submitted files faster.</p>
+            <h3>Browse available jobs</h3>
+            <p>See current openings and review role details before applying.</p>
           </article>
 
           <article className="landing-feature-card">
             <div className="landing-feature-icon">02</div>
-            <h3>Requirement matching</h3>
-            <p>Compare applicants to job needs.</p>
+            <h3>Submit your application</h3>
+            <p>Upload your Personal Data Sheet(PDS) and supporting files online.</p>
           </article>
 
           <article className="landing-feature-card">
             <div className="landing-feature-icon">03</div>
-            <h3>Score and rank applicants</h3>
-            <p>Find stronger matches first.</p>
+            <h3>Check job compatibility</h3>
+            <p>See how your profile and documents match job requirements.</p>
           </article>
 
           <article className="landing-feature-card">
             <div className="landing-feature-icon">04</div>
-            <h3>Secure records management</h3>
-            <p>Keep files and records together.</p>
+            <h3>Track application status</h3>
+            <p>Monitor your submitted applications and receive updates in one place.</p>
           </article>
         </div>
       </section>
@@ -330,27 +332,27 @@ function LandingPage({ onPersonnelLoginClick, onJobSeekerLoginClick, onRegisterC
       <section className="landing-how-it-works" id="landing-how-it-works">
         <div className="landing-section-header">
           <p className="landing-section-eyebrow">How it works</p>
-          <h2>A simple flow from posting to shortlist</h2>
-          <p>Three steps. Less confusion.</p>
+          <h2>A simple flow for job seekers</h2>
+          <p>Find a role, submit your files, and follow your progress.</p>
         </div>
 
         <div className="landing-steps">
           <article className="landing-step">
             <span className="landing-step-number">1</span>
-            <h3>Post a role</h3>
-            <p>Add the role and requirements.</p>
+            <h3>Choose a job</h3>
+            <p>Browse open positions and review the requirements.</p>
           </article>
           <article className="landing-step-arrow">→</article>
           <article className="landing-step">
             <span className="landing-step-number">2</span>
-            <h3>Collect applications</h3>
-            <p>Receive Personal Data Sheet(PDS) files and other files.</p>
+            <h3>Upload your files</h3>
+            <p>Submit your Personal Data Sheet(PDS) and supporting documents.</p>
           </article>
           <article className="landing-step-arrow">→</article>
           <article className="landing-step">
             <span className="landing-step-number">3</span>
-            <h3>Review ranked matches</h3>
-            <p>Review the shortlist.</p>
+            <h3>Track your application</h3>
+            <p>Check your status and receive updates from the system.</p>
           </article>
         </div>
       </section>

@@ -644,6 +644,15 @@ optgroup {
   margin-top: 0;
 }
 
+.profile-confirm-overlay {
+  z-index: 90000 !important;
+}
+
+.profile-confirm-card {
+  position: relative;
+  z-index: 90001 !important;
+}
+
 .modal-actions {
   display: flex;
   align-items: center;

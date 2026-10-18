@@ -4,6 +4,7 @@ namespace App\Services;
 
 use App\Models\GlobalSkillCatalog;
 use App\Models\Job;
+use Carbon\CarbonImmutable;
 use Illuminate\Support\Str;
 use Symfony\Component\Process\Process;
 
@@ -53,6 +54,9 @@ class ResumeAnalysisService
         $pdsFormat = $this->pdsExtractionService->format($extractedText);
         $isPds = ($pdsFormat['detected'] ?? false) === true;
         $analysisText = $this->analysisTextForMatching($resumeText, $pdsFormat);
+        $profileSkills = array_key_exists('skills', $profileOverride)
+            ? \App\Models\Experience::normalizeSkills($profileOverride['skills'] ?? []) : null;
+        $skillsText = $profileSkills !== null ? implode("\n", $profileSkills) : $analysisText;
         $globalSkills = GlobalSkillCatalog::query()->pluck('skill')->all();
 
         $job = null;
@@ -80,7 +84,11 @@ class ResumeAnalysisService
             ? $this->pdsSummaryLines($pdsFormat, 'eligibility')
             : $this->extractEligibilityLines($extractedText));
 
-        if ($this->isUniversalMatchJob($job)) {
+        $minimumExperienceYears = (int) ($job?->minimum_experience_years ?? 0);
+        $experienceScore = $this->calculateExperienceScore($experienceLines, $minimumExperienceYears);
+        $experienceRequirementMet = $experienceScore >= 100.0;
+
+        if ($this->isUniversalMatchJob($job) && $experienceRequirementMet) {
             $matchedSkills = ['General qualifications accepted'];
             $missingSkills = [];
             $overall = 100.0;
@@ -96,13 +104,17 @@ class ResumeAnalysisService
                 $pdsFormat
             );
 
+            $summary['skills'] = $profileSkills ?? $summary['skills'];
             return [
                 'classification' => 'Highly Qualified',
                 'overall_score' => $overall,
                 'skills_match_score' => 100.0,
                 'project_score' => 100.0,
                 'education_match_score' => 100.0,
-                'experience_match_score' => 100.0,
+                'experience_match_score' => $experienceScore,
+                'experience_requirement_met' => true,
+                'allow_application' => true,
+                'application_minimum_score' => $this->applicationThresholdForJob($job),
                 'matched_skills' => $matchedSkills,
                 'missing_skills' => $missingSkills,
                 'education_text' => implode("\n", $educationLines),
@@ -116,7 +128,7 @@ class ResumeAnalysisService
             ];
         }
 
-        if ($this->isUniversalModerateJob($job)) {
+        if ($this->isUniversalModerateJob($job) && $experienceRequirementMet) {
             $matchedSkills = ['General qualifications partially accepted'];
             $missingSkills = ['Final qualification review required'];
             $overall = 70.0;
@@ -132,13 +144,17 @@ class ResumeAnalysisService
                 $pdsFormat
             );
 
+            $summary['skills'] = $profileSkills ?? $summary['skills'];
             return [
                 'classification' => 'Moderately Qualified',
                 'overall_score' => $overall,
                 'skills_match_score' => 70.0,
                 'project_score' => 70.0,
                 'education_match_score' => 70.0,
-                'experience_match_score' => 70.0,
+                'experience_match_score' => $experienceScore,
+                'experience_requirement_met' => true,
+                'allow_application' => true,
+                'application_minimum_score' => $this->applicationThresholdForJob($job),
                 'matched_skills' => $matchedSkills,
                 'missing_skills' => $missingSkills,
                 'education_text' => implode("\n", $educationLines),
@@ -152,7 +168,7 @@ class ResumeAnalysisService
             ];
         }
 
-        if ($this->isUniversalNotQualifiedJob($job)) {
+        if ($this->isUniversalNotQualifiedJob($job) && $experienceRequirementMet) {
             $applicationMinimumScore = $this->applicationThresholdForJob($job);
             $matchedSkills = ['Application accepted for review'];
             $missingSkills = ['Marked not qualified by preset'];
@@ -169,13 +185,15 @@ class ResumeAnalysisService
                 $pdsFormat
             );
 
+            $summary['skills'] = $profileSkills ?? $summary['skills'];
             return [
-                'classification' => 'Lowly Qualified',
+                'classification' => 'Not Qualified',
                 'overall_score' => $overall,
                 'skills_match_score' => 30.0,
                 'project_score' => 30.0,
                 'education_match_score' => 30.0,
-                'experience_match_score' => 30.0,
+                'experience_match_score' => $experienceScore,
+                'experience_requirement_met' => true,
                 'matched_skills' => $matchedSkills,
                 'missing_skills' => $missingSkills,
                 'education_text' => implode("\n", $educationLines),
@@ -191,7 +209,7 @@ class ResumeAnalysisService
             ];
         }
 
-        if ($this->isUniversal55PercentJob($job)) {
+        if ($this->isUniversal55PercentJob($job) && $experienceRequirementMet) {
             $applicationMinimumScore = $this->applicationThresholdForJob($job);
             $matchedSkills = ['Preset 55 percent match'];
             $missingSkills = ['Below moderate qualification threshold'];
@@ -208,13 +226,15 @@ class ResumeAnalysisService
                 $pdsFormat
             );
 
+            $summary['skills'] = $profileSkills ?? $summary['skills'];
             return [
-                'classification' => 'Lowly Qualified',
+                'classification' => 'Not Qualified',
                 'overall_score' => $overall,
                 'skills_match_score' => $overall,
                 'project_score' => $overall,
                 'education_match_score' => $overall,
-                'experience_match_score' => $overall,
+                'experience_match_score' => $experienceScore,
+                'experience_requirement_met' => true,
                 'matched_skills' => $matchedSkills,
                 'missing_skills' => $missingSkills,
                 'education_text' => implode("\n", $educationLines),
@@ -232,7 +252,7 @@ class ResumeAnalysisService
 
         $requirementText = (string) ($job?->required_skills ?? '');
         $requiredSkills = $this->skillRequirementsFromRequirement($requirementText);
-        $matchedSkills = $this->findMatchedSkills($analysisText, $requiredSkills);
+        $matchedSkills = $this->findMatchedSkills($skillsText, $requiredSkills);
         $missingSkills = array_values(array_diff($requiredSkills, $matchedSkills));
         $skillsScore = $this->calculateSkillsScore($requiredSkills, $matchedSkills);
 
@@ -243,11 +263,9 @@ class ResumeAnalysisService
 
         $trainingScore = $this->calculateTrainingScore($resumeText, $trainingRequirement);
         $minimumEducation = (string) ($job?->minimum_education ?? '');
-        $minimumExperienceYears = (int) ($job?->minimum_experience_years ?? 0);
         $eligibilityRequirement = (string) ($job?->eligibility ?? '');
         $applicationMinimumScore = $this->applicationThresholdForJob($job);
         $educationScore = $this->calculateEducationScore($educationLines, $minimumEducation);
-        $experienceScore = $this->calculateExperienceScore($experienceLines, $minimumExperienceYears);
         $eligibilityScore = $this->calculateEligibilityScore($resumeText, $eligibilityRequirement);
         $overall = $this->calculateQualificationStandardsScore($educationScore, $trainingScore, $experienceScore, $eligibilityScore, $skillsScore, $this->scoringWeightsForJob($job));
         $summarySourceText = $isPds && $analysisText !== '' ? $analysisText : $extractedText;
@@ -271,9 +289,13 @@ class ResumeAnalysisService
         $summary['eligibility'] = $eligibilityLines;
         $summary['matched_training'] = $matchedTraining;
         $summary['missing_training'] = $missingTraining;
+        $summary['experience_requirement_met'] = $experienceRequirementMet;
+        if ($profileSkills !== null) {
+            $summary['skills'] = $profileSkills;
+        }
 
         return [
-            'classification' => $overall >= 80 ? 'Highly Qualified' : ($overall >= 60 ? 'Moderately Qualified' : 'Lowly Qualified'),
+            'classification' => !$experienceRequirementMet ? 'Not Qualified' : ($overall >= 80 ? 'Highly Qualified' : ($overall >= 60 ? 'Moderately Qualified' : 'Not Qualified')),
             'overall_score' => $overall,
             'skills_match_score' => $skillsScore,
             'training_match_score' => $trainingScore,
@@ -286,6 +308,7 @@ class ResumeAnalysisService
             'matched_skills' => $matchedSkills,
             'missing_skills' => $missingSkills,
             'matched_training' => $matchedTraining,
+            'profile_skills' => $profileSkills,
             'missing_training' => $missingTraining,
             'training_text' => implode("\n", $trainingEvidence),
             'eligibility_lines' => $eligibilityLines,
@@ -300,7 +323,9 @@ class ResumeAnalysisService
             'pds_format' => $pdsFormat,
             'matched_job_title' => $job?->title ?: ($appliedJobTitle !== '' ? $appliedJobTitle : null),
             'application_minimum_score' => $applicationMinimumScore,
-            'allow_application' => $overall >= $applicationMinimumScore,
+            'allow_application' => $experienceRequirementMet && $overall >= $applicationMinimumScore,
+            'experience_requirement_met' => $experienceRequirementMet,
+            'application_block_reason' => $experienceRequirementMet ? '' : 'You do not meet the minimum experience required for this job.',
         ];
     }
 
@@ -320,8 +345,13 @@ class ResumeAnalysisService
         $results = [];
 
         foreach ($jobs as $job) {
+            $experienceScore = $this->calculateExperienceScore(
+                $experienceLines,
+                (int) $this->jobField($job, 'minimumExperienceYears', 'minimum_experience_years', 0)
+            );
+            $experienceRequirementMet = $experienceScore >= 100.0;
             $requiredSkills = $this->splitSkills((string) $this->jobField($job, 'requiredSkills', 'required_skills', ''));
-            if ($this->isUniversalMatchJob($job)) {
+            if ($this->isUniversalMatchJob($job) && $experienceRequirementMet) {
                 $results[] = [
                     'id' => $this->jobField($job, 'id'),
                     'title' => $this->jobField($job, 'title'),
@@ -340,12 +370,15 @@ class ResumeAnalysisService
                     'skillsScore' => 100.0,
                     'projectScore' => 100.0,
                     'educationScore' => 100.0,
-                    'experienceScore' => 100.0,
+                    'experienceScore' => $experienceScore,
+                    'experienceRequirementMet' => true,
+                    'allowApplication' => true,
+                    'minimumScore' => $this->applicationThresholdForJob($job),
                 ];
                 continue;
             }
 
-            if ($this->isUniversalModerateJob($job)) {
+            if ($this->isUniversalModerateJob($job) && $experienceRequirementMet) {
                 $results[] = [
                     'id' => $this->jobField($job, 'id'),
                     'title' => $this->jobField($job, 'title'),
@@ -364,12 +397,15 @@ class ResumeAnalysisService
                     'skillsScore' => 70.0,
                     'projectScore' => 70.0,
                     'educationScore' => 70.0,
-                    'experienceScore' => 70.0,
+                    'experienceScore' => $experienceScore,
+                    'experienceRequirementMet' => true,
+                    'allowApplication' => true,
+                    'minimumScore' => $this->applicationThresholdForJob($job),
                 ];
                 continue;
             }
 
-            if ($this->isUniversalNotQualifiedJob($job)) {
+            if ($this->isUniversalNotQualifiedJob($job) && $experienceRequirementMet) {
                 $results[] = [
                     'id' => $this->jobField($job, 'id'),
                     'title' => $this->jobField($job, 'title'),
@@ -382,20 +418,21 @@ class ResumeAnalysisService
                     'minimumEducation' => $this->jobField($job, 'minimumEducation', 'minimum_education', ''),
                     'minimumExperienceYears' => (int) $this->jobField($job, 'minimumExperienceYears', 'minimum_experience_years', 0),
                     'overallScore' => 30.0,
-                    'classification' => 'Lowly Qualified',
+                    'classification' => 'Not Qualified',
                     'matchedSkills' => ['Application accepted for review'],
                     'missingSkills' => ['Marked not qualified by preset'],
                     'skillsScore' => 30.0,
                     'projectScore' => 30.0,
                     'educationScore' => 30.0,
-                    'experienceScore' => 30.0,
+                    'experienceScore' => $experienceScore,
+                    'experienceRequirementMet' => true,
                     'allowApplication' => true,
                     'minimumScore' => $this->applicationThresholdForJob($job),
                 ];
                 continue;
             }
 
-            if ($this->isUniversal55PercentJob($job)) {
+            if ($this->isUniversal55PercentJob($job) && $experienceRequirementMet) {
                 $results[] = [
                     'id' => $this->jobField($job, 'id'),
                     'title' => $this->jobField($job, 'title'),
@@ -408,13 +445,14 @@ class ResumeAnalysisService
                     'minimumEducation' => $this->jobField($job, 'minimumEducation', 'minimum_education', ''),
                     'minimumExperienceYears' => (int) $this->jobField($job, 'minimumExperienceYears', 'minimum_experience_years', 0),
                     'overallScore' => 55.0,
-                    'classification' => 'Lowly Qualified',
+                    'classification' => 'Not Qualified',
                     'matchedSkills' => ['Preset 55 percent match'],
                     'missingSkills' => ['Below moderate qualification threshold'],
                     'skillsScore' => 55.0,
                     'projectScore' => 55.0,
                     'educationScore' => 55.0,
-                    'experienceScore' => 55.0,
+                    'experienceScore' => $experienceScore,
+                    'experienceRequirementMet' => true,
                     'allowApplication' => 55.0 >= $this->applicationThresholdForJob($job),
                     'minimumScore' => $this->applicationThresholdForJob($job),
                 ];
@@ -436,10 +474,6 @@ class ResumeAnalysisService
                 $educationLines,
                 (string) $this->jobField($job, 'minimumEducation', 'minimum_education', '')
             );
-            $experienceScore = $this->calculateExperienceScore(
-                $experienceLines,
-                (int) $this->jobField($job, 'minimumExperienceYears', 'minimum_experience_years', 0)
-            );
             $eligibilityRequirement = (string) $this->jobField($job, 'eligibility', null, '');
             $eligibilityScore = $this->calculateEligibilityScore($resumeText, $eligibilityRequirement);
             $applicationMinimumScore = $this->applicationThresholdForJob($job);
@@ -459,7 +493,7 @@ class ResumeAnalysisService
                 'minimumEducation' => $this->jobField($job, 'minimumEducation', 'minimum_education', ''),
                 'minimumExperienceYears' => $this->jobField($job, 'minimumExperienceYears', 'minimum_experience_years', 0),
                 'overallScore' => $overall,
-                'classification' => $overall >= 80 ? 'Highly Qualified' : ($overall >= 60 ? 'Moderately Qualified' : 'Lowly Qualified'),
+                'classification' => !$experienceRequirementMet ? 'Not Qualified' : ($overall >= 80 ? 'Highly Qualified' : ($overall >= 60 ? 'Moderately Qualified' : 'Not Qualified')),
                 'matchedSkills' => $matchedSkills,
                 'missingSkills' => $missingSkills,
                 'matchedTraining' => $matchedTraining,
@@ -473,7 +507,9 @@ class ResumeAnalysisService
                 'educationScore' => $educationScore,
                 'experienceScore' => $experienceScore,
                 'eligibilityScore' => $eligibilityScore,
-                'allowApplication' => $overall >= $applicationMinimumScore,
+                'allowApplication' => $experienceRequirementMet && $overall >= $applicationMinimumScore,
+                'experienceRequirementMet' => $experienceRequirementMet,
+                'applicationBlockReason' => $experienceRequirementMet ? '' : 'You do not meet the minimum experience required for this job.',
                 'minimumScore' => $applicationMinimumScore,
             ];
         }
@@ -1309,18 +1345,72 @@ class ResumeAnalysisService
             return 100.0;
         }
 
-        $joined = implode(' ', $experienceLines);
-        preg_match_all('/(\d+)\+?\s*years?/i', $joined, $matches);
-        $years = 0;
-        foreach ($matches[1] ?? [] as $value) {
-            $years = max($years, (int) $value);
-        }
+        $years = $this->calculateExperienceYears($experienceLines);
 
         if ($years >= $minimumYears) {
             return 100.0;
         }
 
         return max(0.0, min(100.0, ($years / max($minimumYears, 1)) * 100));
+    }
+
+    private function calculateExperienceYears(array $experienceLines): float
+    {
+        $text = implode("\n", $experienceLines);
+        $datePattern = '(?:\d{4}-\d{2}-\d{2}|\d{1,2}/\d{1,2}/\d{4}|(?:19|20)\d{2})';
+        preg_match_all('~(?<!\d)('.$datePattern.')\s*(?:[-–—]|\bto\b)\s*('.$datePattern.'|present|current|now)(?!\d)~iu', $text, $matches, PREG_SET_ORDER);
+
+        $today = CarbonImmutable::now('Asia/Manila')->startOfDay();
+        $periods = [];
+        foreach ($matches as $match) {
+            $start = $this->parseExperienceDate($match[1]);
+            $end = in_array(Str::lower($match[2]), ['present', 'current', 'now'], true)
+                ? $today : $this->parseExperienceDate($match[2]);
+            if (!$start || !$end || $start->greaterThan($today) || $end->lessThan($start)) {
+                continue;
+            }
+
+            $end = $end->min($today);
+            // Exact employment end dates are inclusive; year-only ranges use year boundaries.
+            $endExclusive = strlen($match[2]) === 4 && ctype_digit($match[2]) ? $end : $end->addDay();
+            $periods[] = [$start, $endExclusive];
+        }
+
+        if ($periods) {
+            usort($periods, fn ($left, $right) => $left[0]->getTimestamp() <=> $right[0]->getTimestamp());
+            $merged = [];
+            foreach ($periods as [$start, $end]) {
+                $last = count($merged) - 1;
+                if ($last >= 0 && $start->lessThanOrEqualTo($merged[$last][1])) {
+                    $merged[$last][1] = $merged[$last][1]->max($end);
+                } else {
+                    $merged[] = [$start, $end];
+                }
+            }
+
+            return array_sum(array_map(fn ($period) => $period[0]->floatDiffInYears($period[1]), $merged));
+        }
+
+        // Preserve support for resumes that state a duration without employment dates.
+        preg_match_all('/(?<![\d.])(\d+(?:\.\d+)?)\+?\s*years?/i', $text, $durations);
+
+        return $durations[1] ? max(array_map('floatval', $durations[1])) : 0.0;
+    }
+
+    private function parseExperienceDate(string $value): ?CarbonImmutable
+    {
+        foreach (['Y-m-d', 'm/d/Y', 'n/j/Y', 'm/j/Y', 'n/d/Y', 'Y'] as $format) {
+            try {
+                $date = CarbonImmutable::createFromFormat('!'.$format, $value, 'Asia/Manila');
+                if ($date && $date->format($format) === $value) {
+                    return $date;
+                }
+            } catch (\InvalidArgumentException) {
+                // Try the next supported employment date format.
+            }
+        }
+
+        return null;
     }
 
     private function isOpenEducationRequirement(string $value): bool

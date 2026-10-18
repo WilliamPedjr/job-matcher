@@ -11,7 +11,13 @@ use App\Http\Controllers\Api\MatchController;
 use App\Http\Controllers\Api\PdsController;
 use App\Http\Controllers\Api\SkillController;
 use App\Http\Controllers\Api\UploadController;
+use App\Http\Middleware\EnsurePersonnelRatingAccess;
 use Illuminate\Support\Facades\Route;
+
+Route::pattern('id', '[0-9]+');
+Route::pattern('supportId', '[0-9]+');
+Route::pattern('educationId', '[0-9]+');
+Route::pattern('experienceId', '[0-9]+');
 
 Route::get('/', function () {
     return response()->json([
@@ -30,7 +36,8 @@ Route::middleware('api-session')->withoutMiddleware(['throttle:api'])->group(fun
     Route::post('/employers/login', [AuthController::class, 'employerLogin']);
 });
 Route::get('/activity-logs', [ActivityLogController::class, 'index']);
-Route::post('/activity-logs', [ActivityLogController::class, 'store']);
+Route::post('/activity-logs', [ActivityLogController::class, 'store'])
+    ->middleware(['api-session', EnsurePersonnelRatingAccess::class.':settings']);
 Route::get('/staff/me', [AuthController::class, 'staffMe']);
 Route::put('/staff/me', [AuthController::class, 'updateStaffMe']);
 
@@ -86,19 +93,33 @@ Route::get('/skills/catalog', [SkillController::class, 'catalog']);
 Route::get('/landing-summary', [LandingController::class, 'summary']);
 Route::post('/pds/extract', [PdsController::class, 'extract']);
 Route::post('/upload', [UploadController::class, 'store']);
+Route::get('/uploads/summary/export', [UploadController::class, 'exportApplicationsSummary'])
+    ->middleware(['api-session', EnsurePersonnelRatingAccess::class]);
+Route::get('/uploads/ratings-summary/export', [UploadController::class, 'exportRatingsOverallSummary'])
+    ->middleware(['api-session', EnsurePersonnelRatingAccess::class]);
 Route::get('/uploads', [UploadController::class, 'index'])
     ->withoutMiddleware(['throttle:api']);
 Route::get('/uploads/{id}', [UploadController::class, 'show']);
+Route::get('/uploads/{id}/preview', [UploadController::class, 'preview']);
 Route::put('/uploads/{id}/reanalyze', [UploadController::class, 'reanalyze']);
 Route::get('/uploads/{id}/download', [UploadController::class, 'download']);
 Route::get('/uploads/{id}/supporting', [UploadController::class, 'supporting']);
+Route::get('/uploads/{id}/supporting/{supportId}/preview', [UploadController::class, 'supportingPreview']);
 Route::get('/uploads/{id}/supporting/{supportId}/download', [UploadController::class, 'supportingDownload']);
-Route::get('/uploads/{id}/rating-summary/export', [UploadController::class, 'exportRatingSummary']);
-Route::get('/uploads/{id}/demonstration-summary/export', [UploadController::class, 'exportDemonstrationSummary']);
+Route::get('/uploads/{id}/rating-summary/export', [UploadController::class, 'exportRatingSummary'])
+    ->middleware(['api-session', EnsurePersonnelRatingAccess::class]);
+Route::get('/uploads/{id}/demonstration-summary/export', [UploadController::class, 'exportDemonstrationSummary'])
+    ->middleware(['api-session', EnsurePersonnelRatingAccess::class]);
 Route::put('/uploads/{id}/status', [UploadController::class, 'updateStatus']);
 Route::put('/uploads/{id}/evaluation', [UploadController::class, 'markForEvaluation']);
-Route::put('/uploads/{id}/interview-date', [UploadController::class, 'updateInterviewDate']);
-Route::put('/uploads/{id}/evaluation/cancel', [UploadController::class, 'cancelEvaluation']);
+Route::put('/uploads/{id}/interview-date', [UploadController::class, 'updateInterviewDate'])
+    ->middleware(['api-session', EnsurePersonnelRatingAccess::class.':actions']);
+Route::put('/uploads/{id}/demonstration-date', [UploadController::class, 'updateDemonstrationDate'])
+    ->middleware(['api-session', EnsurePersonnelRatingAccess::class.':actions']);
+Route::put('/uploads/{id}/examination', [UploadController::class, 'updateExamination'])
+    ->middleware(['api-session', EnsurePersonnelRatingAccess::class.':actions']);
+Route::put('/uploads/{id}/evaluation/cancel', [UploadController::class, 'cancelEvaluation'])
+    ->middleware(['api-session', EnsurePersonnelRatingAccess::class.':actions']);
 Route::post('/uploads/{id}/ratings', [UploadController::class, 'storeRating']);
 Route::delete('/uploads/{id}', [UploadController::class, 'destroy']);
 Route::put('/uploads/{id}/hide', [UploadController::class, 'hide']);

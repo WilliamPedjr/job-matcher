@@ -242,10 +242,16 @@ class JobController extends Controller
             'eligibility_weight' => ['nullable', 'integer', 'min:0', 'max:100'],
             'salary_min' => ['nullable', 'integer', 'min:0'],
             'salary_max' => ['nullable', 'integer', 'min:0'],
+            'positions_total' => ['nullable', 'integer', 'min:0'],
             'universal_match_mode' => ['nullable', 'string', 'in:match_all,moderate,not_qualified,match_55_percent'],
         ];
 
-        $data = $request->validate($rules);
+        $data = $request->validate($rules, [
+            'salary_min.integer' => 'Salary grade must be a whole number.',
+            'salary_min.min' => 'Salary grade must be a non-negative whole number.',
+            'positions_total.integer' => 'Job Vacancy must be a whole number.',
+            'positions_total.min' => 'Job Vacancy must be at least 1, or choose No Limit.',
+        ]);
         $weights = $this->scoringWeightsFromData($data);
         if (array_sum($weights) > 100) {
             throw ValidationException::withMessages([
@@ -283,6 +289,7 @@ class JobController extends Controller
             'eligibilityWeight' => 'eligibility_weight',
             'salaryMin' => 'salary_min',
             'salaryMax' => 'salary_max',
+            'positionsTotal' => 'positions_total',
             'universalMatchMode' => 'universal_match_mode',
         ];
 
@@ -300,6 +307,9 @@ class JobController extends Controller
 
     private function normalizeJobPayload(array $data, bool $mergeDefaults = true, ?Job $existingJob = null): array
     {
+        $rawPositionsTotal = $data['positions_total'] ?? ($existingJob?->positions_total ?? 1);
+        $positionsTotal = (int) $rawPositionsTotal;
+
         return [
             'title' => $data['title'] ?? '',
             'description' => $data['description'] ?? '',
@@ -322,6 +332,7 @@ class JobController extends Controller
             'eligibility_weight' => (int) ($data['eligibility_weight'] ?? 20),
             'salary_min' => $data['salary_min'] ?? null,
             'salary_max' => $data['salary_max'] ?? null,
+            'positions_total' => max(0, $positionsTotal),
         ];
     }
 
@@ -577,6 +588,11 @@ class JobController extends Controller
                     ->orWhereRaw('LOWER(matched_job_title) = ?', [Str::lower((string) $job->title)]);
             })
             ->count();
+        $rawPositionsTotal = (int) ($job->positions_total ?? 1);
+        $positionsMany = $rawPositionsTotal <= 0;
+        $positionsTotal = $positionsMany ? 0 : max(1, $rawPositionsTotal);
+        $positionsFilled = $applicants;
+        $positionsAvailable = $positionsMany ? null : max(0, $positionsTotal - $positionsFilled);
 
         return [
             'id' => $job->id,
@@ -617,6 +633,14 @@ class JobController extends Controller
             'salaryMin' => $job->salary_min,
             'salary_max' => $job->salary_max,
             'salaryMax' => $job->salary_max,
+            'positions_total' => $positionsTotal,
+            'positionsTotal' => $positionsTotal,
+            'positions_many' => $positionsMany,
+            'positionsMany' => $positionsMany,
+            'positions_filled' => $positionsFilled,
+            'positionsFilled' => $positionsFilled,
+            'positions_available' => $positionsAvailable,
+            'positionsAvailable' => $positionsAvailable,
             'applicants' => $applicants,
             'applicant_count' => $applicants,
             'applicantCount' => $applicants,
@@ -670,6 +694,14 @@ class JobController extends Controller
             'salaryMin' => $template->salary_min,
             'salary_max' => $template->salary_max,
             'salaryMax' => $template->salary_max,
+            'positions_total' => 1,
+            'positionsTotal' => 1,
+            'positions_many' => false,
+            'positionsMany' => false,
+            'positions_filled' => 0,
+            'positionsFilled' => 0,
+            'positions_available' => 1,
+            'positionsAvailable' => 1,
             'skills' => $this->parseSkills($requiredSkills),
             'universal_match_mode' => $universalMatchMode,
             'universalMatchMode' => $universalMatchMode,

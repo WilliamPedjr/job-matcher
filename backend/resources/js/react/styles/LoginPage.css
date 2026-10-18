@@ -1638,9 +1638,17 @@ optgroup {
   margin-bottom: 16px;
 }
 
-.login-input-wrap-modern.input-error {
-  border: 1px solid #dc2626;
-  box-shadow: 0 0 0 2px rgba(220, 38, 38, 0.12);
+.login-input-wrap-modern.input-error,
+.login-input-wrap-modern:has(.login-input-modern.input-error),
+.login-input-wrap-modern:has(.login-input-modern[aria-invalid="true"]) {
+  border: 1px solid #dc2626 !important;
+  box-shadow: none;
+}
+
+.login-input-wrap-modern .login-input-modern.input-error,
+.login-input-wrap-modern .login-input-modern[aria-invalid="true"] {
+  border: 0 !important;
+  box-shadow: none !important;
 }
 
 .login-password-wrap {

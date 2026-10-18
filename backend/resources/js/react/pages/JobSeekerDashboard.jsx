@@ -4,6 +4,60 @@ import "../styles/JobSeekerDashboard.css"
 
 const applicationPageSize = 10
 
+function formatInterviewDate(value) {
+  if (!value) return "-"
+  const date = new Date(value)
+  if (Number.isNaN(date.getTime())) return "-"
+  return date.toLocaleDateString(undefined, {
+    month: "long",
+    day: "numeric",
+    year: "numeric"
+  })
+}
+
+function formatInterviewTime(value) {
+  if (!value) return "-"
+  const [hourText, minuteText] = String(value).slice(0, 5).split(":")
+  const hour = Number(hourText)
+  const minute = Number(minuteText)
+  if (Number.isNaN(hour) || Number.isNaN(minute)) return "-"
+  const date = new Date()
+  date.setHours(hour, minute, 0, 0)
+  return date.toLocaleTimeString(undefined, { hour: "numeric", minute: "2-digit" })
+}
+
+function getInterviewDateValue(item) {
+  return item?.interview_date || item?.interviewDate
+}
+
+function getInterviewPlaceValue(item) {
+  return item?.interview_place || item?.interviewPlace || ""
+}
+
+function getInterviewTimeValue(item) {
+  return item?.interview_time || item?.interviewTime || ""
+}
+
+function getInterviewPreparationNotesValue(item) {
+  return item?.interview_preparation_notes || item?.interviewPreparationNotes || ""
+}
+
+function getDemonstrationDateValue(item) {
+  return item?.demonstration_date || item?.demonstrationDate
+}
+
+function getDemonstrationTimeValue(item) {
+  return item?.demonstration_time || item?.demonstrationTime || ""
+}
+
+function getDemonstrationPlaceValue(item) {
+  return item?.demonstration_place || item?.demonstrationPlace || ""
+}
+
+function getDemonstrationPreparationNotesValue(item) {
+  return item?.demonstration_preparation_notes || item?.demonstrationPreparationNotes || ""
+}
+
 function JobSeekerDashboard({ jobSeekerProfile, uploads = [], onBrowseJobs, onViewApplication, onDeleteApplication }) {
   const [actionsId, setActionsId] = useState(null)
   const [applicationsPage, setApplicationsPage] = useState(1)
@@ -44,6 +98,38 @@ function JobSeekerDashboard({ jobSeekerProfile, uploads = [], onBrowseJobs, onVi
   const qualifiedCount = myUploads.filter((item) => isQualified(item.classification)).length
   const moderatelyQualifiedCount = myUploads.filter((item) => isModeratelyQualified(item.classification)).length
   const notQualifiedCount = myUploads.filter((item) => isNotQualified(item.classification)).length
+  const importantDateNotifications = myUploads
+    .flatMap((item) => {
+      const notifications = []
+      if (getInterviewDateValue(item)) {
+        notifications.push({
+          item,
+          type: "interview",
+          date: getInterviewDateValue(item),
+          time: getInterviewTimeValue(item),
+          place: getInterviewPlaceValue(item).trim(),
+          notes: getInterviewPreparationNotesValue(item).trim(),
+          fallbackNotes: "Please prepare the required documents and be available for your scheduled interview."
+        })
+      }
+      if (getDemonstrationDateValue(item)) {
+        notifications.push({
+          item,
+          type: "demonstration",
+          date: getDemonstrationDateValue(item),
+          time: getDemonstrationTimeValue(item),
+          place: getDemonstrationPlaceValue(item).trim(),
+          notes: getDemonstrationPreparationNotesValue(item).trim(),
+          fallbackNotes: "Please prepare the required materials and be available for your scheduled demonstration."
+        })
+      }
+      return notifications
+    })
+    .sort((a, b) => {
+      const aDate = new Date(`${a.date || ""}T${String(a.time || "00:00").slice(0, 5)}`)
+      const bDate = new Date(`${b.date || ""}T${String(b.time || "00:00").slice(0, 5)}`)
+      return aDate.getTime() - bDate.getTime()
+    })
 
   const getStatusLabel = (item) => {
     const rawStatus = String(item?.application_status || item?.applicationStatus || item?.evaluation_status || item?.evaluationStatus || "")
@@ -65,7 +151,8 @@ function JobSeekerDashboard({ jobSeekerProfile, uploads = [], onBrowseJobs, onVi
 
   const getClassificationLabel = (item) => {
     const classification = String(item?.classification || "").trim()
-    return classification || "Unclassified"
+    if (!classification) return "Unclassified"
+    return classification.toLowerCase().includes("lowly") ? "Not Qualified" : classification
   }
 
   const classificationClass = (value) => {
@@ -136,7 +223,7 @@ function JobSeekerDashboard({ jobSeekerProfile, uploads = [], onBrowseJobs, onVi
         <div className="js-stat-card">
           <div className="js-stat-label">
             <span className="js-icon js-icon-not">NO</span>
-            <span>Lowly Qualified</span>
+            <span>Not Qualified</span>
           </div>
           <div className="js-stat-value">{notQualifiedCount}</div>
         </div>
@@ -155,6 +242,48 @@ function JobSeekerDashboard({ jobSeekerProfile, uploads = [], onBrowseJobs, onVi
           </button>
         </div>
       </div>
+
+      {importantDateNotifications.length > 0 && (
+        <div className="js-interview-notifications" aria-label="Important date notifications">
+          <div className="js-interview-notifications-header">
+            <span>Important Date</span>
+            <strong>{importantDateNotifications.length}</strong>
+          </div>
+          <div className="js-interview-notification-list">
+            {importantDateNotifications.map((notification) => {
+              const item = notification.item
+              const jobTitle = item.applied_job_title || item.matched_job_title || "your application"
+              return (
+                <button
+                  key={`${notification.type}-${item.id || jobTitle}`}
+                  type="button"
+                  className="js-interview-notification"
+                  onClick={() => onViewApplication && onViewApplication(item)}
+                >
+                  <div>
+                    <h3>{jobTitle}</h3>
+                    <p>{notification.notes || notification.fallbackNotes}</p>
+                  </div>
+                  <dl>
+                    <div>
+                      <dt>Date</dt>
+                      <dd>{formatInterviewDate(notification.date)}</dd>
+                    </div>
+                    <div>
+                      <dt>Time</dt>
+                      <dd>{formatInterviewTime(notification.time)}</dd>
+                    </div>
+                    <div>
+                      <dt>Place</dt>
+                      <dd>{notification.place || "-"}</dd>
+                    </div>
+                  </dl>
+                </button>
+              )
+            })}
+          </div>
+        </div>
+      )}
 
       <div className="js-applied-card">
         <div className="js-section-title">Applied Jobs</div>

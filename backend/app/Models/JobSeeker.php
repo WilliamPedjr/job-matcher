@@ -10,6 +10,31 @@ class JobSeeker extends Authenticatable
 {
     use HasFactory, Notifiable;
 
+    public const DELETION_BLOCK_REASON = 'This applicant account cannot be deleted because it is linked to applications, evaluations, or recruitment process records.';
+
+    protected static function booted(): void
+    {
+        static::deleting(function (JobSeeker $jobSeeker) {
+            if ($jobSeeker->hasRecruitmentRecords(true)) {
+                throw \Illuminate\Validation\ValidationException::withMessages([
+                    'account' => self::DELETION_BLOCK_REASON,
+                ]);
+            }
+        });
+    }
+
+    public function hasRecruitmentRecords(bool $fresh = false): bool
+    {
+        $attributes = $this->getAttributes();
+        if (!$fresh && array_key_exists('has_recruitment_records', $attributes)
+            && array_key_exists('has_linked_supporting_records', $attributes)) {
+            return (bool) $attributes['has_recruitment_records'] || (bool) $attributes['has_linked_supporting_records'];
+        }
+
+        return $this->uploads()->recruitmentRecords()->exists()
+            || $this->supportingFiles()->whereNotNull('upload_id')->exists();
+    }
+
     protected $fillable = [
         'id_number',
         'full_name',
@@ -45,6 +70,15 @@ class JobSeeker extends Authenticatable
     public function experiences()
     {
         return $this->hasMany(Experience::class);
+    }
+
+    public function combinedSkills(): array
+    {
+        $this->loadMissing('experiences');
+
+        return Experience::normalizeSkills($this->experiences
+            ->flatMap(fn (Experience $experience) => $experience->skills ?? [])
+            ->all());
     }
 
     public function uploads()

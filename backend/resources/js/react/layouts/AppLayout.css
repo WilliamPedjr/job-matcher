@@ -236,7 +236,9 @@ body {
   bottom: 80px;
   width: min(680px, calc(100vw - var(--sidebar-width) - 32px));
   max-height: min(680px, calc(100vh - 56px));
-  overflow: auto;
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
 }
 
 .notifications-header h4 {
@@ -327,7 +329,8 @@ body {
   margin-top: 12px;
   border: 1px solid #e3e6ee;
   border-radius: 12px;
-  overflow: hidden;
+  overflow: auto;
+  min-height: 0;
   background: #ffffff;
 }
 
@@ -364,7 +367,9 @@ body {
     width: auto !important;
     max-height: none !important;
     padding: 14px !important;
-    overflow-y: auto !important;
+    display: flex !important;
+    flex-direction: column !important;
+    overflow: hidden !important;
     overflow-x: hidden !important;
     border-radius: 12px !important;
   }
@@ -395,7 +400,8 @@ body {
   }
 
   .notifications-table {
-    overflow: visible;
+    overflow-y: auto;
+    overflow-x: hidden;
   }
 
   .notifications-table table,
@@ -414,7 +420,8 @@ body {
   .notifications-table tbody tr {
     display: grid;
     grid-template-columns: minmax(0, 1fr) auto;
-    gap: 8px 12px;
+    gap: 10px 14px;
+    align-items: end;
     padding: 12px;
     border-bottom: 1px solid #edf0f5;
   }
@@ -468,8 +475,8 @@ body {
   }
 
   .notifications-table td:nth-child(4) {
-    justify-self: end;
-    align-self: end;
+    justify-self: start;
+    align-self: center;
   }
 
   .notifications-table td:nth-child(4)::before {
@@ -479,14 +486,9 @@ body {
     color: #8a94a6;
     font-size: 11px;
     font-weight: 800;
-    text-align: right;
+    text-align: left;
     text-transform: uppercase;
     letter-spacing: 0.03em;
-  }
-
-  .notifications-table td:nth-child(5) {
-    grid-column: 1 / -1;
-    justify-self: end;
   }
 
   .notification-status {
@@ -496,10 +498,6 @@ body {
     font-size: 10px;
     line-height: 1;
     white-space: nowrap;
-  }
-
-  .notification-delete-btn {
-    min-height: 32px;
   }
 
   .notifications-empty {
@@ -538,25 +536,6 @@ body {
   margin-top: 12px;
   color: #9aa4b2;
   font-size: var(--fs-14);
-}
-
-.notification-delete-btn {
-  border: 1px solid #f3c5c5;
-  border-radius: 8px;
-  background: #fff5f5;
-  color: #b42318;
-  cursor: pointer;
-  font-size: var(--fs-13);
-  font-weight: 700;
-  padding: 6px 10px;
-  white-space: nowrap;
-}
-
-.notification-delete-btn:hover,
-.notification-delete-btn:focus-visible {
-  background: #fee2e2;
-  border-color: #fca5a5;
-  outline: none;
 }
 
 .notifications-footer {
@@ -1173,11 +1152,31 @@ section.panel.applicants-panel,
 
 .applicants-filters {
   margin-top: 0;
+  grid-template-columns: minmax(240px, 1.3fr) minmax(220px, 1fr) auto;
+  align-items: center;
   background: #ffffff;
   border: 1px solid #d9e1eb;
   border-radius: 14px;
   padding: 14px 16px;
   box-shadow: 0 10px 18px rgba(15, 23, 42, 0.06);
+}
+
+.applicants-filters .input,
+.applicants-filters .btn {
+  box-sizing: border-box;
+  min-height: 52px;
+  margin: 0;
+}
+
+.applicants-filters .dropdown-trigger {
+  height: 52px;
+}
+
+.applicants-filters .btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  white-space: nowrap;
 }
 
 .applicants-meta {
@@ -1224,6 +1223,14 @@ section.panel.applicants-panel,
 
 .applicants-panel .records-table tbody tr:hover td {
   background: #f1f5f9;
+}
+
+.applicants-panel .records-table tbody tr.applicant-table-row-clickable {
+  cursor: pointer;
+}
+
+.applicants-panel .records-table tbody tr.applicant-table-row-clickable:focus-visible td {
+  background: #eef4ff;
 }
 
 .applicants-panel .table-classification {
@@ -1746,6 +1753,73 @@ optgroup {
 
 .modal-card h3 {
   margin-top: 0;
+}
+
+.loading-indicator {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 10px;
+  color: #172033;
+  font-size: 14px;
+  font-weight: 700;
+}
+
+.loading-indicator-compact {
+  color: #ffffff;
+  font-size: 13px;
+}
+
+.loading-spinner {
+  width: 18px;
+  height: 18px;
+  border: 3px solid rgba(17, 43, 130, 0.18);
+  border-top-color: #112b82;
+  border-radius: 999px;
+  animation: loadingSpin 780ms linear infinite;
+  flex: 0 0 auto;
+}
+
+.loading-indicator-compact .loading-spinner {
+  width: 16px;
+  height: 16px;
+  border-color: rgba(255, 255, 255, 0.35);
+  border-top-color: #ffffff;
+}
+
+.loading-panel {
+  min-height: 280px;
+  display: grid;
+  place-items: center;
+  border: 1px solid #d8dee8;
+  border-radius: 8px;
+  background: #ffffff;
+}
+
+.app-fetch-indicator {
+  position: fixed;
+  top: auto;
+  bottom: 22px;
+  right: 24px;
+  z-index: 95000;
+  padding: 10px 14px;
+  border-radius: 999px;
+  background: rgba(17, 43, 130, 0.94);
+  box-shadow: 0 12px 28px rgba(15, 23, 42, 0.22);
+  pointer-events: none;
+}
+
+@keyframes loadingSpin {
+  to {
+    transform: rotate(360deg);
+  }
+}
+
+.btn:disabled,
+.register-btn:disabled,
+.login-btn-modern:disabled {
+  cursor: not-allowed;
+  opacity: 0.72;
 }
 
 .modal-actions {

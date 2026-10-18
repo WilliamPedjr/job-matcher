@@ -5,6 +5,7 @@ namespace Tests\Unit;
 use App\Services\PdsExtractionService;
 use App\Services\ResumeAnalysisService;
 use App\Services\TextExtractionService;
+use Carbon\CarbonImmutable;
 use PHPUnit\Framework\TestCase;
 use ReflectionMethod;
 
@@ -175,6 +176,66 @@ class ResumeAnalysisServiceTest extends TestCase
         $this->assertSame(0.0, $this->callPrivate('calculateEducationScore', $educationLines, 'Doctorate degree'));
         $this->assertSame(100.0, $this->callPrivate('calculateEducationScore', ['Secondary - Leyte National High School'], 'High School graduate'));
         $this->assertSame(50.0, $this->callPrivate('calculateExperienceScore', $experienceLines, 4));
+    }
+
+    /** @dataProvider employmentPeriods */
+    public function test_experience_dates_contribute_to_the_application_score(array $lines, int $minimumYears, float $expectedScore): void
+    {
+        CarbonImmutable::setTestNow(CarbonImmutable::parse('2026-10-16 12:00:00', 'Asia/Manila'));
+        try {
+            $this->assertEqualsWithDelta($expectedScore, $this->callPrivate('calculateExperienceScore', $lines, $minimumYears), 0.01);
+        } finally {
+            CarbonImmutable::setTestNow();
+        }
+    }
+
+    public static function employmentPeriods(): array
+    {
+        return [
+            'profile dates count without a years description' => [
+                ['Officer | Company | 2020-01-01 - 2021-12-31 | Record Type: Work Experience'], 2, 100.0,
+            ],
+            'partial year contributes proportional credit' => [['2021-01-01 - 2021-06-30'], 1, 49.59],
+            'separate jobs are added together' => [['2020-01-01 - 2020-12-31', '2022-01-01 - 2022-12-31'], 2, 100.0],
+            'overlapping jobs count once' => [['2020-01-01 - 2021-12-31', '2021-01-01 - 2022-12-31'], 4, 75.0],
+            'duplicate records count once' => [['2020-01-01 - 2020-12-31', '2020-01-01 - 2020-12-31'], 2, 50.0],
+            'gaps between jobs do not count' => [['2020-01-01 - 2020-12-31', '2022-01-01 - 2022-12-31'], 3, 66.67],
+            'PDS dates count' => [['01/01/2020 - 12/31/2020 Administrative Officer'], 2, 50.0],
+            'unpadded PDS dates count' => [['1/01/2020 to 12/31/2020 Officer'], 2, 50.0],
+            'year only ranges count' => [['2020 - 2022 Officer'], 4, 50.0],
+            'invalid dates do not count' => [['2025-02-29 - 2025-12-31'], 1, 0.0],
+            'reversed dates do not count' => [['2025-12-31 - 2020-01-01'], 1, 0.0],
+            'future jobs do not count' => [['2027-01-01 - 2028-12-31'], 1, 0.0],
+            'future end date is capped at today' => [['2025-10-17 - 2027-12-31'], 1, 100.0],
+            'legacy PDS ongoing work counts through today' => [['2025-10-17 - Present'], 1, 100.0],
+            'legacy decimal duration remains supported' => [['2.5 years experience'], 5, 50.0],
+            'dates take priority over an unverified duration in prose' => [['2020-01-01 - 2021-12-31 | 20 years experience'], 4, 50.0],
+            'empty experience earns no credit' => [[], 1, 0.0],
+        ];
+    }
+
+    public function test_profile_dates_are_counted_for_job_preview_and_application_submission(): void
+    {
+        foreach ([\App\Http\Controllers\Api\JobSeekerController::class, \App\Http\Controllers\Api\UploadController::class] as $controllerClass) {
+            $jobSeeker = new \App\Models\JobSeeker();
+            $jobSeeker->setRelation('educations', new \Illuminate\Database\Eloquent\Collection());
+            $jobSeeker->setRelation('supportingFiles', new \Illuminate\Database\Eloquent\Collection());
+            $jobSeeker->setRelation('experiences', new \Illuminate\Database\Eloquent\Collection([
+                new \App\Models\Experience([
+                    'position' => 'Officer', 'company_name' => 'Company',
+                    'start_date' => '2020-01-01', 'end_date' => '2020-12-31',
+                ]),
+                new \App\Models\Experience([
+                    'position' => 'Records Management Seminar', 'description' => 'Record Type: Training',
+                    'start_date' => '2021-01-01', 'end_date' => '2021-12-31',
+                ]),
+            ]));
+            $controller = (new \ReflectionClass($controllerClass))->newInstanceWithoutConstructor();
+            $override = (new ReflectionMethod($controller, 'profileOverrideForJobSeeker'))->invoke($controller, $jobSeeker);
+
+            $this->assertCount(1, $override['experience_lines']);
+            $this->assertSame(50.0, $this->callPrivate('calculateExperienceScore', $override['experience_lines'], 2));
+        }
     }
 
     private function callPrivate(string $method, mixed ...$arguments): mixed

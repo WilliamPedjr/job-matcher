@@ -46,6 +46,15 @@ class Upload extends Model
         'evaluation_status',
         'evaluation_started_at',
         'interview_date',
+        'interview_place',
+        'interview_time',
+        'interview_preparation_notes',
+        'demonstration_date',
+        'demonstration_time',
+        'demonstration_place',
+        'demonstration_preparation_notes',
+        'examination_date',
+        'examination_score',
         'size_bytes',
         'uploaded_at',
     ];
@@ -67,6 +76,9 @@ class Upload extends Model
         'job_seeker_hidden_at' => 'datetime',
         'evaluation_started_at' => 'datetime',
         'interview_date' => 'date',
+        'demonstration_date' => 'date',
+        'examination_date' => 'date',
+        'examination_score' => 'float',
     ];
 
     public function scopeApplications(Builder $query): Builder
@@ -79,6 +91,35 @@ class Upload extends Model
                         ->whereNotNull('applied_job_title')
                         ->where('applied_job_title', '<>', '');
                 });
+        });
+    }
+
+    public function scopeCurrentApplications(Builder $query): Builder
+    {
+        return $query->applications()
+            ->where(function (Builder $query) {
+                $query->where('job_seeker_hidden', false)
+                    ->orWhereNull('job_seeker_hidden');
+            })
+            ->where(function (Builder $query) {
+                $query->whereNull('evaluation_status')
+                    ->orWhereRaw('LOWER(TRIM(evaluation_status)) <> ?', ['cancelled']);
+            });
+    }
+
+    public function scopeRecruitmentRecords(Builder $query): Builder
+    {
+        return $query->where(function (Builder $query) {
+            $query->applications()
+                ->orWhereHas('ratings')
+                ->orWhereNotNull('evaluation_started_at')
+                ->orWhereNotNull('interview_date')
+                ->orWhereNotNull('demonstration_date')
+                ->orWhereNotNull('examination_date')
+                ->orWhereNotNull('examination_score')
+                ->orWhereRaw('LOWER(TRIM(evaluation_status)) IN (?, ?, ?, ?, ?, ?, ?)', [
+                    'reviewed', 'shortlisted', 'interview', 'for_evaluation', 'rated', 'hired', 'rejected',
+                ]);
         });
     }
 

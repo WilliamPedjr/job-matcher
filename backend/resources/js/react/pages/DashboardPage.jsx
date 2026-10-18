@@ -2,7 +2,7 @@ import React from 'react'
 import "../styles/DashboardPage.css"
 import { useEffect, useMemo, useState } from "react"
 
-const TOP_APPLICANTS_PAGE_SIZE = 6
+const TOP_APPLICANTS_PAGE_SIZE = 4
 
 function DashboardPage({
   dashboardData,
@@ -15,6 +15,11 @@ function DashboardPage({
   const [isTopApplicantsModalOpen, setIsTopApplicantsModalOpen] = useState(false)
   const [topApplicantsPage, setTopApplicantsPage] = useState(1)
   const positionTypes = ["Teaching", "Non-Teaching"]
+  const classificationLabel = (value, fallback = "Unclassified") => {
+    const label = String(value || "").trim()
+    if (!label) return fallback
+    return label.toLowerCase().includes("lowly") ? "Not Qualified" : label
+  }
 
   const topApplicantsByJob = useMemo(() => {
     return Array.isArray(dashboardData?.topApplicantsByJob) ? dashboardData.topApplicantsByJob : []
@@ -90,21 +95,75 @@ function DashboardPage({
         <h2>Dashboard</h2>
       </div>
 
-      <div className="dashboard-kpis">
-        <article className="kpi-card kpi-large">
-          <div className="kpi-head">
-            <h4>Active Jobs</h4>
-            <span className="kpi-icon">📄</span>
-          </div>
-          <p>{dashboardData.openJobs}</p>
-        </article>
-        <article className="kpi-card kpi-large">
-          <div className="kpi-head">
-            <h4>Total Applications</h4>
-            <span className="kpi-icon">🧑‍💼</span>
-          </div>
-          <p>{dashboardData.totalApplicants}</p>
-        </article>
+      <div className="dashboard-overview">
+        <div className="dashboard-kpis">
+          <article className="kpi-card kpi-large">
+            <div className="kpi-head">
+              <h4>Active Jobs</h4>
+              <span className="kpi-icon">📄</span>
+            </div>
+            <p>{dashboardData.openJobs}</p>
+          </article>
+          <article className="kpi-card kpi-large">
+            <div className="kpi-head">
+              <h4>Total Applications</h4>
+              <span className="kpi-icon">🧑‍💼</span>
+            </div>
+            <p>{dashboardData.totalApplicants}</p>
+          </article>
+        </div>
+
+        <div className="dashboard-analytics dashboard-specific-analytics">
+          <section className="analytics-card">
+            <div className="analytics-card-head">
+              <h3>Position Type Distribution</h3>
+            </div>
+            <div className="analytics-list-chart">
+              {(dashboardData.positionTypeDistribution || []).length === 0 ? (
+                <p className="muted">No applications by position type yet.</p>
+              ) : (
+                dashboardData.positionTypeDistribution.map((item) => (
+                  <div className="analytics-progress-row" key={`position-type-${item.type}`}>
+                    <div className="analytics-progress-head">
+                      <span>{item.type}</span>
+                      <strong>{item.count} ({item.percentage}%)</strong>
+                    </div>
+                    <div className="analytics-progress-track">
+                      <span style={{ width: `${Math.max(4, item.percentage)}%` }} />
+                    </div>
+                  </div>
+                ))
+              )}
+            </div>
+          </section>
+
+          <section className="analytics-card">
+            <div className="analytics-card-head">
+              <h3>Applications Per Year</h3>
+            </div>
+            <div className="year-bars">
+              {(() => {
+                const years = dashboardData.applicantsByYear || []
+                const maxCount = Math.max(1, ...years.map((item) => Number(item.count || 0)))
+
+                if (years.length === 0) {
+                  return <p className="muted">No registered applicant data yet.</p>
+                }
+
+                return years.map((item) => {
+                  const height = Math.max(10, Math.round((Number(item.count || 0) / maxCount) * 56))
+                  return (
+                    <div className="year-bar-col" key={`year-${item.year}`}>
+                      <strong>{item.count}</strong>
+                      <span style={{ height: `${height}px` }} />
+                      <small>{item.year}</small>
+                    </div>
+                  )
+                })
+              })()}
+            </div>
+          </section>
+        </div>
       </div>
 
       <div className="dashboard-analytics">
@@ -180,7 +239,7 @@ function DashboardPage({
                     </li>
                     <li>
                       <span className="dot dot-red" />
-                      Lowly Qualified
+                      Not Qualified
                       <strong>{notQualified} ({notPct}%)</strong>
                     </li>
                   </ul>
@@ -270,134 +329,120 @@ function DashboardPage({
         </section>
       </div>
 
-      <div className="dashboard-analytics dashboard-specific-analytics">
-        <section className="analytics-card">
-          <div className="analytics-card-head">
-            <h3>Position Type Distribution</h3>
+      <div className="dashboard-grid dashboard-priority-grid">
+        <section className="dashboard-panel dashboard-top-applicants">
+          <div className="dashboard-panel-head">
+            <h3>Top Application per Job</h3>
+            <button
+              type="button"
+              className="dashboard-link-btn"
+              onClick={() => setIsTopApplicantsModalOpen(true)}
+            >
+              View All →
+            </button>
           </div>
-          <div className="analytics-list-chart">
-            {(dashboardData.positionTypeDistribution || []).length === 0 ? (
-              <p className="muted">No applications by position type yet.</p>
-            ) : (
-              dashboardData.positionTypeDistribution.map((item) => (
-                <div className="analytics-progress-row" key={`position-type-${item.type}`}>
-                  <div className="analytics-progress-head">
-                    <span>{item.type}</span>
-                    <strong>{item.count} ({item.percentage}%)</strong>
-                  </div>
-                  <div className="analytics-progress-track">
-                    <span style={{ width: `${Math.max(4, item.percentage)}%` }} />
-                  </div>
-                </div>
-              ))
-            )}
-          </div>
-        </section>
+          {topApplicantsByJob.length === 0 ? (
+            <p className="muted">No applicants ranked by job yet.</p>
+          ) : (
+            <>
+              <div className="top-applicants-grid">
+                {paginatedTopApplicants.map(({ jobTitle, applicant, totalApplicants }) => {
+                  const cls = String(applicant?.classification || "").toLowerCase()
+                  const pillClass = cls.includes("not") || cls.includes("lowly")
+                    ? "dash-pill-bad"
+                    : cls.includes("moderately")
+                      ? "dash-pill-warn"
+                      : "dash-pill-good"
 
-        <section className="analytics-card">
-          <div className="analytics-card-head">
-            <h3>Applications Per Year</h3>
-          </div>
-          <div className="year-bars">
-            {(() => {
-              const years = dashboardData.applicantsByYear || []
-              const maxCount = Math.max(1, ...years.map((item) => Number(item.count || 0)))
-
-              if (years.length === 0) {
-                return <p className="muted">No registered applicant data yet.</p>
-              }
-
-              return years.map((item) => {
-                const height = Math.max(10, Math.round((Number(item.count || 0) / maxCount) * 56))
-                return (
-                  <div className="year-bar-col" key={`year-${item.year}`}>
-                    <strong>{item.count}</strong>
-                    <span style={{ height: `${height}px` }} />
-                    <small>{item.year}</small>
-                  </div>
-                )
-              })
-            })()}
-          </div>
-        </section>
-      </div>
-
-      <section className="dashboard-panel dashboard-top-applicants">
-        <div className="dashboard-panel-head">
-          <h3>Top Application per Job</h3>
-          <button
-            type="button"
-            className="dashboard-link-btn"
-            onClick={() => setIsTopApplicantsModalOpen(true)}
-          >
-            View All →
-          </button>
-        </div>
-        {topApplicantsByJob.length === 0 ? (
-          <p className="muted">No applicants ranked by job yet.</p>
-        ) : (
-          <>
-            <div className="top-applicants-grid">
-              {paginatedTopApplicants.map(({ jobTitle, applicant, totalApplicants }) => {
-                const cls = String(applicant?.classification || "").toLowerCase()
-                const pillClass = cls.includes("not")
-                  ? "dash-pill-bad"
-                  : cls.includes("moderately")
-                    ? "dash-pill-warn"
-                    : "dash-pill-good"
-
-                return (
-                  <article key={`top-applicant-${jobTitle}`} className="top-applicant-card">
-                    <div className="top-applicant-job">
-                      <span>{jobTitle}</span>
-                      <strong>{totalApplicants} applicant{totalApplicants === 1 ? "" : "s"}</strong>
-                    </div>
-                    <div className="top-applicant-person">
-                      <div>
-                        <p className="dashboard-item-title">{applicant?.name || "(No name)"}</p>
-                        <p className="dashboard-item-subtitle">{applicant?.email || "No email"}</p>
+                  return (
+                    <article key={`top-applicant-${jobTitle}`} className="top-applicant-card">
+                      <div className="top-applicant-job">
+                        <span>{jobTitle}</span>
+                        <strong>{totalApplicants} applicant{totalApplicants === 1 ? "" : "s"}</strong>
                       </div>
-                      <button
-                        type="button"
-                        className={`dash-pill ${pillClass}`}
-                        onClick={() => onViewApplicant(applicant)}
-                      >
-                        {applicant?.match_score != null ? `${Number(applicant.match_score).toFixed(0)}%` : "View"}
-                      </button>
-                    </div>
-                    <div className="top-applicant-foot">
-                      <span>{applicant?.classification || "Unclassified"}</span>
-                      <button type="button" onClick={() => onViewApplicant(applicant)}>View Summary</button>
+                      <div className="top-applicant-person">
+                        <div>
+                          <p className="dashboard-item-title">{applicant?.name || "(No name)"}</p>
+                          <p className="dashboard-item-subtitle">{applicant?.email || "No email"}</p>
+                        </div>
+                        <button
+                          type="button"
+                          className={`dash-pill ${pillClass}`}
+                          onClick={() => onViewApplicant(applicant)}
+                        >
+                          {applicant?.match_score != null ? `${Number(applicant.match_score).toFixed(0)}%` : "View"}
+                        </button>
+                      </div>
+                      <div className="top-applicant-foot">
+                        <span>{classificationLabel(applicant?.classification)}</span>
+                        <button type="button" onClick={() => onViewApplicant(applicant)}>View Summary</button>
+                      </div>
+                    </article>
+                  )
+                })}
+              </div>
+
+              {topApplicantsPageCount > 1 && (
+                <div className="top-applicants-pagination">
+                  <button
+                    type="button"
+                    className="dashboard-page-btn"
+                    disabled={topApplicantsPage === 1}
+                    onClick={() => setTopApplicantsPage((page) => Math.max(1, page - 1))}
+                  >
+                    Previous
+                  </button>
+                  <span>Page {topApplicantsPage} of {topApplicantsPageCount}</span>
+                  <button
+                    type="button"
+                    className="dashboard-page-btn"
+                    disabled={topApplicantsPage === topApplicantsPageCount}
+                    onClick={() => setTopApplicantsPage((page) => Math.min(topApplicantsPageCount, page + 1))}
+                  >
+                    Next
+                  </button>
+                </div>
+              )}
+            </>
+          )}
+        </section>
+
+        <section className="dashboard-panel dashboard-trending-jobs">
+          <div className="dashboard-panel-head">
+            <h3>Most Trending Jobs</h3>
+            <button type="button" className="dashboard-link-btn" onClick={onViewAllJobs}>View All →</button>
+          </div>
+          {dashboardData.topJobsByApplicants?.length === 0 ? (
+            <p className="muted">No job applications yet.</p>
+          ) : (
+            <div className="trending-jobs-list">
+              {dashboardData.topJobsByApplicants.map((job, index) => {
+                const maxApplicants = Math.max(1, ...dashboardData.topJobsByApplicants.map((item) => Number(item.applicants || 0)))
+                const width = Math.max(8, Math.round((Number(job.applicants || 0) / maxApplicants) * 100))
+                const qualifiedTotal = Number(job.highlyQualified || 0) + Number(job.moderatelyQualified || 0)
+
+                return (
+                  <article key={`trending-job-${job.title}`} className="trending-job-row">
+                    <div className="trending-job-rank">{index + 1}</div>
+                    <div className="trending-job-main">
+                      <div className="trending-job-head">
+                        <div>
+                          <p className="dashboard-item-title">{job.title}</p>
+                          <p className="dashboard-item-subtitle">{qualifiedTotal} qualified or moderate applicants</p>
+                        </div>
+                        <strong>{Number(job.applicants || 0)} applied</strong>
+                      </div>
+                      <div className="trending-job-bar" aria-hidden="true">
+                        <span style={{ width: `${width}%` }} />
+                      </div>
                     </div>
                   </article>
                 )
               })}
             </div>
-
-            {topApplicantsPageCount > 1 && (
-              <div className="top-applicants-pagination">
-                <button
-                  type="button"
-                  className="dashboard-page-btn"
-                  disabled={topApplicantsPage === 1}
-                  onClick={() => setTopApplicantsPage((page) => Math.max(1, page - 1))}
-                >
-                  Previous
-                </button>
-                <span>Page {topApplicantsPage} of {topApplicantsPageCount}</span>
-                <button
-                  type="button"
-                  className="dashboard-page-btn"
-                  disabled={topApplicantsPage === topApplicantsPageCount}
-                  onClick={() => setTopApplicantsPage((page) => Math.min(topApplicantsPageCount, page + 1))}
-                >
-                  Next
-                </button>
-              </div>
-            )}
-          </>
-        )}
-      </section>
+          )}
+        </section>
+      </div>
 
       {isTopApplicantsModalOpen && (
         <div className="modal-overlay" onClick={() => setIsTopApplicantsModalOpen(false)}>
@@ -428,7 +473,7 @@ function DashboardPage({
                   <tbody>
                     {dashboardData.topApplicantsByJob.map(({ jobTitle, applicant, totalApplicants }) => {
                       const cls = String(applicant?.classification || "").toLowerCase()
-                      const pillClass = cls.includes("not")
+                      const pillClass = cls.includes("not") || cls.includes("lowly")
                         ? "dash-pill-bad"
                         : cls.includes("moderately")
                           ? "dash-pill-warn"
@@ -446,7 +491,7 @@ function DashboardPage({
                           <td>{totalApplicants}</td>
                           <td>
                             <span className={`dash-pill ${pillClass}`}>
-                              {applicant?.classification || "Unclassified"}
+                              {classificationLabel(applicant?.classification)}
                             </span>
                           </td>
                           <td>{applicant?.match_score != null ? `${Number(applicant.match_score).toFixed(0)}%` : "-"}</td>
@@ -472,42 +517,6 @@ function DashboardPage({
           </div>
         </div>
       )}
-
-      <section className="dashboard-panel dashboard-trending-jobs">
-        <div className="dashboard-panel-head">
-          <h3>Most Trending Jobs</h3>
-          <button type="button" className="dashboard-link-btn" onClick={onViewAllJobs}>View All →</button>
-        </div>
-        {dashboardData.topJobsByApplicants?.length === 0 ? (
-          <p className="muted">No job applications yet.</p>
-        ) : (
-          <div className="trending-jobs-list">
-            {dashboardData.topJobsByApplicants.map((job, index) => {
-              const maxApplicants = Math.max(1, ...dashboardData.topJobsByApplicants.map((item) => Number(item.applicants || 0)))
-              const width = Math.max(8, Math.round((Number(job.applicants || 0) / maxApplicants) * 100))
-              const qualifiedTotal = Number(job.highlyQualified || 0) + Number(job.moderatelyQualified || 0)
-
-              return (
-                <article key={`trending-job-${job.title}`} className="trending-job-row">
-                  <div className="trending-job-rank">{index + 1}</div>
-                  <div className="trending-job-main">
-                    <div className="trending-job-head">
-                      <div>
-                        <p className="dashboard-item-title">{job.title}</p>
-                        <p className="dashboard-item-subtitle">{qualifiedTotal} qualified or moderate applicants</p>
-                      </div>
-                      <strong>{Number(job.applicants || 0)} applied</strong>
-                    </div>
-                    <div className="trending-job-bar" aria-hidden="true">
-                      <span style={{ width: `${width}%` }} />
-                    </div>
-                  </div>
-                </article>
-              )
-            })}
-          </div>
-        )}
-      </section>
 
       <div className="dashboard-grid">
         <section className="dashboard-panel">
@@ -551,7 +560,7 @@ function DashboardPage({
                   <button
                     type="button"
                     className={`dash-pill ${
-                      String(item.classification || "").toLowerCase().includes("not")
+                      String(item.classification || "").toLowerCase().includes("not") || String(item.classification || "").toLowerCase().includes("lowly")
                         ? "dash-pill-bad"
                         : String(item.classification || "").toLowerCase().includes("moderately")
                           ? "dash-pill-warn"
@@ -559,7 +568,7 @@ function DashboardPage({
                     }`}
                     onClick={() => onViewApplicant(item)}
                   >
-                    {item.classification || "Unclassified"} {item.match_score != null ? `(${Number(item.match_score).toFixed(0)}%)` : ""}
+                    {classificationLabel(item.classification)} {item.match_score != null ? `(${Number(item.match_score).toFixed(0)}%)` : ""}
                   </button>
                 </li>
               ))}

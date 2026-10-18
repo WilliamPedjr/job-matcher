@@ -15,10 +15,13 @@ use App\Services\PdsExtractionService;
 use App\Services\ResumeAnalysisService;
 use App\Services\TextExtractionService;
 use Illuminate\Http\JsonResponse;
+use Illuminate\Http\Exceptions\HttpResponseException;
 use Illuminate\Http\Request;
 use Illuminate\Http\UploadedFile;
+use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Log;
 use Illuminate\Support\Facades\Notification as NotificationFacade;
+use Illuminate\Support\Facades\Schema;
 use Illuminate\Support\Facades\Storage;
 use Illuminate\Support\Str;
 use Throwable;
@@ -26,6 +29,7 @@ use Throwable;
 class UploadController extends Controller
 {
     private const APPLICATION_MINIMUM_MATCH_SCORE = 50;
+    private const MAX_APPLICATIONS_PER_JOB_SEEKER = 3;
     private const MINIMUM_RATED_BOARD_MEMBER_COUNT = 4;
 
     public function __construct(
@@ -91,6 +95,12 @@ class UploadController extends Controller
             ], 422);
         }
 
+        if ($appliedJob && $this->remainingPositionsForJob($appliedJob) <= 0) {
+            return response()->json([
+                'message' => 'All positions for this job posting are already filled.',
+            ], 422);
+        }
+
         $jobSeeker = null;
         if (!empty($data['jobSeekerId'])) {
             $jobSeeker = JobSeeker::find($data['jobSeekerId']);
@@ -106,6 +116,18 @@ class UploadController extends Controller
                 'message' => 'Unable to associate this upload with a job seeker. Please select or register the applicant first.',
             ], 422);
         }
+
+        $applicationCount = Upload::query()
+            ->currentApplications()
+            ->where('job_seeker_id', $jobSeeker->id)
+            ->count();
+
+        if ($applicationCount >= self::MAX_APPLICATIONS_PER_JOB_SEEKER) {
+            return response()->json([
+                'message' => 'You can only apply to 3 jobs.',
+            ], 422);
+        }
+
         $jobSeeker->loadMissing(['educations', 'experiences', 'supportingFiles']);
         $profileOverride = $this->profileOverrideForJobSeeker($jobSeeker);
 
@@ -133,7 +155,7 @@ class UploadController extends Controller
             );
         } catch (\RuntimeException $exception) {
             $analysis = [
-                'classification' => 'Lowly Qualified',
+                'classification' => 'Not Qualified',
                 'overall_score' => 0,
                 'skills_match_score' => 0,
                 'project_score' => 0,
@@ -148,6 +170,16 @@ class UploadController extends Controller
                 'summary_text' => '',
                 'resume_summary' => [],
             ];
+        }
+
+        $experienceRequirementMet = $analysis['experience_requirement_met']
+            ?? ((int) ($appliedJob?->minimum_experience_years ?? 0) <= 0
+                || (float) ($analysis['experience_match_score'] ?? 0) >= 100);
+        if (!$experienceRequirementMet) {
+            Storage::disk('local')->delete($stored['path']);
+            return response()->json([
+                'message' => 'You do not meet the minimum experience required for this job.',
+            ], 422);
         }
 
         $effectiveMatchScore = (float) ($analysis['overall_score'] ?? 0);
@@ -166,15 +198,8 @@ class UploadController extends Controller
 
         if ($appliedJob?->id || $appliedJobTitle !== '') {
             $alreadyApplied = Upload::query()
+                ->currentApplications()
                 ->where('job_seeker_id', $jobSeeker->id)
-                ->where(function ($query) {
-                    $query->where('job_seeker_hidden', false)
-                        ->orWhereNull('job_seeker_hidden');
-                })
-                ->where(function ($query) {
-                    $query->whereNull('evaluation_status')
-                        ->orWhereRaw('LOWER(evaluation_status) <> ?', ['cancelled']);
-                })
                 ->where(function ($query) use ($appliedJob, $appliedJobTitle) {
                     if ($appliedJob?->id) {
                         $query->where('job_id', $appliedJob->id);
@@ -326,6 +351,15 @@ class UploadController extends Controller
             return response()->json($this->serializeUpload($upload));
         }
 
+        if ($nextStatus === 'hired' && $currentStatus !== 'hired') {
+            $job = $this->resolveJobForUpload($upload);
+            if ($job && $this->remainingPositionsForJob($job, $upload->id) <= 0) {
+                return response()->json([
+                    'message' => 'No remaining job vacancies are available for this job posting.',
+                ], 422);
+            }
+        }
+
         $upload->evaluation_status = $nextStatus;
         if ($nextStatus === 'interview' && !$upload->evaluation_started_at) {
             $upload->evaluation_started_at = now();
@@ -441,7 +475,7 @@ class UploadController extends Controller
             );
         } catch (\RuntimeException $exception) {
             $analysis = [
-                'classification' => 'Lowly Qualified',
+                'classification' => 'Not Qualified',
                 'overall_score' => 0,
                 'skills_match_score' => 0,
                 'project_score' => 0,
@@ -523,6 +557,18 @@ class UploadController extends Controller
         return Storage::disk('local')->download($upload->file_path, $upload->original_name ?: basename($upload->file_path));
     }
 
+    public function preview(int $id): mixed
+    {
+        $upload = Upload::findOrFail($id);
+        abort_if(!$upload->file_path || !Storage::disk('local')->exists($upload->file_path), 404, 'Upload not found.');
+
+        return $this->inlineFileResponse(
+            $upload->file_path,
+            $upload->original_name ?: basename($upload->file_path),
+            $upload->mime_type
+        );
+    }
+
     public function supporting(int $id): JsonResponse
     {
         $upload = Upload::query()->with('supportingFiles')->findOrFail($id);
@@ -553,6 +599,269 @@ class UploadController extends Controller
         ]);
 
         return Storage::disk('local')->download($file->file_path, $file->original_name ?: basename($file->file_path));
+    }
+
+    public function supportingPreview(int $id, int $supportId): mixed
+    {
+        $upload = Upload::findOrFail($id);
+        $file = SupportingFile::query()
+            ->where('job_seeker_id', $upload->job_seeker_id)
+            ->where('id', $supportId)
+            ->firstOrFail();
+        abort_if(!$file->file_path || !Storage::disk('local')->exists($file->file_path), 404, 'Supporting file not found.');
+
+        return $this->inlineFileResponse(
+            $file->file_path,
+            $file->original_name ?: basename($file->file_path),
+            $file->mime_type
+        );
+    }
+
+    public function exportApplicationsSummary(Request $request): mixed
+    {
+        $uploads = Upload::query()
+            ->applications()
+            ->with(['ratings', 'jobSeeker', 'job'])
+            ->orderBy('uploaded_at')
+            ->orderBy('id')
+            ->get();
+
+        $html = '<html><head><meta charset="UTF-8">';
+        $html .= '<style>
+            @page { size: A4 landscape; margin: 0.35in; mso-page-orientation: landscape; }
+            body { font-family: Arial, sans-serif; color: #172033; }
+            table { border-collapse: collapse; margin: 0; table-layout: fixed; width: 100%; }
+            th, td {
+                border: 1px solid #b8c4d8;
+                padding: 5px 6px;
+                vertical-align: middle;
+                text-align: left;
+                font-size: 10px;
+                line-height: 1.25;
+                white-space: normal;
+                word-wrap: break-word;
+            }
+            .title { background: #0f2f82; color: #ffffff; font-size: 16px; font-weight: 700; text-align: center; }
+            .subtitle { background: #eaf0ff; color: #172033; font-size: 10px; text-align: center; }
+            .head { background: #dbe6ff; color: #10245a; font-weight: 700; text-align: center; }
+            .center { text-align: center; }
+            .text { mso-number-format:"\@"; }
+            .number { text-align: right; }
+            .print-wide { mso-fit-to-page: yes; }
+        </style>';
+        $html .= '</head><body>';
+        $html .= '<table class="print-wide">';
+        $html .= '<tr><th class="title" colspan="16">Applications Summary</th></tr>';
+        $html .= '<tr><td class="subtitle" colspan="16">Generated on ' . $this->excelCell(now()->format('F j, Y g:i A')) . '</td></tr>';
+        $html .= '<tr>';
+        $headers = [
+            '#',
+            'Applicant Name',
+            'ID Number',
+            'Email',
+            'Phone',
+            'Job Applied',
+            'Position Type',
+            'Application Status',
+            'Classification',
+            'Overall Match',
+            'Skills Match',
+            'Training Match',
+            'Education Match',
+            'Experience Match',
+            'Rating Average',
+            'Date Applied',
+        ];
+        foreach ($headers as $header) {
+            $html .= '<th class="head">' . $this->excelCell($header) . '</th>';
+        }
+        $html .= '</tr>';
+
+        foreach ($uploads as $index => $upload) {
+            $ratingStats = $this->ratingStats($upload);
+            $summary = is_array($upload->resume_summary ?? null) ? $upload->resume_summary : [];
+            $scoreBreakdown = is_array($summary['score_breakdown'] ?? null) ? $summary['score_breakdown'] : [];
+            $status = $this->applicationStatus($upload);
+            $uploadedAt = $upload->uploaded_at instanceof \DateTimeInterface
+                ? $upload->uploaded_at->format('F j, Y')
+                : ($upload->uploaded_at ? (string) $upload->uploaded_at : '-');
+
+            $row = [
+                $index + 1,
+                $upload->name ?: '-',
+                $upload->job_seeker_id_number ?: $upload->jobSeeker?->id_number ?: '-',
+                $upload->email ?: '-',
+                $this->formatPhoneForExcel($upload->phone),
+                $upload->applied_job_title ?: $upload->matched_job_title ?: '-',
+                $upload->job_position_type ?: $upload->job?->job_position ?: '-',
+                $this->applicationStatusLabel($status),
+                $this->displayClassification($upload->classification),
+                $upload->match_score !== null ? round((float) $upload->match_score, 2) . '%' : '-',
+                isset($scoreBreakdown['skills']) ? round((float) $scoreBreakdown['skills'], 2) . '%' : '-',
+                isset($scoreBreakdown['training']) ? round((float) $scoreBreakdown['training'], 2) . '%' : ($upload->project_score !== null ? round((float) $upload->project_score, 2) . '%' : '-'),
+                $upload->education_match_score !== null ? round((float) $upload->education_match_score, 2) . '%' : (isset($scoreBreakdown['education']) ? round((float) $scoreBreakdown['education'], 2) . '%' : '-'),
+                $upload->experience_match_score !== null ? round((float) $upload->experience_match_score, 2) . '%' : (isset($scoreBreakdown['experience']) ? round((float) $scoreBreakdown['experience'], 2) . '%' : '-'),
+                $ratingStats['average'] !== null ? $ratingStats['average'] . '%' : '-',
+                $uploadedAt,
+            ];
+
+            $html .= '<tr>';
+            foreach ($row as $cellIndex => $cell) {
+                $class = in_array($cellIndex, [0, 9, 10, 11, 12, 13, 14], true) ? 'center' : 'text';
+                $value = in_array($cellIndex, [2, 4], true)
+                    ? $this->excelTextFormula($cell)
+                    : $this->excelCell($cell);
+                $html .= '<td class="' . $class . '">' . $value . '</td>';
+            }
+            $html .= '</tr>';
+        }
+
+        if ($uploads->isEmpty()) {
+            $html .= '<tr><td class="center" colspan="16">No applications found.</td></tr>';
+        }
+
+        $html .= '</table>';
+        $html .= '</body></html>';
+
+        $this->recordPersonnelActivity($request, 'application.summary_exported', 'Exported applications summary.', [
+            'subject_type' => 'application',
+            'metadata' => [
+                'format' => 'xls',
+                'count' => $uploads->count(),
+            ],
+        ]);
+
+        return response($html, 200, [
+            'Content-Type' => 'application/vnd.ms-excel; charset=UTF-8',
+            'Content-Disposition' => 'attachment; filename="applications-summary.xls"',
+        ]);
+    }
+
+    public function exportRatingsOverallSummary(Request $request): mixed
+    {
+        $uploads = Upload::query()
+            ->applications()
+            ->with(['ratings', 'jobSeeker', 'job'])
+            ->where(function ($query) {
+                $query->whereIn('evaluation_status', ['interview', 'for_evaluation', 'hired', 'rated']);
+            })
+            ->orderBy('uploaded_at')
+            ->orderBy('id')
+            ->get();
+
+        $html = '<html><head><meta charset="UTF-8">';
+        $html .= '<style>
+            @page { size: A4 landscape; margin: 0.35in; mso-page-orientation: landscape; }
+            body { font-family: Arial, sans-serif; color: #172033; }
+            table { border-collapse: collapse; margin: 0; table-layout: fixed; width: 100%; }
+            th, td {
+                border: 1px solid #b8c4d8;
+                padding: 5px 6px;
+                vertical-align: middle;
+                font-size: 10px;
+                line-height: 1.2;
+                white-space: normal;
+                word-wrap: break-word;
+            }
+            .title { background: #0f2f82; color: #ffffff; font-size: 16px; font-weight: 700; text-align: center; }
+            .subtitle { background: #eaf0ff; color: #172033; font-size: 10px; text-align: center; }
+            .section { background: #163d9b; color: #ffffff; font-weight: 700; font-size: 12px; text-align: center; }
+            .head { background: #dbe6ff; color: #10245a; font-weight: 700; text-align: center; }
+            .label { background: #f3f6fb; color: #172033; font-weight: 700; }
+            .center { text-align: center; }
+            .text { mso-number-format:"\@"; }
+            .print-wide { mso-fit-to-page: yes; }
+        </style>';
+        $html .= '</head><body>';
+
+        $headers = [
+            '#',
+            'Applicant Name',
+            'ID Number',
+            'Email',
+            'Phone',
+            'Position Applied',
+            'Position Type',
+            'Date of Interview',
+            'Date of Demo',
+            'Date of Exam',
+            'Exam Score',
+            'Status',
+            'Interview Rating',
+            'Interview Raters',
+            'Demonstration Rating',
+            'Demo Raters',
+            'Overall Rating',
+            'Total Raters',
+        ];
+
+        $html .= '<table class="print-wide">';
+        $html .= '<tr><th class="title" colspan="18">Applicant Rating Details</th></tr>';
+        $html .= '<tr><td class="subtitle" colspan="18">Generated on ' . $this->excelCell(now()->format('F j, Y g:i A')) . '</td></tr>';
+        $html .= '<tr>';
+        foreach ($headers as $header) {
+            $html .= '<th class="head">' . $this->excelCell($header) . '</th>';
+        }
+        $html .= '</tr>';
+
+        foreach ($uploads as $index => $upload) {
+            $interviewStats = $this->ratingStats($upload, 'interview');
+            $demonstrationStats = $this->ratingStats($upload, 'demonstration');
+            $overallStats = $this->ratingStats($upload);
+            $interviewDate = ($upload->interview_date ?: $upload->evaluation_started_at ?: $upload->uploaded_at);
+            $demoDate = $upload->demonstration_date;
+            $examDate = $upload->examination_date;
+            $row = [
+                $index + 1,
+                $upload->name ?: '-',
+                $upload->job_seeker_id_number ?: $upload->jobSeeker?->id_number ?: '-',
+                $upload->email ?: '-',
+                $this->formatPhoneForExcel($upload->phone),
+                $upload->applied_job_title ?: $upload->matched_job_title ?: '-',
+                $upload->job_position_type ?: $upload->job?->job_position ?: '-',
+                $interviewDate instanceof \DateTimeInterface ? $interviewDate->format('F j, Y') : ($interviewDate ? (string) $interviewDate : '-'),
+                $demoDate instanceof \DateTimeInterface ? $demoDate->format('F j, Y') : ($demoDate ? (string) $demoDate : '-'),
+                $examDate instanceof \DateTimeInterface ? $examDate->format('F j, Y') : ($examDate ? (string) $examDate : '-'),
+                $upload->examination_score !== null ? round((float) $upload->examination_score, 2) . '%' : '-',
+                $this->applicationStatusLabel($this->applicationStatus($upload)),
+                $interviewStats['average'] !== null ? $interviewStats['average'] . '%' : '-',
+                $interviewStats['count'],
+                $demonstrationStats['average'] !== null ? $demonstrationStats['average'] . '%' : '-',
+                $demonstrationStats['count'],
+                $overallStats['average'] !== null ? $overallStats['average'] . '%' : '-',
+                $overallStats['count'],
+            ];
+
+            $html .= '<tr>';
+            foreach ($row as $cellIndex => $cell) {
+                $class = in_array($cellIndex, [0, 10, 12, 13, 14, 15, 16, 17], true) ? 'center' : 'text';
+                $value = in_array($cellIndex, [2, 4], true)
+                    ? $this->excelTextFormula($cell)
+                    : $this->excelCell($cell);
+                $html .= '<td class="' . $class . '">' . $value . '</td>';
+            }
+            $html .= '</tr>';
+        }
+
+        if ($uploads->isEmpty()) {
+            $html .= '<tr><td class="center" colspan="18">No applicants found.</td></tr>';
+        }
+
+        $html .= '</table>';
+        $html .= '</body></html>';
+
+        $this->recordPersonnelActivity($request, 'rating.summary_exported', 'Exported ratings overall summary.', [
+            'subject_type' => 'rating',
+            'metadata' => [
+                'format' => 'xls',
+                'count' => $uploads->count(),
+            ],
+        ]);
+
+        return response($html, 200, [
+            'Content-Type' => 'application/vnd.ms-excel; charset=UTF-8',
+            'Content-Disposition' => 'attachment; filename="ratings-overall-summary.xls"',
+        ]);
     }
 
     public function exportRatingSummary(Request $request, int $id): mixed
@@ -886,12 +1195,29 @@ class UploadController extends Controller
 
     public function updateInterviewDate(Request $request, int $id): JsonResponse
     {
+        if (
+            !Schema::hasColumn('uploads', 'interview_date')
+            || !Schema::hasColumn('uploads', 'interview_place')
+            || !Schema::hasColumn('uploads', 'interview_time')
+            || !Schema::hasColumn('uploads', 'interview_preparation_notes')
+        ) {
+            return response()->json([
+                'message' => 'The interview schedule database columns are missing. Please run the latest migrations.',
+            ], 409);
+        }
+
         $upload = Upload::findOrFail($id);
         $data = $request->validate([
             'interviewDate' => ['required', 'date'],
+            'interviewPlace' => ['nullable', 'string', 'max:255'],
+            'interviewTime' => ['nullable', 'date_format:H:i'],
+            'interviewPreparationNotes' => ['nullable', 'string', 'max:2000'],
         ]);
 
         $upload->interview_date = $data['interviewDate'];
+        $upload->interview_place = $data['interviewPlace'] ?? null;
+        $upload->interview_time = $data['interviewTime'] ?? null;
+        $upload->interview_preparation_notes = $data['interviewPreparationNotes'] ?? null;
         if (!$upload->evaluation_status || !in_array($upload->evaluation_status, ['interview', 'for_evaluation', 'hired', 'rated'], true)) {
             $upload->evaluation_status = 'interview';
         }
@@ -907,6 +1233,56 @@ class UploadController extends Controller
             'metadata' => [
                 'jobTitle' => $upload->applied_job_title ?: $upload->matched_job_title,
                 'interviewDate' => $upload->interview_date?->toDateString(),
+                'interviewPlace' => $upload->interview_place,
+                'interviewTime' => $upload->interview_time ? substr((string) $upload->interview_time, 0, 5) : null,
+            ],
+        ]);
+
+        return response()->json($this->serializeUpload($upload->fresh(['supportingFiles', 'ratings', 'jobSeeker', 'job'])));
+    }
+
+    public function updateDemonstrationDate(Request $request, int $id): JsonResponse
+    {
+        if (
+            !Schema::hasColumn('uploads', 'demonstration_date')
+            || !Schema::hasColumn('uploads', 'demonstration_time')
+            || !Schema::hasColumn('uploads', 'demonstration_place')
+            || !Schema::hasColumn('uploads', 'demonstration_preparation_notes')
+        ) {
+            return response()->json([
+                'message' => 'The demonstration schedule database columns are missing. Please run the latest migrations.',
+            ], 409);
+        }
+
+        $upload = Upload::findOrFail($id);
+        $data = $request->validate([
+            'demonstrationDate' => ['required', 'date'],
+            'demonstrationTime' => ['nullable', 'date_format:H:i'],
+            'demonstrationPlace' => ['nullable', 'string', 'max:255'],
+            'demonstrationPreparationNotes' => ['nullable', 'string', 'max:2000'],
+        ]);
+
+        $upload->demonstration_date = $data['demonstrationDate'];
+        $upload->demonstration_time = $data['demonstrationTime'] ?? null;
+        $upload->demonstration_place = $data['demonstrationPlace'] ?? null;
+        $upload->demonstration_preparation_notes = $data['demonstrationPreparationNotes'] ?? null;
+        if (!$upload->evaluation_status || !in_array($upload->evaluation_status, ['interview', 'for_evaluation', 'hired', 'rated'], true)) {
+            $upload->evaluation_status = 'interview';
+        }
+        if (!$upload->evaluation_started_at) {
+            $upload->evaluation_started_at = now();
+        }
+        $upload->save();
+
+        ActivityLog::record('application.demonstration_date_set', "Set demonstration date for {$upload->name}.", $request, [
+            'subject_type' => 'application',
+            'subject_id' => $upload->id,
+            'subject_name' => $upload->name,
+            'metadata' => [
+                'jobTitle' => $upload->applied_job_title ?: $upload->matched_job_title,
+                'demonstrationDate' => $upload->demonstration_date?->toDateString(),
+                'demonstrationTime' => $upload->demonstration_time ? substr((string) $upload->demonstration_time, 0, 5) : null,
+                'demonstrationPlace' => $upload->demonstration_place,
             ],
         ]);
 
@@ -955,28 +1331,45 @@ class UploadController extends Controller
             ], 422);
         }
 
-        ApplicationRating::create([
-            'upload_id' => $upload->id,
-            'rater_name' => $raterName ?: null,
-            'rater_email' => $raterEmail ?: null,
-            'scores' => $scores,
-            'remarks' => trim((string) ($data['remarks'] ?? '')) ?: null,
-            'total_score' => $totalScore,
-            'percentage_score' => $percentageScore,
-        ]);
-
-        $upload->load('ratings');
         $boardMembers = array_values(array_filter(array_map(
             fn ($member) => trim((string) $member),
             $data['boardMembers'] ?? []
         )));
-        $upload->evaluation_status = $this->hasCompletedAllBoardMemberRatings($upload, $boardMembers)
-            ? 'hired'
-            : 'interview';
-        if (!$upload->evaluation_started_at) {
-            $upload->evaluation_started_at = now();
-        }
-        $upload->save();
+
+        $upload = DB::transaction(function () use ($upload, $scores, $raterName, $raterEmail, $data, $totalScore, $percentageScore, $boardMembers) {
+            ApplicationRating::create([
+                'upload_id' => $upload->id,
+                'rater_name' => $raterName ?: null,
+                'rater_email' => $raterEmail ?: null,
+                'scores' => $scores,
+                'remarks' => trim((string) ($data['remarks'] ?? '')) ?: null,
+                'total_score' => $totalScore,
+                'percentage_score' => $percentageScore,
+            ]);
+
+            $upload->load('ratings');
+            $nextEvaluationStatus = $this->hasCompletedAllBoardMemberRatings($upload, $boardMembers)
+                ? 'hired'
+                : 'interview';
+            $currentStatus = Str::lower(trim((string) ($upload->evaluation_status ?? '')));
+
+            if ($nextEvaluationStatus === 'hired' && $currentStatus !== 'hired') {
+                $job = $this->resolveJobForUpload($upload);
+                if ($job && $this->remainingPositionsForJob($job, $upload->id) <= 0) {
+                    throw new HttpResponseException(response()->json([
+                        'message' => 'No remaining job vacancies are available for this job posting.',
+                    ], 422));
+                }
+            }
+
+            $upload->evaluation_status = $nextEvaluationStatus;
+            if (!$upload->evaluation_started_at) {
+                $upload->evaluation_started_at = now();
+            }
+            $upload->save();
+
+            return $upload;
+        });
 
         ActivityLog::record('application.rated', "Rated {$upload->name} for {$upload->applied_job_title}.", $request, [
             'subject_type' => 'application',
@@ -987,6 +1380,44 @@ class UploadController extends Controller
                 'raterName' => $raterName,
                 'totalScore' => $totalScore,
                 'percentageScore' => $percentageScore,
+            ],
+        ]);
+
+        return response()->json($this->serializeUpload($upload->fresh(['supportingFiles', 'ratings', 'jobSeeker', 'job'])));
+    }
+
+    public function updateExamination(Request $request, int $id): JsonResponse
+    {
+        if (!Schema::hasColumn('uploads', 'examination_date') || !Schema::hasColumn('uploads', 'examination_score')) {
+            return response()->json([
+                'message' => 'The examination database columns are missing. Please run the latest migrations.',
+            ], 409);
+        }
+
+        $upload = Upload::findOrFail($id);
+        $data = $request->validate([
+            'examinationDate' => ['nullable', 'date'],
+            'examinationScore' => ['required', 'numeric', 'min:0', 'max:100'],
+        ]);
+
+        $upload->examination_date = $data['examinationDate'] ?? null;
+        $upload->examination_score = round((float) $data['examinationScore'], 2);
+        if (!$upload->evaluation_status || !in_array($upload->evaluation_status, ['interview', 'for_evaluation', 'hired', 'rated'], true)) {
+            $upload->evaluation_status = 'interview';
+        }
+        if (!$upload->evaluation_started_at) {
+            $upload->evaluation_started_at = now();
+        }
+        $upload->save();
+
+        ActivityLog::record('application.examination_set', "Set examination score for {$upload->name}.", $request, [
+            'subject_type' => 'application',
+            'subject_id' => $upload->id,
+            'subject_name' => $upload->name,
+            'metadata' => [
+                'jobTitle' => $upload->applied_job_title ?: $upload->matched_job_title,
+                'examinationDate' => $upload->examination_date?->toDateString(),
+                'examinationScore' => $upload->examination_score,
             ],
         ]);
 
@@ -1139,7 +1570,7 @@ class UploadController extends Controller
     {
         return $score >= 80
             ? 'Highly Qualified'
-            : ($score >= 60 ? 'Moderately Qualified' : 'Lowly Qualified');
+            : ($score >= 60 ? 'Moderately Qualified' : 'Not Qualified');
     }
 
     private function displayClassification(?string $classification): string
@@ -1147,8 +1578,8 @@ class UploadController extends Controller
         $value = trim((string) $classification);
 
         return Str::lower($value) === 'not qualified'
-            ? 'Lowly Qualified'
-            : ($value !== '' ? $value : 'Lowly Qualified');
+            ? 'Not Qualified'
+            : ($value !== '' ? $value : 'Not Qualified');
     }
 
     private function getProfileResumeUpload(int $jobSeekerId): ?Upload
@@ -1209,6 +1640,10 @@ class UploadController extends Controller
         if ($eligibilityLines) {
             $sections[] = "PROFILE ELIGIBILITY (PRIMARY SOURCE)\n".implode("\n", $eligibilityLines);
         }
+        $skills = $jobSeeker->combinedSkills();
+        if ($skills) {
+            $sections[] = "PROFILE SKILLS (PRIMARY SOURCE)\n".implode("\n", $skills);
+        }
 
         return [
             'text' => trim(implode("\n\n", $sections)),
@@ -1216,6 +1651,7 @@ class UploadController extends Controller
             'experience_lines' => $workLines,
             'training_lines' => $trainingLines,
             'eligibility_lines' => $eligibilityLines,
+            'skills' => $skills,
         ];
     }
 
@@ -1389,6 +1825,24 @@ class UploadController extends Controller
             'evaluationStartedAt' => $upload->evaluation_started_at?->toISOString(),
             'interview_date' => $upload->interview_date?->toDateString(),
             'interviewDate' => $upload->interview_date?->toDateString(),
+            'interview_place' => $upload->interview_place,
+            'interviewPlace' => $upload->interview_place,
+            'interview_time' => $upload->interview_time ? substr((string) $upload->interview_time, 0, 5) : null,
+            'interviewTime' => $upload->interview_time ? substr((string) $upload->interview_time, 0, 5) : null,
+            'interview_preparation_notes' => $upload->interview_preparation_notes,
+            'interviewPreparationNotes' => $upload->interview_preparation_notes,
+            'demonstration_date' => $upload->demonstration_date?->toDateString(),
+            'demonstrationDate' => $upload->demonstration_date?->toDateString(),
+            'demonstration_time' => $upload->demonstration_time ? substr((string) $upload->demonstration_time, 0, 5) : null,
+            'demonstrationTime' => $upload->demonstration_time ? substr((string) $upload->demonstration_time, 0, 5) : null,
+            'demonstration_place' => $upload->demonstration_place,
+            'demonstrationPlace' => $upload->demonstration_place,
+            'demonstration_preparation_notes' => $upload->demonstration_preparation_notes,
+            'demonstrationPreparationNotes' => $upload->demonstration_preparation_notes,
+            'examination_date' => $upload->examination_date?->toDateString(),
+            'examinationDate' => $upload->examination_date?->toDateString(),
+            'examination_score' => $upload->examination_score,
+            'examinationScore' => $upload->examination_score,
             'ratings' => $this->serializeRatings($upload),
             'rating_count' => $ratingStats['count'],
             'ratingCount' => $ratingStats['count'],
@@ -1401,6 +1855,7 @@ class UploadController extends Controller
             'updatedAt' => $uploadedAt,
             'updated_at' => $uploadedAt,
             'size_bytes' => $upload->size_bytes,
+            'preview_url' => url("/api/uploads/{$upload->id}/preview"),
             'download_url' => url("/api/uploads/{$upload->id}/download"),
             'supportingFiles' => $upload->relationLoaded('supportingFiles')
                 ? $upload->supportingFiles->map(fn (SupportingFile $file) => $this->serializeSupportingFile($file, $upload->id))->values()
@@ -1476,6 +1931,56 @@ class UploadController extends Controller
             'reviewed', 'shortlisted', 'interview', 'rejected', 'hired', 'cancelled' => $status,
             default => 'pending',
         };
+    }
+
+    private function resolveJobForUpload(Upload $upload): ?Job
+    {
+        if ($upload->job instanceof Job) {
+            return $upload->job;
+        }
+
+        if ($upload->job_id) {
+            return Job::query()->find($upload->job_id);
+        }
+
+        $title = trim((string) ($upload->applied_job_title ?: $upload->matched_job_title));
+        if ($title === '') {
+            return null;
+        }
+
+        return Job::query()
+            ->whereRaw('LOWER(title) = ?', [Str::lower($title)])
+            ->orderByDesc('id')
+            ->first();
+    }
+
+    private function remainingPositionsForJob(Job $job, ?int $ignoreUploadId = null): int
+    {
+        $total = (int) ($job->positions_total ?? 1);
+        if ($total <= 0) {
+            return PHP_INT_MAX;
+        }
+
+        $used = Upload::query()
+            ->applications()
+            ->when($ignoreUploadId !== null, fn ($query) => $query->where('id', '<>', $ignoreUploadId))
+            ->where(function ($query) use ($job) {
+                $query
+                    ->where('job_id', $job->id)
+                    ->orWhereRaw('LOWER(applied_job_title) = ?', [Str::lower((string) $job->title)])
+                    ->orWhereRaw('LOWER(matched_job_title) = ?', [Str::lower((string) $job->title)]);
+            })
+            ->count();
+
+        return max(0, $total - $used);
+    }
+
+    private function applicationStatusLabel(string $status): string
+    {
+        return Str::of($status)
+            ->replace(['_', '-'], ' ')
+            ->title()
+            ->toString();
     }
 
     private function hasCompletedAllBoardMemberRatings(Upload $upload, array $boardMembers): bool
@@ -1727,8 +2232,20 @@ class UploadController extends Controller
             'extracted_text' => $file->extracted_text,
             'size_bytes' => $file->size_bytes,
             'uploaded_at' => $file->uploaded_at,
+            'preview_url' => url("/api/uploads/{$routeUploadId}/supporting/{$file->id}/preview"),
             'download_url' => url("/api/uploads/{$routeUploadId}/supporting/{$file->id}/download"),
         ];
+    }
+
+    private function inlineFileResponse(string $filePath, string $fileName, ?string $mimeType = null): mixed
+    {
+        $absolutePath = Storage::disk('local')->path($filePath);
+        $dispositionName = str_replace(['"', "\r", "\n"], '', $fileName);
+
+        return response()->file($absolutePath, [
+            'Content-Type' => $mimeType ?: 'application/octet-stream',
+            'Content-Disposition' => 'inline; filename="' . $dispositionName . '"',
+        ]);
     }
 
     private function serializeJobSeekerSupportingFile(SupportingFile $file): array

@@ -22,7 +22,8 @@ function LoginPage({
   setLoginMode,
   onSubmit,
   onRegister,
-  onGoToLandingSection = () => {}
+  onGoToLandingSection = () => {},
+  isSubmitting = false
 }) {
   const [showPassword, setShowPassword] = useState(false)
   const [showErrors, setShowErrors] = useState(false)
@@ -149,10 +150,9 @@ function LoginPage({
               )}
             </div>
 
-            {loginError && <p className="login-error-modern">{loginError}</p>}
             <div className="login-button-row-modern">
-              <button type="submit" className="btn login-btn-modern">
-                Log In
+              <button type="submit" className="btn login-btn-modern" disabled={isSubmitting}>
+                {isSubmitting ? "Logging in..." : "Log In"}
                 {/* Log In as {isJobSeekerMode ? "Job Seeker" : "Employer/Admin"} */}
               </button>
             </div>

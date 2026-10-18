@@ -1,5 +1,6 @@
+import { apiMessage, notify as showToast } from "../utils/toasts"
 import React from 'react'
-import { useCallback, useEffect, useRef, useState } from "react"
+import { useCallback, useEffect, useState } from "react"
 import "../styles/UsersPage.css"
 import eyeSolidIcon from "../assets/eye-solid-full.svg"
 import eyeRegularIcon from "../assets/eye-regular-full.svg"
@@ -73,8 +74,6 @@ function UsersPage({ currentUser = null, onUsersChanged }) {
     pageAccess: allPageAccess
   })
   const [confirmDeleteUser, setConfirmDeleteUser] = useState(null)
-  const [jobSeekerActionsMenu, setJobSeekerActionsMenu] = useState(null)
-  const [employerActionsMenu, setEmployerActionsMenu] = useState(null)
   const [isEmployerModalOpen, setIsEmployerModalOpen] = useState(false)
   const [showEmployerPassword, setShowEmployerPassword] = useState(false)
   const [employerForm, setEmployerForm] = useState({
@@ -89,31 +88,6 @@ function UsersPage({ currentUser = null, onUsersChanged }) {
     positionType: "personnel",
     pageAccess: allPageAccess
   })
-  const [toast, setToast] = useState(null)
-  const toastTimerRef = useRef(null)
-
-  const showToast = useCallback((message, type = "info", duration = 2600) => {
-    if (toastTimerRef.current) {
-      window.clearTimeout(toastTimerRef.current)
-      toastTimerRef.current = null
-    }
-    setToast({ message, type })
-    if (duration > 0) {
-      toastTimerRef.current = window.setTimeout(() => {
-        setToast(null)
-        toastTimerRef.current = null
-      }, duration)
-    }
-  }, [])
-
-  useEffect(() => {
-    return () => {
-      if (toastTimerRef.current) {
-        window.clearTimeout(toastTimerRef.current)
-      }
-    }
-  }, [])
-
   const fetchUsers = useCallback(async () => {
     setIsLoadingUsers(true)
     try {
@@ -123,11 +97,11 @@ function UsersPage({ currentUser = null, onUsersChanged }) {
       ])
       if (!jobSeekerResponse.ok) {
         const payload = await jobSeekerResponse.json().catch(() => null)
-        throw new Error(payload?.message || "Failed to load job seekers.")
+        throw new Error(apiMessage(payload, "Failed to load job seekers."))
       }
       if (!employerResponse.ok) {
         const payload = await employerResponse.json().catch(() => null)
-        throw new Error(payload?.message || "Failed to load employers.")
+        throw new Error(apiMessage(payload, "Failed to load employers."))
       }
       const jobSeekerData = await jobSeekerResponse.json()
       const employerData = await employerResponse.json()
@@ -145,43 +119,6 @@ function UsersPage({ currentUser = null, onUsersChanged }) {
   useEffect(() => {
     fetchUsers()
   }, [fetchUsers])
-
-  useEffect(() => {
-    if (!jobSeekerActionsMenu && !employerActionsMenu) return
-    const handleClick = () => {
-      setJobSeekerActionsMenu(null)
-      setEmployerActionsMenu(null)
-    }
-    window.addEventListener("click", handleClick)
-    window.addEventListener("resize", handleClick)
-    window.addEventListener("scroll", handleClick, true)
-    return () => {
-      window.removeEventListener("click", handleClick)
-      window.removeEventListener("resize", handleClick)
-      window.removeEventListener("scroll", handleClick, true)
-    }
-  }, [jobSeekerActionsMenu, employerActionsMenu])
-
-  const openJobSeekerActionsMenu = (event, user) => {
-    const rect = event.currentTarget.getBoundingClientRect()
-    setJobSeekerActionsMenu({
-      user,
-      top: rect.bottom + 6,
-      left: Math.max(12, rect.right - 140)
-    })
-    setEmployerActionsMenu(null)
-  }
-
-  const openEmployerActionsMenu = (event, user) => {
-    const rect = event.currentTarget.getBoundingClientRect()
-    setEmployerActionsMenu({
-      user,
-      top: rect.bottom + 6,
-      left: Math.max(12, rect.right - 140)
-    })
-    setJobSeekerActionsMenu(null)
-  }
-
 
   const formatDate = (value) => {
     const d = new Date(value)
@@ -287,7 +224,6 @@ function UsersPage({ currentUser = null, onUsersChanged }) {
         pageAccess: normalizePageAccess(user.pageAccess || user.page_access, positionType)
       })
     }
-    setToast(null)
   }
 
   const closeEditUser = () => {
@@ -314,7 +250,7 @@ function UsersPage({ currentUser = null, onUsersChanged }) {
         })
         if (!response.ok) {
           const payload = await response.json().catch(() => null)
-          throw new Error(payload?.message || "Failed to update job seeker.")
+          throw new Error(apiMessage(payload, "Failed to update job seeker."))
         }
       } else {
         if (!userForm.pageAccess.length) {
@@ -340,12 +276,12 @@ function UsersPage({ currentUser = null, onUsersChanged }) {
         })
         if (!response.ok) {
           const payload = await response.json().catch(() => null)
-          throw new Error(payload?.message || "Failed to update employer.")
+          throw new Error(apiMessage(payload, "Failed to update employer."))
         }
       }
       await fetchUsers()
       await onUsersChanged?.()
-      showToast("Personnel account updated successfully.", "success")
+      showToast(`${userEditContext.type === "jobseeker" ? "Job seeker" : "Personnel"} account updated successfully.`, "success")
       setTimeout(() => {
         closeEditUser()
       }, 600)
@@ -421,7 +357,7 @@ function UsersPage({ currentUser = null, onUsersChanged }) {
       })
       if (!response.ok) {
         const err = await response.json().catch(() => null)
-        throw new Error(err?.message || "Failed to add Personnel.")
+        throw new Error(apiMessage(err, "Failed to add Personnel."))
       }
       showToast("Personnel account created successfully.", "success")
       setIsEmployerModalOpen(false)
@@ -516,7 +452,9 @@ function UsersPage({ currentUser = null, onUsersChanged }) {
             <tbody>
               {isLoadingUsers ? (
                 <tr>
-                  <td colSpan={9} className="users-empty">Loading job seekers...</td>
+                  <td colSpan={9} className="users-empty">
+                    <span className="loading-indicator"><span className="loading-spinner" aria-hidden="true" />Loading job seekers...</span>
+                  </td>
                 </tr>
               ) : filteredJobSeekers.length === 0 ? (
                 <tr>
@@ -545,16 +483,30 @@ function UsersPage({ currentUser = null, onUsersChanged }) {
                         </td>
                         <td>{formatDate(user.createdAt)}</td>
                         <td className="actions-cell">
-                          <button
-                            type="button"
-                            className="action-btn action-trigger"
-                            onClick={(e) => {
-                              e.stopPropagation()
-                              openJobSeekerActionsMenu(e, user)
-                            }}
+                          <span
+                            className={`users-delete-control${user.can_delete === false ? " is-disabled" : ""}`}
+                            tabIndex={user.can_delete === false ? 0 : undefined}
+                            aria-label={user.can_delete === false ? "Delete unavailable" : undefined}
+                            aria-describedby={user.can_delete === false ? `delete-reason-${user.id}` : undefined}
                           >
-                            ...
-                          </button>
+                            <button
+                              type="button"
+                              className="action-btn users-delete-action"
+                              disabled={user.can_delete === false}
+                              title={user.can_delete === false ? undefined : "Delete job seeker"}
+                              onClick={(e) => {
+                                e.stopPropagation()
+                                confirmDelete("jobseeker", user)
+                              }}
+                            >
+                              Delete
+                            </button>
+                            {user.can_delete === false && (
+                              <span id={`delete-reason-${user.id}`} role="tooltip" className="users-delete-tooltip">
+                                Cannot delete: applicant has linked records.
+                              </span>
+                            )}
+                          </span>
                         </td>
                       </tr>
                     )
@@ -566,7 +518,9 @@ function UsersPage({ currentUser = null, onUsersChanged }) {
         </div>
         {filteredJobSeekers.length > usersPageSize && (
           <div className="users-pagination">
-            <span>Page {jobSeekerPage} of {jobSeekerPageCount}</span>
+            <p className="users-page-count">
+              Showing {(jobSeekerPage - 1) * usersPageSize + 1}-{Math.min(jobSeekerPage * usersPageSize, filteredJobSeekers.length)} of {filteredJobSeekers.length} job seekers
+            </p>
             <div>
               <button
                 type="button"
@@ -575,6 +529,7 @@ function UsersPage({ currentUser = null, onUsersChanged }) {
               >
                 Previous
               </button>
+              <span>Page {jobSeekerPage} of {jobSeekerPageCount}</span>
               <button
                 type="button"
                 onClick={() => setJobSeekerPage((page) => Math.min(jobSeekerPageCount, page + 1))}
@@ -622,7 +577,9 @@ function UsersPage({ currentUser = null, onUsersChanged }) {
             <tbody>
               {isLoadingUsers ? (
                 <tr>
-                  <td colSpan={9} className="users-empty">Loading employers...</td>
+                  <td colSpan={9} className="users-empty">
+                    <span className="loading-indicator"><span className="loading-spinner" aria-hidden="true" />Loading employers...</span>
+                  </td>
                 </tr>
               ) : filteredEmployers.length === 0 ? (
                 <tr>
@@ -644,16 +601,26 @@ function UsersPage({ currentUser = null, onUsersChanged }) {
                     <td>{user.username || "-"}</td>
                     <td>{user.email || "-"}</td>
                     <td>{formatDate(user.createdAt)}</td>
-                    <td className="actions-cell">
+                    <td className="actions-cell users-inline-actions">
                       <button
                         type="button"
-                        className="action-btn action-trigger"
+                        className="action-btn users-edit-action"
                         onClick={(e) => {
                           e.stopPropagation()
-                          openEmployerActionsMenu(e, user)
+                          openEditUser("employer", user)
                         }}
                       >
-                        ...
+                        Edit
+                      </button>
+                      <button
+                        type="button"
+                        className="action-btn users-delete-action"
+                        onClick={(e) => {
+                          e.stopPropagation()
+                          confirmDelete("employer", user)
+                        }}
+                      >
+                        Delete
                       </button>
                     </td>
                   </tr>
@@ -665,7 +632,9 @@ function UsersPage({ currentUser = null, onUsersChanged }) {
         </div>
         {filteredEmployers.length > usersPageSize && (
           <div className="users-pagination">
-            <span>Page {employerPage} of {employerPageCount}</span>
+            <p className="users-page-count">
+              Showing {(employerPage - 1) * usersPageSize + 1}-{Math.min(employerPage * usersPageSize, filteredEmployers.length)} of {filteredEmployers.length} personnel
+            </p>
             <div>
               <button
                 type="button"
@@ -674,6 +643,7 @@ function UsersPage({ currentUser = null, onUsersChanged }) {
               >
                 Previous
               </button>
+              <span>Page {employerPage} of {employerPageCount}</span>
               <button
                 type="button"
                 onClick={() => setEmployerPage((page) => Math.min(employerPageCount, page + 1))}
@@ -871,7 +841,8 @@ function UsersPage({ currentUser = null, onUsersChanged }) {
                       })
                       if (!response.ok) {
                         const payload = await response.json().catch(() => null)
-                        throw new Error(payload?.message || "Failed to delete job seeker.")
+                        if (response.status === 409) await fetchUsers()
+                        throw new Error(apiMessage(payload, "Failed to delete job seeker."))
                       }
                     } else {
                       const response = await fetch(`http://localhost:5000/employers/${target.user.id}`, {
@@ -880,7 +851,7 @@ function UsersPage({ currentUser = null, onUsersChanged }) {
                       })
                       if (!response.ok) {
                         const payload = await response.json().catch(() => null)
-                        throw new Error(payload?.message || "Failed to delete employer.")
+                        throw new Error(apiMessage(payload, "Failed to delete employer."))
                       }
                     }
                     await fetchUsers()
@@ -1027,69 +998,6 @@ function UsersPage({ currentUser = null, onUsersChanged }) {
               <button className="btn btn-secondary" onClick={() => setIsEmployerModalOpen(false)}>Cancel</button>
             </div>
           </div>
-        </div>
-      )}
-
-      {jobSeekerActionsMenu && (
-        <div
-          className="actions-menu actions-menu-floating"
-          style={{ top: `${jobSeekerActionsMenu.top}px`, left: `${jobSeekerActionsMenu.left}px` }}
-          onClick={(e) => e.stopPropagation()}
-        >
-          <button
-            type="button"
-            className="actions-menu-item danger"
-            onClick={() => {
-              const target = jobSeekerActionsMenu
-              setJobSeekerActionsMenu(null)
-              if (target) {
-                confirmDelete("jobseeker", target.user)
-              }
-            }}
-          >
-            Delete
-          </button>
-        </div>
-      )}
-
-      {employerActionsMenu && (
-        <div
-          className="actions-menu actions-menu-floating"
-          style={{ top: `${employerActionsMenu.top}px`, left: `${employerActionsMenu.left}px` }}
-          onClick={(e) => e.stopPropagation()}
-        >
-          <button
-            type="button"
-            className="actions-menu-item"
-            onClick={() => {
-              const target = employerActionsMenu
-              setEmployerActionsMenu(null)
-              if (target) {
-                openEditUser("employer", target.user)
-              }
-            }}
-          >
-            Edit
-          </button>
-          <button
-            type="button"
-            className="actions-menu-item danger"
-            onClick={() => {
-              const target = employerActionsMenu
-              setEmployerActionsMenu(null)
-              if (target) {
-                confirmDelete("employer", target.user)
-              }
-            }}
-          >
-            Delete
-          </button>
-        </div>
-      )}
-
-      {toast && (
-        <div className={`toast ${toast.type === "success" ? "toast-success" : toast.type === "fail" ? "toast-fail" : "toast-info"}`}>
-          {toast.message}
         </div>
       )}
 

@@ -18,6 +18,7 @@ class Job extends Model
         'education_weight' => 'integer',
         'experience_weight' => 'integer',
         'eligibility_weight' => 'integer',
+        'positions_total' => 'integer',
     ];
 
     protected $fillable = [
@@ -44,6 +45,7 @@ class Job extends Model
         'eligibility_weight',
         'salary_min',
         'salary_max',
+        'positions_total',
     ];
 
     public static function closeExpiredActiveJobs(): int

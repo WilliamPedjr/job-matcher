@@ -90,6 +90,10 @@
   left: auto !important;
   bottom: auto !important;
   width: min(680px, calc(100vw - var(--sidebar-width) - 56px)) !important;
+  max-height: calc(100vh - 96px) !important;
+  display: flex !important;
+  flex-direction: column !important;
+  overflow: hidden !important;
   z-index: 1201 !important;
 }
 
@@ -304,7 +308,9 @@
     bottom: 12px !important;
     width: auto !important;
     max-height: none !important;
-    overflow-y: auto !important;
+    display: flex !important;
+    flex-direction: column !important;
+    overflow: hidden !important;
     overflow-x: hidden !important;
   }
 

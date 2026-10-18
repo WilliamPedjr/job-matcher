@@ -18,7 +18,8 @@ function RegisterPage({
   registerNotice = "",
   onSubmit = () => {},
   onBack = () => {},
-  onGoToLandingSection = () => {}
+  onGoToLandingSection = () => {},
+  isSubmitting = false
 }) {
   const [showPassword, setShowPassword] = useState(false)
   const [showConfirmPassword, setShowConfirmPassword] = useState(false)
@@ -108,7 +109,7 @@ function RegisterPage({
             }}
           >
             <label className="register-label">
-              Full Name
+              Name
             </label>
             <input
               className={`register-input ${showErrors && fullNameError ? "input-error" : ""}`}
@@ -196,9 +197,9 @@ function RegisterPage({
               </span>
             </div>
 
-            {registerNotice && <p className="register-notice">{registerNotice}</p>}
-            {registerError && <p className="login-error-modern">{registerError}</p>}
-            <button type="submit" className="register-btn">Create Account</button>
+            <button type="submit" className="register-btn" disabled={isSubmitting}>
+              {isSubmitting ? "Creating account..." : "Create Account"}
+            </button>
           </form>
 
             <p className="register-footer">

@@ -18,7 +18,21 @@ class Experience extends Model
         'start_date',
         'end_date',
         'description',
+        'skills',
     ];
+
+    protected $casts = [
+        'skills' => 'array',
+    ];
+
+    public static function normalizeSkills(array $skills): array
+    {
+        return collect($skills)
+            ->map(fn ($skill) => \Illuminate\Support\Str::squish((string) $skill))
+            ->filter(fn ($skill) => $skill !== '')
+            ->unique(fn ($skill) => \Illuminate\Support\Str::lower($skill))
+            ->values()->all();
+    }
 
     public function jobSeeker()
     {

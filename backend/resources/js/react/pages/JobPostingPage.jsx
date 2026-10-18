@@ -1,8 +1,11 @@
+import { apiMessage, notify as showDeleteToast } from "../utils/toasts"
 import React from 'react'
 import { useEffect, useMemo, useRef, useState } from 'react'
 import '../styles/JobPostingPage.css'
 import CustomDropdown from '../components/CustomDropdown'
 import { getArchiveActorHeaders } from '../utils/archiveActor'
+import { useToastState } from '../utils/useToastState'
+import { monthlySalaryForGrade } from '../utils/salaryGrades'
 
 const defaultJobEligibility = "Open to all qualified applicants"
 const otherEligibilityOption = "Other Eligibility"
@@ -116,9 +119,10 @@ function JobPostingPage({ uploads = [], isEmployer = false, isJobSeeker = false,
   const [newScoringWeights, setNewScoringWeights] = useState(defaultScoringWeights)
   const [newSalaryMin, setNewSalaryMin] = useState("")
   const [newSalaryMax, setNewSalaryMax] = useState("")
+  const [newPositionsTotal, setNewPositionsTotal] = useState("1")
   const [isCreatingJob, setIsCreatingJob] = useState(false)
   const [isLoading, setIsLoading] = useState(false)
-  const [error, setError] = useState("")
+  const [error, setError] = useToastState("", "error")
   const [createJobStatus, setCreateJobStatus] = useState("")
   const [createJobNotice, setCreateJobNotice] = useState("")
   const [showJobFormErrors, setShowJobFormErrors] = useState(false)
@@ -136,9 +140,6 @@ function JobPostingPage({ uploads = [], isEmployer = false, isJobSeeker = false,
   const [globalSkillStatus, setGlobalSkillStatus] = useState("idle")
   const [templateSkillCatalog, setTemplateSkillCatalog] = useState([])
   const [templateSkillStatus, setTemplateSkillStatus] = useState("idle")
-  const [jobApplicantActionsMenu, setJobApplicantActionsMenu] = useState(null)
-  const [deleteToast, setDeleteToast] = useState(null)
-  const deleteToastTimerRef = useRef(null)
   const isEditingJob = editingJobId != null
   const scoringTotal = scoringCriteria.reduce((sum, item) => sum + (Number(newScoringWeights[item.key]) || 0), 0)
   const scoringTotalIsValid = scoringTotal <= 100
@@ -149,8 +150,16 @@ function JobPostingPage({ uploads = [], isEmployer = false, isJobSeeker = false,
   const jobPositionRef = useRef(null)
   const departmentRef = useRef(null)
   const skillsPickerRef = useRef(null)
-  const jobApplicantActionsMenuRef = useRef(null)
   const skipTemplateApplyRef = useRef(false)
+  const isHourlyJob = String(newJobType || "").toLowerCase().includes("part")
+
+  const handleSalaryGradeChange = (value) => {
+    setNewSalaryMin(value)
+    if (!isHourlyJob) {
+      const amount = monthlySalaryForGrade(value)
+      setNewSalaryMax(amount == null ? "" : String(amount))
+    }
+  }
 
   useEffect(() => {
     if (!createJobStatus) return
@@ -160,14 +169,6 @@ function JobPostingPage({ uploads = [], isEmployer = false, isJobSeeker = false,
     }, 2600)
     return () => clearTimeout(timer)
   }, [createJobStatus])
-
-  useEffect(() => {
-    return () => {
-      if (deleteToastTimerRef.current) {
-        window.clearTimeout(deleteToastTimerRef.current)
-      }
-    }
-  }, [])
 
   useEffect(() => {
     try {
@@ -186,6 +187,7 @@ function JobPostingPage({ uploads = [], isEmployer = false, isJobSeeker = false,
   const showCreateJobNotice = (status, notice) => {
     setCreateJobStatus(status)
     setCreateJobNotice(notice)
+    showDeleteToast(notice, status)
   }
 
   const requiredInputClass = (value, extraClass = "") => {
@@ -204,25 +206,38 @@ function JobPostingPage({ uploads = [], isEmployer = false, isJobSeeker = false,
     })
   }
 
-  const apiErrorMessage = (payload, fallback) => {
-    const firstError = payload?.errors && Object.values(payload.errors)
-      .flat()
-      .find(Boolean)
-    return firstError || payload?.message || fallback
+  const classificationLabel = (value, fallback = "Not Qualified") => {
+    const label = String(value || "").trim()
+    if (!label) return fallback
+    return label.toLowerCase().includes("lowly") ? "Not Qualified" : label
   }
 
-  const showDeleteToast = (message, type = "success", duration = 2600) => {
-    if (deleteToastTimerRef.current) {
-      window.clearTimeout(deleteToastTimerRef.current)
-      deleteToastTimerRef.current = null
+  const integerInputValue = (value) => String(value ?? "").replace(/\D/g, "")
+  const integerRecordValue = (value) => {
+    const text = String(value ?? "").trim()
+    return /^\d+$/.test(text) ? text : ""
+  }
+  const isManySlotsRecord = (record = {}) => {
+    const rawTotal = record.positionsTotal ?? record.positions_total
+    return Boolean(record.positionsMany ?? record.positions_many) || Number(rawTotal) === 0
+  }
+  const positionsTotalFormValue = (value, record = {}) => {
+    const text = String(value ?? "").trim().toLowerCase()
+    if (text === "many" || text === "unlimited" || isManySlotsRecord(record)) {
+      return "many"
     }
-    setDeleteToast({ message, type })
-    if (duration > 0) {
-      deleteToastTimerRef.current = window.setTimeout(() => {
-        setDeleteToast(null)
-        deleteToastTimerRef.current = null
-      }, duration)
-    }
+    return integerRecordValue(value) || "1"
+  }
+  const isManySlotsValue = (value) => String(value ?? "").trim().toLowerCase() === "many"
+  const getPositionsPayloadValue = () => (isManySlotsValue(newPositionsTotal) ? 0 : Number(newPositionsTotal))
+  const getJobAvailableSlotsLabel = (job = {}) => {
+    if (isManySlotsRecord(job)) return "No Limit"
+    const value = Number(job.positionsAvailable ?? job.positions_available ?? job.positionsTotal ?? job.positions_total ?? 1)
+    return String(Math.max(0, value))
+  }
+  const getJobAvailableSlotsText = (job = {}) => {
+    const label = getJobAvailableSlotsLabel(job)
+    return label === "No Limit" ? "No Limit" : `${label} ${Number(label) === 1 ? "vacancy" : "vacancies"} left`
   }
 
   const normalizeSalaryRange = (minValue, maxValue) => {
@@ -245,7 +260,7 @@ function JobPostingPage({ uploads = [], isEmployer = false, isJobSeeker = false,
       const data = await response.json()
       setJobs(Array.isArray(data) ? data : [])
     } catch (err) {
-      setError(err.message || "Could not fetch job postings.")
+      setError(apiMessage(err, "Could not fetch job postings."))
     } finally {
       if (!silent) {
         setIsLoading(false)
@@ -331,27 +346,24 @@ function JobPostingPage({ uploads = [], isEmployer = false, isJobSeeker = false,
 
       window.requestAnimationFrame(() => {
         setActionsJobId(actionKey)
-        setActionsJobMenu(getJobActionsMenuPosition(button))
+        setActionsJobMenu({
+          ...getJobActionsMenuPosition(button),
+          job
+        })
         setIsPositioningJobActionsMenu(false)
       })
     })
   }
 
   useEffect(() => {
-    if (!jobApplicantActionsMenu) return
-    const closeMenu = (event) => {
-      if (jobApplicantActionsMenuRef.current?.contains(event.target)) return
-      setJobApplicantActionsMenu(null)
+    if (!selectedJobTitle) {
+      return
     }
-    document.addEventListener("mousedown", closeMenu)
-    document.addEventListener("scroll", closeMenu, true)
-    window.addEventListener("resize", closeMenu)
-    return () => {
-      document.removeEventListener("mousedown", closeMenu)
-      document.removeEventListener("scroll", closeMenu, true)
-      window.removeEventListener("resize", closeMenu)
-    }
-  }, [jobApplicantActionsMenu])
+
+    setActionsJobId(null)
+    setActionsJobMenu(null)
+    setIsPositioningJobActionsMenu(false)
+  }, [selectedJobTitle])
 
   useEffect(() => {
     if (!isJobPositionOpen) return
@@ -562,7 +574,7 @@ function JobPostingPage({ uploads = [], isEmployer = false, isJobSeeker = false,
           const normalizedScore = Number.isFinite(score) ? score : null
           next[key] = {
             score: normalizedScore,
-            qualifies: normalizedScore != null ? normalizedScore >= normalizedMinimumScore : false,
+            qualifies: normalizedScore != null && normalizedScore >= normalizedMinimumScore && item.allowApplication === true,
             minimumScore: normalizedMinimumScore
           }
         })
@@ -958,8 +970,9 @@ function JobPostingPage({ uploads = [], isEmployer = false, isJobSeeker = false,
     setNewMinimumExperienceYears(String(selected.minimumExperienceYears ?? 0))
     setNewApplicationThresholdScore(String(selected.applicationThresholdScore ?? selected.application_threshold_score ?? 50))
     setNewScoringWeights(scoringWeightsFromRecord(selected))
-    setNewSalaryMin(selected.salaryMin != null ? String(selected.salaryMin) : "")
+    setNewSalaryMin(integerRecordValue(selected.salaryMin))
     setNewSalaryMax(selected.salaryMax != null ? String(selected.salaryMax) : "")
+    setNewPositionsTotal(positionsTotalFormValue(selected.positionsTotal ?? selected.positions_total, selected))
   }
 
   const applyTemplateFromRecord = (record) => {
@@ -978,8 +991,9 @@ function JobPostingPage({ uploads = [], isEmployer = false, isJobSeeker = false,
     setNewMinimumExperienceYears(String(record.minimumExperienceYears ?? 0))
     setNewApplicationThresholdScore(String(record.applicationThresholdScore ?? record.application_threshold_score ?? 50))
     setNewScoringWeights(scoringWeightsFromRecord(record))
-    setNewSalaryMin(record.salaryMin != null ? String(record.salaryMin) : "")
+    setNewSalaryMin(integerRecordValue(record.salaryMin))
     setNewSalaryMax(record.salaryMax != null ? String(record.salaryMax) : "")
+    setNewPositionsTotal(positionsTotalFormValue(record.positionsTotal ?? record.positions_total, record))
   }
 
   useEffect(() => {
@@ -1066,6 +1080,33 @@ function JobPostingPage({ uploads = [], isEmployer = false, isJobSeeker = false,
     { value: "Non-Teaching", label: "Non-Teaching" }
   ]
 
+  const teachingEmploymentTypeOptions = [
+    { value: "Full-time", label: "Full-time" },
+    { value: "Part-time", label: "Part-time" },
+    { value: "Contract of Service", label: "Contract of Service" },
+    { value: "Internship", label: "Internship" }
+  ]
+
+  const nonTeachingEmploymentTypeOptions = [
+    { value: "Permanent", label: "Permanent" },
+    { value: "Casual", label: "Casual" },
+    { value: "Contract of Service", label: "Contract of Service" },
+    { value: "Coterminous", label: "Coterminous" }
+  ]
+
+  const employmentTypeOptions = normalizeJobPositionType(newJobPositionType) === "non-teaching"
+    ? nonTeachingEmploymentTypeOptions
+    : teachingEmploymentTypeOptions
+
+  useEffect(() => {
+    if (newJobType === "Conterminous") {
+      setNewJobType("Coterminous")
+      return
+    }
+    if (employmentTypeOptions.some((option) => option.value === newJobType)) return
+    setNewJobType(employmentTypeOptions[0]?.value || "")
+  }, [employmentTypeOptions, newJobType])
+
   const normalizeJobIdentityValue = (value) => (
     String(value || "").trim().replace(/\s+/g, " ").toLowerCase()
   )
@@ -1092,13 +1133,15 @@ function JobPostingPage({ uploads = [], isEmployer = false, isJobSeeker = false,
         body: JSON.stringify({ status })
       })
       if (!response.ok) {
-        throw new Error("Failed to update status.")
+        const payload = await response.json().catch(() => null)
+        throw new Error(apiMessage(payload, "Failed to update job status."))
       }
       setActionsJobId(null)
       await fetchJobs({ silent: true })
       await onJobsChanged?.()
+      showDeleteToast("Job status updated.", "success")
     } catch (err) {
-      setError(err.message || "Failed to update job status.")
+      setError(apiMessage(err, "Failed to update job status."))
     }
   }
 
@@ -1109,37 +1152,21 @@ function JobPostingPage({ uploads = [], isEmployer = false, isJobSeeker = false,
         headers: getArchiveActorHeaders(currentUser)
       })
       if (!response.ok) {
-        throw new Error("Failed to delete job post.")
+        const payload = await response.json().catch(() => null)
+        throw new Error(apiMessage(payload, "Failed to delete job post."))
       }
       setActionsJobId(null)
       await fetchJobs({ silent: true })
       await onJobsChanged?.()
       showDeleteToast("Job post deleted.", "success")
     } catch (err) {
-      setError(err.message || "Failed to delete job post.")
-      showDeleteToast(err.message || "Failed to delete job post.", "fail")
+      setError(apiMessage(err, "Failed to delete job post."))
     }
   }
 
   const deleteJobPost = (jobId) => {
     setActionsJobId(null)
     setConfirmDeleteJobId(jobId)
-  }
-
-  const handleDeleteApplicantInJobModal = async (applicantId) => {
-    const deleted = await onDeleteApplicant?.(applicantId, "applicant")
-    if (!deleted) return
-    await fetchJobs({ silent: true })
-    await onJobsChanged?.()
-  }
-
-  const openJobApplicantActionsMenu = (event, item) => {
-    const rect = event.currentTarget.getBoundingClientRect()
-    setJobApplicantActionsMenu({
-      item,
-      top: rect.bottom + 6,
-      left: Math.max(12, rect.right - 150)
-    })
   }
 
   const handleApplyJob = (job) => {
@@ -1191,6 +1218,7 @@ function JobPostingPage({ uploads = [], isEmployer = false, isJobSeeker = false,
     setNewScoringWeights(defaultScoringWeights)
     setNewSalaryMin("")
     setNewSalaryMax("")
+    setNewPositionsTotal("1")
     setSkillDraft("")
     setIsSkillsOpen(false)
     setIsDepartmentOpen(false)
@@ -1216,6 +1244,7 @@ function JobPostingPage({ uploads = [], isEmployer = false, isJobSeeker = false,
     scoringWeights: newScoringWeights,
     salaryMin: newSalaryMin,
     salaryMax: newSalaryMax,
+    positionsTotal: newPositionsTotal,
     savedAt: new Date().toISOString()
   })
 
@@ -1233,7 +1262,8 @@ function JobPostingPage({ uploads = [], isEmployer = false, isJobSeeker = false,
       draft.applicationThresholdScore !== "50" ? draft.applicationThresholdScore : "",
       JSON.stringify(draft.scoringWeights || {}) !== JSON.stringify(defaultScoringWeights) ? "scoring" : "",
       draft.salaryMin,
-      draft.salaryMax
+      draft.salaryMax,
+      draft.positionsTotal !== "1" ? draft.positionsTotal : ""
     ].some((value) => String(value ?? "").trim())
   }
 
@@ -1283,8 +1313,9 @@ function JobPostingPage({ uploads = [], isEmployer = false, isJobSeeker = false,
     setNewMinimumExperienceYears(String(draft?.minimumExperienceYears ?? 0))
     setNewApplicationThresholdScore(String(draft?.applicationThresholdScore ?? 50))
     setNewScoringWeights({ ...defaultScoringWeights, ...(draft?.scoringWeights || {}) })
-    setNewSalaryMin(draft?.salaryMin != null ? String(draft.salaryMin) : "")
+    setNewSalaryMin(integerRecordValue(draft?.salaryMin))
     setNewSalaryMax(draft?.salaryMax != null ? String(draft.salaryMax) : "")
+    setNewPositionsTotal(positionsTotalFormValue(draft?.positionsTotal, draft))
     setSkillDraft("")
     setIsSkillsOpen(false)
     setIsDepartmentOpen(false)
@@ -1346,8 +1377,9 @@ function JobPostingPage({ uploads = [], isEmployer = false, isJobSeeker = false,
     setNewMinimumExperienceYears(String(job.minimumExperienceYears ?? 0))
     setNewApplicationThresholdScore(String(job.applicationThresholdScore ?? job.application_threshold_score ?? 50))
     setNewScoringWeights(scoringWeightsFromRecord(job))
-    setNewSalaryMin(job.salaryMin != null ? String(job.salaryMin) : "")
+    setNewSalaryMin(integerRecordValue(job.salaryMin))
     setNewSalaryMax(job.salaryMax != null ? String(job.salaryMax) : "")
+    setNewPositionsTotal(positionsTotalFormValue(job.positionsTotal ?? job.positions_total, job))
     setSkillDraft("")
     setIsSkillsOpen(false)
     setIsCreateModalOpen(true)
@@ -1390,7 +1422,8 @@ function JobPostingPage({ uploads = [], isEmployer = false, isJobSeeker = false,
       newMinimumExperienceYears === "" ||
       !scoringTotalIsValid ||
       newSalaryMin === "" ||
-      newSalaryMax === ""
+      newSalaryMax === "" ||
+      newPositionsTotal === ""
     )
 
     if (hasMissingField) {
@@ -1401,8 +1434,12 @@ function JobPostingPage({ uploads = [], isEmployer = false, isJobSeeker = false,
     }
 
     const minExp = newMinimumExperienceYears === "" ? 0 : Number(newMinimumExperienceYears)
+    const salaryGradeIsInteger = /^\d+$/.test(String(newSalaryMin))
+    const positionsTotalIsMany = isManySlotsValue(newPositionsTotal)
+    const positionsTotalIsInteger = positionsTotalIsMany || /^\d+$/.test(String(newPositionsTotal))
     const parsedSalaryMin = Number(newSalaryMin)
     const parsedSalaryMax = Number(newSalaryMax)
+    const parsedPositionsTotal = getPositionsPayloadValue()
 
     if (Number.isNaN(minExp) || minExp < 0) {
       showCreateJobNotice("fail", "Minimum experience must be a valid non-negative number.")
@@ -1416,8 +1453,20 @@ function JobPostingPage({ uploads = [], isEmployer = false, isJobSeeker = false,
       return
     }
 
+    if (!salaryGradeIsInteger) {
+      showCreateJobNotice("fail", "Salary grade must be a valid whole number.")
+      scrollCreateJobModalToTop()
+      return
+    }
+
     if (Number.isNaN(parsedSalaryMin) || parsedSalaryMin < 0 || Number.isNaN(parsedSalaryMax) || parsedSalaryMax < 0) {
       showCreateJobNotice("fail", "Salary grade and salary amount must be valid non-negative numbers.")
+      scrollCreateJobModalToTop()
+      return
+    }
+
+    if (!positionsTotalIsInteger || (!positionsTotalIsMany && parsedPositionsTotal < 1)) {
+      showCreateJobNotice("fail", "Job Vacancy must be a valid whole number of at least 1, or choose No Limit.")
       scrollCreateJobModalToTop()
       return
     }
@@ -1459,13 +1508,14 @@ function JobPostingPage({ uploads = [], isEmployer = false, isJobSeeker = false,
           experienceWeight: Number(newScoringWeights.experience) || 0,
           eligibilityWeight: Number(newScoringWeights.eligibility) || 0,
           salaryMin,
-          salaryMax
+          salaryMax,
+          positionsTotal: parsedPositionsTotal
         })
       })
 
       if (!response.ok) {
         const payload = await response.json().catch(() => null)
-        throw new Error(apiErrorMessage(payload, "Failed to create job post."))
+        throw new Error(apiMessage(payload, "Failed to create job post."))
       }
 
       clearSavedJobDraft()
@@ -1475,7 +1525,7 @@ function JobPostingPage({ uploads = [], isEmployer = false, isJobSeeker = false,
       await fetchJobs()
       await onJobsChanged?.()
     } catch (err) {
-      showCreateJobNotice("fail", err.message || "Failed to create job post.")
+      showCreateJobNotice("fail", apiMessage(err, "Failed to create job post."))
     } finally {
       setIsCreatingJob(false)
     }
@@ -1499,7 +1549,8 @@ function JobPostingPage({ uploads = [], isEmployer = false, isJobSeeker = false,
       newMinimumExperienceYears === "" ||
       !scoringTotalIsValid ||
       newSalaryMin === "" ||
-      newSalaryMax === ""
+      newSalaryMax === "" ||
+      newPositionsTotal === ""
     )
 
     if (hasMissingField) {
@@ -1510,8 +1561,12 @@ function JobPostingPage({ uploads = [], isEmployer = false, isJobSeeker = false,
     }
 
     const minExp = newMinimumExperienceYears === "" ? 0 : Number(newMinimumExperienceYears)
+    const salaryGradeIsInteger = /^\d+$/.test(String(newSalaryMin))
+    const positionsTotalIsMany = isManySlotsValue(newPositionsTotal)
+    const positionsTotalIsInteger = positionsTotalIsMany || /^\d+$/.test(String(newPositionsTotal))
     const parsedSalaryMin = Number(newSalaryMin)
     const parsedSalaryMax = Number(newSalaryMax)
+    const parsedPositionsTotal = getPositionsPayloadValue()
 
     if (Number.isNaN(minExp) || minExp < 0) {
       showCreateJobNotice("fail", "Minimum experience must be a valid non-negative number.")
@@ -1525,8 +1580,20 @@ function JobPostingPage({ uploads = [], isEmployer = false, isJobSeeker = false,
       return
     }
 
+    if (!salaryGradeIsInteger) {
+      showCreateJobNotice("fail", "Salary grade must be a valid whole number.")
+      scrollCreateJobModalToTop()
+      return
+    }
+
     if (Number.isNaN(parsedSalaryMin) || parsedSalaryMin < 0 || Number.isNaN(parsedSalaryMax) || parsedSalaryMax < 0) {
       showCreateJobNotice("fail", "Salary grade and salary amount must be valid non-negative numbers.")
+      scrollCreateJobModalToTop()
+      return
+    }
+
+    if (!positionsTotalIsInteger || (!positionsTotalIsMany && parsedPositionsTotal < 1)) {
+      showCreateJobNotice("fail", "Job Vacancy must be a valid whole number of at least 1, or choose No Limit.")
       scrollCreateJobModalToTop()
       return
     }
@@ -1568,13 +1635,14 @@ function JobPostingPage({ uploads = [], isEmployer = false, isJobSeeker = false,
           experienceWeight: Number(newScoringWeights.experience) || 0,
           eligibilityWeight: Number(newScoringWeights.eligibility) || 0,
           salaryMin,
-          salaryMax
+          salaryMax,
+          positionsTotal: parsedPositionsTotal
         })
       })
 
       if (!response.ok) {
         const payload = await response.json().catch(() => null)
-        throw new Error(apiErrorMessage(payload, "Failed to update job post."))
+        throw new Error(apiMessage(payload, "Failed to update job post."))
       }
 
       closeCreateModal({ saveDraft: false })
@@ -1583,7 +1651,7 @@ function JobPostingPage({ uploads = [], isEmployer = false, isJobSeeker = false,
       await fetchJobs()
       await onJobsChanged?.()
     } catch (err) {
-      showCreateJobNotice("fail", err.message || "Failed to update job post.")
+      showCreateJobNotice("fail", apiMessage(err, "Failed to update job post."))
     } finally {
       setIsCreatingJob(false)
     }
@@ -1648,7 +1716,7 @@ function JobPostingPage({ uploads = [], isEmployer = false, isJobSeeker = false,
     return (
       <>
         <button
-          className="job-more"
+          className="action-btn action-trigger job-more job-action-trigger"
           type="button"
           onClick={(e) => {
             openJobActionsMenu(e, job, actionKey)
@@ -1657,65 +1725,6 @@ function JobPostingPage({ uploads = [], isEmployer = false, isJobSeeker = false,
         >
           ...
         </button>
-        {actionsJobId === actionKey && actionsJobMenu && (
-          <div
-            className="job-actions-menu job-actions-menu-floating"
-            style={{ top: `${actionsJobMenu.top}px`, left: `${actionsJobMenu.left}px` }}
-            onClick={(e) => e.stopPropagation()}
-          >
-            {job.source === "template" ? (
-              <button
-                type="button"
-                className="actions-menu-item"
-                onClick={() => {
-                  setActionsJobId(null)
-                  setEditingJobId(null)
-                  setShowJobFormErrors(false)
-                  setNewJobTitle(job.title || "")
-                  applyTemplateFromRecord(job)
-                  setIsUsingSavedJobDraft(false)
-                  setIsCreateModalOpen(true)
-                }}
-              >
-                Use Template
-              </button>
-            ) : (
-              <>
-                <button
-                  type="button"
-                  className="actions-menu-item"
-                  onClick={() => {
-                    setActionsJobId(null)
-                    openEditJobModal(job)
-                  }}
-                >
-                  Edit Details
-                </button>
-                <button
-                  type="button"
-                  className="actions-menu-item"
-                  onClick={() => updateJobStatus(job.id, "active")}
-                >
-                  Set Active
-                </button>
-                <button
-                  type="button"
-                  className="actions-menu-item"
-                  onClick={() => updateJobStatus(job.id, "closed")}
-                >
-                  Set Closed
-                </button>
-                <button
-                  type="button"
-                  className="actions-menu-item danger"
-                  onClick={() => deleteJobPost(job.id)}
-                >
-                  Delete Post
-                </button>
-              </>
-            )}
-          </div>
-        )}
       </>
     )
   }
@@ -1822,9 +1831,11 @@ function JobPostingPage({ uploads = [], isEmployer = false, isJobSeeker = false,
 
       <div className="table-wrap jobs-table-wrap">
         {isLoading ? (
-          <p className="muted jobs-table-message">Loading jobs...</p>
+          <p className="muted jobs-table-message">
+            <span className="loading-indicator"><span className="loading-spinner" aria-hidden="true" />Loading jobs...</span>
+          </p>
         ) : error ? (
-          <p className="muted jobs-table-message">{error}</p>
+          <p className="muted jobs-table-message">Jobs could not be loaded. Please try again.</p>
         ) : fifoJobs.length === 0 ? (
           <p className="muted jobs-table-message">No jobs found.</p>
         ) : jobsViewMode === "cards" ? (
@@ -1833,6 +1844,7 @@ function JobPostingPage({ uploads = [], isEmployer = false, isJobSeeker = false,
               {cardPageJobs.map((job, index) => {
                 const actionKey = getJobActionKey(job)
                 const skillItems = parseSkills(job.requiredSkills || job.required_skills || "").slice(0, 5)
+                const remainingSlotsText = getJobAvailableSlotsText(job)
                 return (
                   <article
                     key={`${job.source || "job"}-${job.id ?? job.title}`}
@@ -1851,6 +1863,7 @@ function JobPostingPage({ uploads = [], isEmployer = false, isJobSeeker = false,
                         <span className={`job-status ${String(job.status || "active").toLowerCase()}`}>
                           {String(job.status || "active").toLowerCase()}
                         </span>
+                        <span className="job-chip chip-outline">{remainingSlotsText}</span>
                         {renderJobActions(job, actionKey)}
                       </div>
                     </div>
@@ -1875,25 +1888,30 @@ function JobPostingPage({ uploads = [], isEmployer = false, isJobSeeker = false,
             </div>
             {cardPageCount > 1 && (
               <div className="jobs-card-pagination" aria-label="Job cards pagination">
-                <button
-                  type="button"
-                  className="jobs-page-btn"
-                  onClick={() => setCardPage((page) => Math.max(1, page - 1))}
-                  disabled={activeCardPage <= 1}
-                >
-                  Previous
-                </button>
-                <span className="jobs-page-status">
-                  Page {activeCardPage} of {cardPageCount}
-                </span>
-                <button
-                  type="button"
-                  className="jobs-page-btn"
-                  onClick={() => setCardPage((page) => Math.min(cardPageCount, page + 1))}
-                  disabled={activeCardPage >= cardPageCount}
-                >
-                  Next
-                </button>
+                <p className="jobs-page-count">
+                  Showing {cardStartIndex + 1}-{Math.min(cardStartIndex + CARD_PAGE_SIZE, fifoJobs.length)} of {fifoJobs.length} jobs
+                </p>
+                <div className="jobs-page-controls">
+                  <button
+                    type="button"
+                    className="jobs-page-btn"
+                    onClick={() => setCardPage((page) => Math.max(1, page - 1))}
+                    disabled={activeCardPage <= 1}
+                  >
+                    Previous
+                  </button>
+                  <span className="jobs-page-status">
+                    Page {activeCardPage} of {cardPageCount}
+                  </span>
+                  <button
+                    type="button"
+                    className="jobs-page-btn"
+                    onClick={() => setCardPage((page) => Math.min(cardPageCount, page + 1))}
+                    disabled={activeCardPage >= cardPageCount}
+                  >
+                    Next
+                  </button>
+                </div>
               </div>
             )}
           </>
@@ -1909,6 +1927,7 @@ function JobPostingPage({ uploads = [], isEmployer = false, isJobSeeker = false,
                   <th className="jobs-deadline-col">Post Deadline</th>
                   {isJobSeeker && <th className="jobs-match-col">Match</th>}
                   {!isJobSeeker && <th className="jobs-applicants-col">Applications</th>}
+                  <th className="jobs-slots-col">Job Vacancy</th>
                   <th className="jobs-status-col">Status</th>
                   {!isJobSeeker && <th className="actions-col jobs-actions-col">Actions</th>}
                 </tr>
@@ -1918,6 +1937,7 @@ function JobPostingPage({ uploads = [], isEmployer = false, isJobSeeker = false,
                 const actionKey = getJobActionKey(job)
                 const deadline = formatJobDeadline(job)
                 const matchContent = getJobMatchContent(job)
+                const remainingSlotsLabel = getJobAvailableSlotsLabel(job)
 
                 return (
                   <tr
@@ -1954,6 +1974,9 @@ function JobPostingPage({ uploads = [], isEmployer = false, isJobSeeker = false,
                           type="button"
                           onClick={(e) => {
                             e.stopPropagation()
+                            setActionsJobId(null)
+                            setActionsJobMenu(null)
+                            setIsPositioningJobActionsMenu(false)
                             setSelectedJobTitle(job.title)
                           }}
                         >
@@ -1961,6 +1984,9 @@ function JobPostingPage({ uploads = [], isEmployer = false, isJobSeeker = false,
                         </button>
                       </td>
                     )}
+                    <td className="jobs-slots-cell" data-label="Job Vacancy">
+                      <strong>{remainingSlotsLabel}</strong>
+                    </td>
                     <td className="jobs-status-cell" data-label="Status">
                       <span className={`job-status ${String(job.status || "active").toLowerCase()}`}>
                         {String(job.status || "active").toLowerCase()}
@@ -1978,37 +2004,123 @@ function JobPostingPage({ uploads = [], isEmployer = false, isJobSeeker = false,
             </table>
             {tablePageCount > 1 && (
               <div className="jobs-card-pagination" aria-label="Job table pagination">
-                <button
-                  type="button"
-                  className="jobs-page-btn"
-                  onClick={() => setTablePage((page) => Math.max(1, page - 1))}
-                  disabled={activeTablePage <= 1}
-                >
-                  Previous
-                </button>
-                <span className="jobs-page-status">
-                  Page {activeTablePage} of {tablePageCount}
-                </span>
-                <button
-                  type="button"
-                  className="jobs-page-btn"
-                  onClick={() => setTablePage((page) => Math.min(tablePageCount, page + 1))}
-                  disabled={activeTablePage >= tablePageCount}
-                >
-                  Next
-                </button>
+                <p className="jobs-page-count">
+                  Showing {tableStartIndex + 1}-{Math.min(tableStartIndex + TABLE_PAGE_SIZE, fifoJobs.length)} of {fifoJobs.length} jobs
+                </p>
+                <div className="jobs-page-controls">
+                  <button
+                    type="button"
+                    className="jobs-page-btn"
+                    onClick={() => setTablePage((page) => Math.max(1, page - 1))}
+                    disabled={activeTablePage <= 1}
+                  >
+                    Previous
+                  </button>
+                  <span className="jobs-page-status">
+                    Page {activeTablePage} of {tablePageCount}
+                  </span>
+                  <button
+                    type="button"
+                    className="jobs-page-btn"
+                    onClick={() => setTablePage((page) => Math.min(tablePageCount, page + 1))}
+                    disabled={activeTablePage >= tablePageCount}
+                  >
+                    Next
+                  </button>
+                </div>
               </div>
             )}
           </>
         )}
       </div>
 
+      {actionsJobId && actionsJobMenu && (
+        <div
+          className="job-actions-menu job-actions-menu-floating"
+          style={{ top: `${actionsJobMenu.top}px`, left: `${actionsJobMenu.left}px` }}
+          onClick={(e) => e.stopPropagation()}
+        >
+          {actionsJobMenu.job?.source === "template" ? (
+            <button
+              type="button"
+              className="actions-menu-item"
+              onClick={() => {
+                const targetJob = actionsJobMenu.job
+                setActionsJobId(null)
+                setActionsJobMenu(null)
+                setEditingJobId(null)
+                setShowJobFormErrors(false)
+                setNewJobTitle(targetJob.title || "")
+                applyTemplateFromRecord(targetJob)
+                setIsUsingSavedJobDraft(false)
+                setIsCreateModalOpen(true)
+              }}
+            >
+              Use Template
+            </button>
+          ) : (
+            <>
+              <button
+                type="button"
+                className="actions-menu-item"
+                onClick={() => {
+                  const targetJob = actionsJobMenu.job
+                  setActionsJobId(null)
+                  setActionsJobMenu(null)
+                  openEditJobModal(targetJob)
+                }}
+              >
+                Edit Details
+              </button>
+              <button
+                type="button"
+                className="actions-menu-item"
+                onClick={() => {
+                  const targetJob = actionsJobMenu.job
+                  setActionsJobId(null)
+                  setActionsJobMenu(null)
+                  updateJobStatus(targetJob.id, "active")
+                }}
+              >
+                Set Active
+              </button>
+              <button
+                type="button"
+                className="actions-menu-item"
+                onClick={() => {
+                  const targetJob = actionsJobMenu.job
+                  setActionsJobId(null)
+                  setActionsJobMenu(null)
+                  updateJobStatus(targetJob.id, "closed")
+                }}
+              >
+                Set Closed
+              </button>
+              <button
+                type="button"
+                className="actions-menu-item danger"
+                onClick={() => {
+                  const targetJob = actionsJobMenu.job
+                  setActionsJobId(null)
+                  setActionsJobMenu(null)
+                  deleteJobPost(targetJob.id)
+                }}
+              >
+                Delete Post
+              </button>
+            </>
+          )}
+        </div>
+      )}
+
       {selectedJobTitle && !isJobSeeker && (
         <div className="modal-overlay" onClick={() => setSelectedJobTitle("")}>
           <div className="modal-card modal-modern job-applicants-modal" onClick={(e) => e.stopPropagation()}>
             <div className="modal-header">
               <h3>Applications for {selectedJobTitle}</h3>
-              <button type="button" className="close-x" onClick={() => setSelectedJobTitle("")}>×</button>
+              <button type="button" className="close-x" onClick={() => {
+                setSelectedJobTitle("")
+              }}>×</button>
             </div>
 
             {selectedJobApplicants.length === 0 ? (
@@ -2074,8 +2186,8 @@ function JobPostingPage({ uploads = [], isEmployer = false, isJobSeeker = false,
                             </span>
                           </td>
                           <td>
-                            <span className={`table-classification ${(item.classification || "Lowly Qualified").toLowerCase().replace(/\s+/g, "-")}`}>
-                              {item.classification || "Lowly Qualified"}
+                            <span className={`table-classification ${(item.classification || "Not Qualified").toLowerCase().replace(/\s+/g, "-")}`}>
+                              {classificationLabel(item.classification)}
                             </span>
                           </td>
                           <td>{item.original_name || "-"}</td>
@@ -2083,14 +2195,15 @@ function JobPostingPage({ uploads = [], isEmployer = false, isJobSeeker = false,
                           <td className="actions-cell actions-col">
                             <button
                               type="button"
-                              className="action-btn action-trigger job-applicant-ellipsis"
-                              aria-label="Open applicant actions"
+                              className="action-btn job-applicant-view-btn"
+                              aria-label="View applicant"
                               onClick={(e) => {
                                 e.stopPropagation()
-                                openJobApplicantActionsMenu(e, item)
+                                setSelectedJobTitle("")
+                                onViewApplicant?.(item)
                               }}
                             >
-                              ...
+                              View
                             </button>
                           </td>
                         </tr>
@@ -2101,50 +2214,6 @@ function JobPostingPage({ uploads = [], isEmployer = false, isJobSeeker = false,
               </div>
             )}
           </div>
-        </div>
-      )}
-
-      {jobApplicantActionsMenu && (
-        <div
-          ref={jobApplicantActionsMenuRef}
-          className="actions-menu actions-menu-floating"
-          style={{ top: `${jobApplicantActionsMenu.top}px`, left: `${jobApplicantActionsMenu.left}px` }}
-          onClick={(e) => e.stopPropagation()}
-        >
-          <button
-            type="button"
-            className="actions-menu-item"
-            onClick={() => {
-              const target = jobApplicantActionsMenu
-              setJobApplicantActionsMenu(null)
-              if (target?.item) {
-                setSelectedJobTitle("")
-                onViewApplicant?.(target.item)
-              }
-            }}
-          >
-            View
-          </button>
-          <a
-            className="actions-menu-item"
-            href={jobApplicantActionsMenu?.item?.id ? `/api/uploads/${jobApplicantActionsMenu.item.id}/download` : "#"}
-            onClick={() => setJobApplicantActionsMenu(null)}
-          >
-            Download
-          </a>
-          <button
-            type="button"
-            className="actions-menu-item danger"
-            onClick={() => {
-              const target = jobApplicantActionsMenu
-              setJobApplicantActionsMenu(null)
-              if (target?.item?.id != null) {
-                handleDeleteApplicantInJobModal(target.item.id)
-              }
-            }}
-          >
-            Delete
-          </button>
         </div>
       )}
 
@@ -2205,11 +2274,6 @@ function JobPostingPage({ uploads = [], isEmployer = false, isJobSeeker = false,
                 <button type="button" className="close-x" onClick={closeCreateModal}>×</button>
               </div>
             </div>
-            {createJobStatus && (
-              <div className={`create-job-notice create-job-notice-${createJobStatus === "success" ? "success" : "fail"}`}>
-                {createJobNotice || (createJobStatus === "success" ? "Success" : "Fail")}
-              </div>
-            )}
 
             <div className="create-job-layout">
               <div className="create-job-left">
@@ -2334,15 +2398,10 @@ function JobPostingPage({ uploads = [], isEmployer = false, isJobSeeker = false,
                       <label>Employment Type</label>
                       <CustomDropdown
                         className={requiredDropdownClass(newJobType)}
-                        options={[
-                          { value: "Full-time", label: "Full-time" },
-                          { value: "Part-time", label: "Part-time" },
-                          { value: "Contract", label: "Contract" },
-                          { value: "Internship", label: "Internship" }
-                        ]}
+                        options={employmentTypeOptions}
                         value={newJobType}
                         onChange={setNewJobType}
-                        placeholder="Full-time"
+                        placeholder={employmentTypeOptions[0]?.label || "Employment type"}
                       />
                     </div>
 
@@ -2354,6 +2413,33 @@ function JobPostingPage({ uploads = [], isEmployer = false, isJobSeeker = false,
                         value={newJobDeadline}
                         onChange={(e) => setNewJobDeadline(e.target.value)}
                       />
+                    </div>
+
+                    <div className="field-group">
+                      <label>Job Vacancy</label>
+                      <div className="position-slots-control">
+                        <select
+                          className={requiredInputClass(newPositionsTotal, "position-slots-select")}
+                          value={isManySlotsValue(newPositionsTotal) ? "many" : "specific"}
+                          onChange={(e) => setNewPositionsTotal(e.target.value === "many" ? "many" : "1")}
+                        >
+                          <option value="specific">Specific number</option>
+                          <option value="many">No Limit</option>
+                        </select>
+                        {!isManySlotsValue(newPositionsTotal) && (
+                          <input
+                            className={requiredInputClass(newPositionsTotal)}
+                            type="number"
+                            min="1"
+                            step="1"
+                            inputMode="numeric"
+                            pattern="[0-9]*"
+                            value={newPositionsTotal}
+                            onChange={(e) => setNewPositionsTotal(integerInputValue(e.target.value))}
+                            placeholder="e.g., 5"
+                          />
+                        )}
+                      </div>
                     </div>
                   </div>
 
@@ -2560,9 +2646,12 @@ function JobPostingPage({ uploads = [], isEmployer = false, isJobSeeker = false,
                       <input
                         className={requiredInputClass(newSalaryMin)}
                         type="number"
-                        min="0"
+                        min="1"
+                        max="33"
+                        step="1"
+                        inputMode="numeric"
                         value={newSalaryMin}
-                        onChange={(e) => setNewSalaryMin(e.target.value)}
+                        onChange={(e) => handleSalaryGradeChange(e.target.value)}
                         placeholder="e.g., 15"
                       />
                     </div>
@@ -2575,7 +2664,7 @@ function JobPostingPage({ uploads = [], isEmployer = false, isJobSeeker = false,
                         min="0"
                         value={newSalaryMax}
                         onChange={(e) => setNewSalaryMax(e.target.value)}
-                        placeholder={String(newJobType || "").toLowerCase().includes("part") ? "e.g., 150" : "e.g., 30000"}
+                        placeholder={isHourlyJob ? "e.g., 150" : "Enter a salary grade"}
                       />
                     </div>
                   </div>
@@ -2596,17 +2685,6 @@ function JobPostingPage({ uploads = [], isEmployer = false, isJobSeeker = false,
       )}
 
 
-      {createJobStatus && !isCreateModalOpen && (
-        <div className={`toast ${createJobStatus === "success" ? "toast-success" : "toast-fail"}`}>
-          {createJobNotice || (createJobStatus === "success" ? "Success" : "Fail")}
-        </div>
-      )}
-
-      {deleteToast && (
-        <div className={`toast ${deleteToast.type === "success" ? "toast-success" : "toast-fail"}`}>
-          {deleteToast.message}
-        </div>
-      )}
     </section>
   )
 }

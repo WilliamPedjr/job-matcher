@@ -1,3 +1,4 @@
+import { useToastState } from "../utils/useToastState"
 import React from 'react'
 import { useEffect, useState } from "react"
 import "../styles/ApplicantViewPage.css"
@@ -230,8 +231,14 @@ function ApplicantViewPage({
   backLabel,
   headerActions = null
 }) {
+  const classificationLabel = (value, fallback = "Not Qualified") => {
+    const label = String(value || "").trim()
+    if (!label) return fallback
+    return label.toLowerCase().includes("lowly") ? "Not Qualified" : label
+  }
+
   const [supportingFiles, setSupportingFiles] = useState([])
-  const [supportingError, setSupportingError] = useState("")
+  const [supportingError, setSupportingError] = useToastState("", "error")
   const educationSource = normalizeLines(viewItem?.education_json)
   const experienceSource = normalizeLines(viewItem?.experience_json)
   const detectedEducation = educationSource.length
@@ -294,7 +301,7 @@ function ApplicantViewPage({
           {parts.length ? `${parts.join(" | ")} | ` : ""}
           <a
             className="candidate-file-link"
-            href={file.download_url || `/api/uploads/${viewItem.id}/supporting/${file.id}/download`}
+            href={file.preview_url || `/api/uploads/${viewItem.id}/supporting/${file.id}/preview`}
             target="_blank"
             rel="noreferrer"
           >
@@ -313,7 +320,7 @@ function ApplicantViewPage({
         {prefix}{label}:{" "}
         <a
           className="candidate-file-link"
-          href={file.download_url || `/api/uploads/${viewItem.id}/supporting/${file.id}/download`}
+          href={file.preview_url || `/api/uploads/${viewItem.id}/supporting/${file.id}/preview`}
           target="_blank"
           rel="noreferrer"
         >
@@ -357,15 +364,19 @@ function ApplicantViewPage({
             Applied for <strong>{viewItem?.applied_job_title || viewItem?.matched_job_title || "No matched role yet"}</strong>
           </p>
         </div>
-        <div className="candidate-actions">
-          <button className="btn btn-secondary" onClick={onBack}>
-            {backLabel || (readOnly ? "Back" : "Back to Applications")}
-          </button>
-          {!readOnly && onReanalyze && (
-            <button className="btn btn-secondary" onClick={onReanalyze}>Re-Analyze</button>
-          )}
-          {headerActions}
-        </div>
+        {(onBack || (!readOnly && onReanalyze) || headerActions) && (
+          <div className="candidate-actions">
+            {onBack && (
+              <button className="btn btn-secondary" onClick={onBack}>
+                {backLabel || (readOnly ? "Back" : "Back to Applications")}
+              </button>
+            )}
+            {!readOnly && onReanalyze && (
+              <button className="btn btn-secondary" onClick={onReanalyze}>Re-Analyze</button>
+            )}
+            {headerActions}
+          </div>
+        )}
       </div>
 
       <div className="candidate-layout">
@@ -375,12 +386,24 @@ function ApplicantViewPage({
             <p>ID Number: {viewItem?.idNumber || viewItem?.id_number || viewItem?.jobSeekerIdNumber || viewItem?.job_seeker_id_number || "-"}</p>
             <p>{viewItem?.email || "No email"}</p>
             <p>{viewItem?.phone || "No phone"}</p>
-            <p>{viewItem?.original_name || "-"}</p>
+            <p>
+              {viewItem?.original_name ? (
+                <a
+                  className="supporting-doc-link"
+                  href={viewItem?.preview_url || `/api/uploads/${viewItem.id}/preview`}
+                  target="_blank"
+                  rel="noreferrer"
+                >
+                  {viewItem.original_name}
+                </a>
+              ) : (
+                "-"
+              )}
+            </p>
           </section>
 
           <section className="candidate-card">
             <h3>Supporting Documents</h3>
-            {supportingError && <p className="muted">{supportingError}</p>}
             {!supportingError && supportingFiles.length === 0 && (
               <p className="muted">No supporting documents uploaded.</p>
             )}
@@ -390,7 +413,7 @@ function ApplicantViewPage({
                   <li key={file.id}>
                     <a
                       className="supporting-doc-link"
-                      href={`/api/uploads/${viewItem.id}/supporting/${file.id}/download`}
+                      href={file.preview_url || `/api/uploads/${viewItem.id}/supporting/${file.id}/preview`}
                       target="_blank"
                       rel="noreferrer"
                     >
@@ -482,7 +505,7 @@ function ApplicantViewPage({
           <section className="candidate-card">
             <h3>Qualification Status</h3>
             <p className={`status-chip ${(viewItem?.classification || "").toLowerCase().replace(/\s+/g, "-")}`}>
-              {viewItem?.classification || "Lowly Qualified"}
+              {classificationLabel(viewItem?.classification)}
             </p>
             <div className="overall-box">
               <p className="overall-score">{`${overall.toFixed(0)}%`}</p>

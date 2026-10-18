@@ -127,8 +127,12 @@ class AuthController extends Controller
             ->orWhereRaw('LOWER(company_name) = ?', [$identifier])
             ->first();
 
-        if (!$employer || !$this->passwordMatchesAndUpgrades($data['password'], $employer)) {
-            return response()->json(['message' => 'Invalid employer credentials.'], 401);
+        if (!$employer) {
+            return response()->json(['message' => "Email or username doesn't exist."], 401);
+        }
+
+        if (!$this->passwordMatchesAndUpgrades($data['password'], $employer)) {
+            return response()->json(['message' => 'Password is incorrect.'], 401);
         }
 
         $this->startSession($request, 'employer', $employer, (bool) ($data['remember'] ?? false));
@@ -233,7 +237,11 @@ class AuthController extends Controller
             ]);
         }
 
-        return response()->json(['message' => 'Invalid personnel credentials.'], 401);
+        if (!$user && !$employer) {
+            return response()->json(['message' => "Email or username doesn't exist."], 401);
+        }
+
+        return response()->json(['message' => 'Password is incorrect.'], 401);
     }
 
     public function staffMe(Request $request): JsonResponse
@@ -376,8 +384,12 @@ class AuthController extends Controller
             ->orWhereRaw('LOWER(id_number) = ?', [$identifier])
             ->first();
 
-        if (!$jobSeeker || !$this->passwordMatchesAndUpgrades($data['password'], $jobSeeker)) {
-            return response()->json(['message' => 'Invalid job seeker credentials.'], 401);
+        if (!$jobSeeker) {
+            return response()->json(['message' => "Email or username doesn't exist."], 401);
+        }
+
+        if (!$this->passwordMatchesAndUpgrades($data['password'], $jobSeeker)) {
+            return response()->json(['message' => 'Password is incorrect.'], 401);
         }
 
         if (!$jobSeeker->email_verified_at) {

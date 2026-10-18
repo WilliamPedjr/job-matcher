@@ -2192,6 +2192,41 @@ optgroup {
   gap: 14px;
 }
 
+.dashboard-overview {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: 14px;
+  align-items: stretch;
+}
+
+.dashboard-overview .dashboard-kpis {
+  display: contents;
+}
+
+.dashboard-overview .dashboard-specific-analytics {
+  display: contents;
+}
+
+.dashboard-overview .kpi-card,
+.dashboard-overview .dashboard-specific-analytics .analytics-card {
+  height: 170px;
+}
+
+.dashboard-overview .kpi-card {
+  display: flex;
+  flex-direction: column;
+}
+
+.dashboard-overview .kpi-card p {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  flex: 1;
+  width: 100%;
+  font-size: 38px;
+  text-align: center;
+}
+
 .kpi-card {
   background: #fff;
   border: 1px solid #d8dee8;
@@ -2282,6 +2317,16 @@ optgroup {
   border-radius: 12px;
   padding: 18px 20px;
   box-shadow: 0 2px 10px rgba(17, 24, 39, 0.08);
+}
+
+.dashboard-analytics:not(.dashboard-specific-analytics) > .analytics-card {
+  display: flex;
+  flex-direction: column;
+  min-height: 300px;
+}
+
+.dashboard-analytics:not(.dashboard-specific-analytics) > .analytics-card > .graph {
+  flex: 1;
 }
 
 .analytics-card-head {
@@ -2920,6 +2965,30 @@ optgroup {
   gap: 16px;
 }
 
+.dashboard-priority-grid {
+  align-items: stretch;
+}
+
+.dashboard-priority-grid .dashboard-panel {
+  display: flex;
+  flex-direction: column;
+  min-height: 100%;
+}
+
+.dashboard-priority-grid .top-applicants-grid,
+.dashboard-priority-grid .trending-jobs-list {
+  flex: 1;
+}
+
+.dashboard-priority-grid .top-applicants-grid {
+  grid-template-columns: 1fr;
+}
+
+.dashboard-priority-grid .trending-jobs-list,
+.dashboard-priority-grid .top-applicants-grid {
+  gap: 10px;
+}
+
 .dashboard-panel {
   background: #fff;
   border: 1px solid #d8dee8;
@@ -3185,6 +3254,10 @@ optgroup {
 }
 
 @media (max-width: 1100px) {
+  .dashboard-overview {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+
   .dashboard-analytics {
     grid-template-columns: 1fr;
   }
@@ -3219,6 +3292,10 @@ optgroup {
   }
 
   .dashboard-kpis {
+    grid-template-columns: 1fr;
+  }
+
+  .dashboard-overview {
     grid-template-columns: 1fr;
   }
 

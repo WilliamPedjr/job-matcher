@@ -1,10 +1,13 @@
+import { apiMessage, notify } from "../utils/toasts"
 import React, { useEffect, useMemo, useRef, useState } from 'react'
 import '../styles/RatingsPage.css'
 import ApplicantViewPage from './ApplicantViewPage'
 import CustomDropdown from '../components/CustomDropdown'
+import { canManageRatings } from '../utils/ratingPermissions'
 import { getArchiveActorHeaders } from '../utils/archiveActor'
 
 function formatInterviewDate(value) {
+  if (!value) return '-'
   const date = new Date(value)
   if (Number.isNaN(date.getTime())) {
     return '-'
@@ -16,6 +19,50 @@ function getInterviewDateValue(item) {
   return item?.interview_date || item?.interviewDate || item?.evaluation_started_at || item?.evaluationStartedAt || item?.uploaded_at || item?.updated_at || item?.updatedAt
 }
 
+function getScheduledInterviewDateValue(item) {
+  return item?.interview_date || item?.interviewDate
+}
+
+function getInterviewPlaceValue(item) {
+  return item?.interview_place || item?.interviewPlace || ''
+}
+
+function getInterviewTimeValue(item) {
+  return item?.interview_time || item?.interviewTime || ''
+}
+
+function getInterviewPreparationNotesValue(item) {
+  return item?.interview_preparation_notes || item?.interviewPreparationNotes || ''
+}
+
+function getDemonstrationDateValue(item) {
+  return item?.demonstration_date || item?.demonstrationDate
+}
+
+function getDemonstrationTimeValue(item) {
+  return item?.demonstration_time || item?.demonstrationTime || ''
+}
+
+function getDemonstrationPlaceValue(item) {
+  return item?.demonstration_place || item?.demonstrationPlace || ''
+}
+
+function getDemonstrationPreparationNotesValue(item) {
+  return item?.demonstration_preparation_notes || item?.demonstrationPreparationNotes || ''
+}
+
+function getExaminationDateValue(item) {
+  return item?.examination_date || item?.examinationDate
+}
+
+function getExaminationScoreLabel(item) {
+  const score = item?.examination_score ?? item?.examinationScore
+  if (score === null || score === undefined || score === '') return '-'
+  const numericScore = Number(score)
+  if (Number.isNaN(numericScore)) return '-'
+  return `${numericScore.toFixed(Number.isInteger(numericScore) ? 0 : 2)}%`
+}
+
 function formatDateInputValue(value) {
   if (!value) return ''
   if (/^\d{4}-\d{2}-\d{2}$/.test(String(value))) return String(value)
@@ -25,6 +72,18 @@ function formatDateInputValue(value) {
   const month = String(date.getMonth() + 1).padStart(2, '0')
   const day = String(date.getDate()).padStart(2, '0')
   return `${year}-${month}-${day}`
+}
+
+function formatTimeLabel(value) {
+  if (!value) return '-'
+  const normalized = String(value).slice(0, 5)
+  const [hourText, minuteText] = normalized.split(':')
+  const hour = Number(hourText)
+  const minute = Number(minuteText)
+  if (Number.isNaN(hour) || Number.isNaN(minute)) return '-'
+  const date = new Date()
+  date.setHours(hour, minute, 0, 0)
+  return date.toLocaleTimeString(undefined, { hour: 'numeric', minute: '2-digit' })
 }
 
 function getPosition(item) {
@@ -155,7 +214,14 @@ const demonstrationSections = [
   }
 ]
 
-const demonstrationRatingColumns = [5, 4, 3, 2, 1, 'NA']
+const demonstrationRatingColumns = [
+  ...ratingBands.map((band) => ({
+    label: band.label,
+    range: band.range,
+    value: band.value
+  })),
+  { label: 'Not Applicable', range: 'NA', value: 'NA' }
+]
 
 const demonstrationDetailDefaults = {
   teacher: '',
@@ -209,6 +275,7 @@ function getSavedRatingFormType(rating) {
 }
 
 function RatingsPage({ uploads = [], isLoading = false, currentUser = null, onRatingsChanged }) {
+  const canManageRatingSettings = canManageRatings(currentUser)
   const [searchTerm, setSearchTerm] = useState('')
   const [positionFilter, setPositionFilter] = useState('all')
   const [criteriaEditorOpen, setCriteriaEditorOpen] = useState(false)
@@ -231,13 +298,24 @@ function RatingsPage({ uploads = [], isLoading = false, currentUser = null, onRa
   const [confirmDeleteBoardMember, setConfirmDeleteBoardMember] = useState(null)
   const [interviewDateModal, setInterviewDateModal] = useState(null)
   const [interviewDateDraft, setInterviewDateDraft] = useState('')
+  const [interviewPlaceDraft, setInterviewPlaceDraft] = useState('')
+  const [interviewTimeDraft, setInterviewTimeDraft] = useState('')
+  const [interviewPreparationNotesDraft, setInterviewPreparationNotesDraft] = useState('')
   const [isSavingInterviewDate, setIsSavingInterviewDate] = useState(false)
+  const [demonstrationDateModal, setDemonstrationDateModal] = useState(null)
+  const [demonstrationDateDraft, setDemonstrationDateDraft] = useState('')
+  const [demonstrationTimeDraft, setDemonstrationTimeDraft] = useState('')
+  const [demonstrationPlaceDraft, setDemonstrationPlaceDraft] = useState('')
+  const [demonstrationPreparationNotesDraft, setDemonstrationPreparationNotesDraft] = useState('')
+  const [isSavingDemonstrationDate, setIsSavingDemonstrationDate] = useState(false)
+  const [examinationModal, setExaminationModal] = useState(null)
+  const [examinationDateDraft, setExaminationDateDraft] = useState('')
+  const [examinationScoreDraft, setExaminationScoreDraft] = useState('')
+  const [isSavingExamination, setIsSavingExamination] = useState(false)
   const [cancelledIds, setCancelledIds] = useState([])
-  const [ratingNotice, setRatingNotice] = useState(null)
   const [selectedBoardMember, setSelectedBoardMember] = useState('')
   const [isBoardMemberOpen, setIsBoardMemberOpen] = useState(false)
   const [selectedBoardType, setSelectedBoardType] = useState(() => getDefaultBoardType(currentUser))
-  const ratingNoticeTimer = useRef(null)
   const boardMemberRef = useRef(null)
   const loadedSavedRatingKeyRef = useRef('')
 
@@ -312,12 +390,6 @@ function RatingsPage({ uploads = [], isLoading = false, currentUser = null, onRa
     }
   }, [actionsMenu])
 
-  useEffect(() => () => {
-    if (ratingNoticeTimer.current) {
-      window.clearTimeout(ratingNoticeTimer.current)
-    }
-  }, [])
-
   useEffect(() => {
     setSelectedBoardType((current) => current || getDefaultBoardType(currentUser))
   }, [currentUser])
@@ -334,18 +406,10 @@ function RatingsPage({ uploads = [], isLoading = false, currentUser = null, onRa
     return () => document.removeEventListener('mousedown', onDocClick)
   }, [isBoardMemberOpen])
 
-  const showRatingNotice = (type, message) => {
-    if (ratingNoticeTimer.current) {
-      window.clearTimeout(ratingNoticeTimer.current)
-    }
-    setRatingNotice({ type, message })
-    ratingNoticeTimer.current = window.setTimeout(() => {
-      setRatingNotice(null)
-      ratingNoticeTimer.current = null
-    }, 2800)
-  }
+  const showRatingNotice = (type, message) => notify(message, type)
 
   const openCriteriaEditor = () => {
+    if (!canManageRatingSettings) return
     setCriteriaDraft(ratingCriteria)
     setBoardMembersDraft(boardMembers.length ? boardMembers : [''])
     setBoardMembersPage(1)
@@ -353,6 +417,7 @@ function RatingsPage({ uploads = [], isLoading = false, currentUser = null, onRa
   }
 
   const saveCriteriaDraft = async () => {
+    if (!canManageRatingSettings) return
     const cleaned = criteriaDraft.map((item) => String(item || '').trim())
     if (cleaned.some((item) => !item)) {
       showRatingNotice('fail', 'Please complete all rating criteria.')
@@ -409,6 +474,7 @@ function RatingsPage({ uploads = [], isLoading = false, currentUser = null, onRa
   }
 
   const requestSaveCriteriaDraft = () => {
+    if (!canManageRatingSettings) return
     const cleaned = criteriaDraft.map((item) => String(item || '').trim())
     if (cleaned.some((item) => !item)) {
       showRatingNotice('fail', 'Please complete all rating criteria.')
@@ -428,14 +494,12 @@ function RatingsPage({ uploads = [], isLoading = false, currentUser = null, onRa
     setConfirmSaveCriteria(true)
   }
 
-  const resetCriteriaDraft = () => {
-    setCriteriaDraft(defaultRatingCriteria)
-  }
-
   const deleteBoardMemberDraft = (index) => {
+    if (!canManageRatingSettings) return
     const next = boardMembersDraft.filter((_, memberIndex) => memberIndex !== index)
     setBoardMembersDraft(next.length ? next : [''])
     setConfirmDeleteBoardMember(null)
+    showRatingNotice('success', 'Board member removed. Save settings to apply changes.')
   }
 
   const ratingBoardMemberOptions = useMemo(() => {
@@ -474,7 +538,20 @@ function RatingsPage({ uploads = [], isLoading = false, currentUser = null, onRa
     })
   }
 
+  const openApplicantView = (item) => {
+    setSelectedApplicant(item)
+    setRatingStarted(false)
+    setRatingScores({})
+    setDemonstrationDetails(demonstrationDetailDefaults)
+    setRatingRemarks('')
+    setSelectedBoardMember('')
+    setSelectedBoardType(getDefaultBoardType(currentUser))
+    setRatingFormType('interview')
+    setActionsMenu(null)
+  }
+
   const emailApplicant = (item) => {
+    if (!canManageRatingSettings) return
     const draft = buildApplicantEmailDraft(item, currentUser?.email || '')
     if (!draft) {
       showRatingNotice('fail', 'This applicant has no email address.')
@@ -488,19 +565,27 @@ function RatingsPage({ uploads = [], isLoading = false, currentUser = null, onRa
   }
 
   const openInterviewDateModal = (item) => {
+    if (!canManageRatingSettings) return
     if (!item?.id) return
     setActionsMenu(null)
     setInterviewDateModal(item)
-    setInterviewDateDraft(formatDateInputValue(getInterviewDateValue(item)))
+    setInterviewDateDraft(formatDateInputValue(getScheduledInterviewDateValue(item)))
+    setInterviewPlaceDraft(getInterviewPlaceValue(item))
+    setInterviewTimeDraft(String(getInterviewTimeValue(item)).slice(0, 5))
+    setInterviewPreparationNotesDraft(getInterviewPreparationNotesValue(item))
   }
 
   const closeInterviewDateModal = () => {
     if (isSavingInterviewDate) return
     setInterviewDateModal(null)
     setInterviewDateDraft('')
+    setInterviewPlaceDraft('')
+    setInterviewTimeDraft('')
+    setInterviewPreparationNotesDraft('')
   }
 
   const saveInterviewDate = async () => {
+    if (!canManageRatingSettings) return
     if (!interviewDateModal?.id) return
     if (!interviewDateDraft) {
       showRatingNotice('fail', 'Please select an interview date.')
@@ -509,29 +594,163 @@ function RatingsPage({ uploads = [], isLoading = false, currentUser = null, onRa
 
     setIsSavingInterviewDate(true)
     try {
-      const response = await fetch(`http://localhost:5000/uploads/${interviewDateModal.id}/interview-date`, {
+      const response = await fetch(`/api/uploads/${interviewDateModal.id}/interview-date`, {
         method: 'PUT',
         headers: {
           'Content-Type': 'application/json',
           ...getArchiveActorHeaders(currentUser)
         },
-        body: JSON.stringify({ interviewDate: interviewDateDraft })
+        body: JSON.stringify({
+          interviewDate: interviewDateDraft,
+          interviewPlace: interviewPlaceDraft.trim() || null,
+          interviewTime: interviewTimeDraft || null,
+          interviewPreparationNotes: interviewPreparationNotesDraft.trim() || null
+        })
       })
       const payload = await response.json().catch(() => null)
       if (!response.ok) {
-        throw new Error(payload?.message || 'Failed to set interview date.')
+        throw new Error(apiMessage(payload, 'Failed to set interview date.'))
       }
       if (selectedApplicant?.id === interviewDateModal.id) {
         setSelectedApplicant(payload || selectedApplicant)
       }
       setInterviewDateModal(null)
       setInterviewDateDraft('')
+      setInterviewPlaceDraft('')
+      setInterviewTimeDraft('')
+      setInterviewPreparationNotesDraft('')
       await onRatingsChanged?.()
       showRatingNotice('success', 'Interview date saved successfully.')
     } catch (error) {
       showRatingNotice('fail', error.message || 'Failed to set interview date.')
     } finally {
       setIsSavingInterviewDate(false)
+    }
+  }
+
+  const openDemonstrationDateModal = (item) => {
+    if (!canManageRatingSettings) return
+    if (!item?.id) return
+    setActionsMenu(null)
+    setDemonstrationDateModal(item)
+    setDemonstrationDateDraft(formatDateInputValue(getDemonstrationDateValue(item)))
+    setDemonstrationTimeDraft(String(getDemonstrationTimeValue(item)).slice(0, 5))
+    setDemonstrationPlaceDraft(getDemonstrationPlaceValue(item))
+    setDemonstrationPreparationNotesDraft(getDemonstrationPreparationNotesValue(item))
+  }
+
+  const closeDemonstrationDateModal = () => {
+    if (isSavingDemonstrationDate) return
+    setDemonstrationDateModal(null)
+    setDemonstrationDateDraft('')
+    setDemonstrationTimeDraft('')
+    setDemonstrationPlaceDraft('')
+    setDemonstrationPreparationNotesDraft('')
+  }
+
+  const saveDemonstrationDate = async () => {
+    if (!canManageRatingSettings) return
+    if (!demonstrationDateModal?.id) return
+    if (!demonstrationDateDraft) {
+      showRatingNotice('fail', 'Please select a demo date.')
+      return
+    }
+
+    setIsSavingDemonstrationDate(true)
+    try {
+      const response = await fetch(`/api/uploads/${demonstrationDateModal.id}/demonstration-date`, {
+        method: 'PUT',
+        headers: {
+          'Content-Type': 'application/json',
+          ...getArchiveActorHeaders(currentUser)
+        },
+        body: JSON.stringify({
+          demonstrationDate: demonstrationDateDraft,
+          demonstrationTime: demonstrationTimeDraft || null,
+          demonstrationPlace: demonstrationPlaceDraft.trim() || null,
+          demonstrationPreparationNotes: demonstrationPreparationNotesDraft.trim() || null
+        })
+      })
+      const payload = await response.json().catch(() => null)
+      if (!response.ok) {
+        throw new Error(apiMessage(payload, 'Failed to set demo date.'))
+      }
+      if (selectedApplicant?.id === demonstrationDateModal.id) {
+        setSelectedApplicant(payload || selectedApplicant)
+      }
+      setDemonstrationDateModal(null)
+      setDemonstrationDateDraft('')
+      setDemonstrationTimeDraft('')
+      setDemonstrationPlaceDraft('')
+      setDemonstrationPreparationNotesDraft('')
+      await onRatingsChanged?.()
+      showRatingNotice('success', 'Demo date saved successfully.')
+    } catch (error) {
+      showRatingNotice('fail', error.message || 'Failed to set demo date.')
+    } finally {
+      setIsSavingDemonstrationDate(false)
+    }
+  }
+
+  const openExaminationModal = (item) => {
+    if (!canManageRatingSettings) return
+    if (!item?.id) return
+    setActionsMenu(null)
+    setExaminationModal(item)
+    setExaminationDateDraft(formatDateInputValue(getExaminationDateValue(item)))
+    const score = item?.examination_score ?? item?.examinationScore
+    setExaminationScoreDraft(score === null || score === undefined ? '' : String(score))
+  }
+
+  const closeExaminationModal = () => {
+    if (isSavingExamination) return
+    setExaminationModal(null)
+    setExaminationDateDraft('')
+    setExaminationScoreDraft('')
+  }
+
+  const saveExamination = async () => {
+    if (!canManageRatingSettings) return
+    if (!examinationModal?.id) return
+    const numericScore = Number(examinationScoreDraft)
+    if (examinationScoreDraft === '' || Number.isNaN(numericScore)) {
+      showRatingNotice('fail', 'Please enter an exam score.')
+      return
+    }
+    if (numericScore < 0 || numericScore > 100) {
+      showRatingNotice('fail', 'Exam score must be from 0 to 100.')
+      return
+    }
+
+    setIsSavingExamination(true)
+    try {
+      const response = await fetch(`/api/uploads/${examinationModal.id}/examination`, {
+        method: 'PUT',
+        headers: {
+          'Content-Type': 'application/json',
+          ...getArchiveActorHeaders(currentUser)
+        },
+        body: JSON.stringify({
+          examinationDate: examinationDateDraft || null,
+          examinationScore: numericScore
+        })
+      })
+      const payload = await response.json().catch(() => null)
+      if (!response.ok) {
+        throw new Error(apiMessage(payload, 'Failed to save exam score.'))
+      }
+      if (selectedApplicant?.id === examinationModal.id) {
+        setSelectedApplicant(payload || selectedApplicant)
+      }
+      setExaminationModal(null)
+      setExaminationDateDraft('')
+      setExaminationScoreDraft('')
+      await onRatingsChanged?.()
+      showRatingNotice('success', 'Exam score saved successfully.')
+    } catch (error) {
+      showRatingNotice('fail', error.message || 'Failed to save exam score.')
+    } finally {
+      setIsSavingExamination(false)
     }
   }
 
@@ -596,7 +815,7 @@ function RatingsPage({ uploads = [], isLoading = false, currentUser = null, onRa
       })
       const payload = await response.json().catch(() => null)
       if (!response.ok) {
-        throw new Error(payload?.message || 'Failed to save rating.')
+        throw new Error(apiMessage(payload, 'Failed to save rating.'))
       }
       setSelectedApplicant(payload)
       setRatingScores({})
@@ -633,6 +852,7 @@ function RatingsPage({ uploads = [], isLoading = false, currentUser = null, onRa
   }
 
   const cancelRating = async (item) => {
+    if (!canManageRatingSettings) return
     if (!item?.id) return
     setActionsMenu(null)
     try {
@@ -642,7 +862,7 @@ function RatingsPage({ uploads = [], isLoading = false, currentUser = null, onRa
       })
       const payload = await response.json().catch(() => null)
       if (!response.ok) {
-        throw new Error(payload?.message || 'Failed to cancel rating.')
+        throw new Error(apiMessage(payload, 'Failed to cancel rating.'))
       }
       setCancelledIds((prev) => Array.from(new Set([...prev, item.id])))
       if (selectedApplicant?.id === item.id) {
@@ -666,6 +886,7 @@ function RatingsPage({ uploads = [], isLoading = false, currentUser = null, onRa
   }
 
   const exportRatingSummary = async (item) => {
+    if (!canManageRatingSettings) return
     if (!item?.id) return
     setActionsMenu(null)
     try {
@@ -703,6 +924,7 @@ function RatingsPage({ uploads = [], isLoading = false, currentUser = null, onRa
   }
 
   const exportDemonstrationSummary = async (item) => {
+    if (!canManageRatingSettings) return
     if (!item?.id) return
     setActionsMenu(null)
     try {
@@ -739,7 +961,44 @@ function RatingsPage({ uploads = [], isLoading = false, currentUser = null, onRa
     }
   }
 
+  const exportRatingsOverallSummary = async () => {
+    if (!canManageRatingSettings) return
+    try {
+      const response = await fetch('http://localhost:5000/uploads/ratings-summary/export', {
+        headers: getArchiveActorHeaders(currentUser)
+      })
+      const blob = await response.blob()
+      if (!response.ok) {
+        const message = await blob.text().then((text) => {
+          try {
+            return JSON.parse(text)?.message
+          } catch {
+            return null
+          }
+        }).catch(() => null)
+        throw new Error(message || 'Failed to export ratings summary.')
+      }
+
+      const disposition = response.headers.get('content-disposition') || ''
+      const filenameMatch = disposition.match(/filename="?([^"]+)"?/i)
+      const filename = filenameMatch?.[1] || 'ratings-overall-summary.xls'
+      const url = window.URL.createObjectURL(blob)
+      const link = document.createElement('a')
+      link.href = url
+      link.download = filename
+      document.body.appendChild(link)
+      link.click()
+      link.remove()
+      window.URL.revokeObjectURL(url)
+      await onRatingsChanged?.()
+      showRatingNotice('success', 'Ratings summary exported successfully.')
+    } catch (error) {
+      showRatingNotice('fail', error.message || 'Failed to export ratings summary.')
+    }
+  }
+
   const openCancelConfirmation = (item) => {
+    if (!canManageRatingSettings) return
     if (!item?.id) return
     setActionsMenu(null)
     setConfirmRatingAction(item)
@@ -799,14 +1058,8 @@ function RatingsPage({ uploads = [], isLoading = false, currentUser = null, onRa
     }
   }, [ratingFormType, ratingStarted, selectedBoardMember, selectedBoardMemberSavedRating])
 
-  const ratingNoticeNode = ratingNotice ? (
-    <div className={`toast toast-${ratingNotice.type}`} role="status" aria-live="polite">
-      {ratingNotice.message}
-    </div>
-  ) : null
-
   const confirmationIsDelete = isRatedApplicant(confirmRatingAction)
-  const ratingConfirmNode = confirmRatingAction ? (
+  const ratingConfirmNode = canManageRatingSettings && confirmRatingAction ? (
     <div
       className="modal-overlay delete-confirm-overlay"
       onClick={(event) => {
@@ -842,7 +1095,7 @@ function RatingsPage({ uploads = [], isLoading = false, currentUser = null, onRa
     </div>
   ) : null
 
-  const interviewDateNode = interviewDateModal ? (
+  const interviewDateNode = canManageRatingSettings && interviewDateModal ? (
     <div
       className="modal-overlay delete-confirm-overlay"
       onClick={(event) => {
@@ -862,6 +1115,34 @@ function RatingsPage({ uploads = [], isLoading = false, currentUser = null, onRa
             onChange={(event) => setInterviewDateDraft(event.target.value)}
           />
         </label>
+        <label className="ratings-date-field">
+          <span>Time</span>
+          <input
+            type="time"
+            value={interviewTimeDraft}
+            onChange={(event) => setInterviewTimeDraft(event.target.value)}
+          />
+        </label>
+        <label className="ratings-date-field">
+          <span>Place</span>
+          <input
+            type="text"
+            value={interviewPlaceDraft}
+            onChange={(event) => setInterviewPlaceDraft(event.target.value)}
+            placeholder="Interview venue"
+            maxLength={255}
+          />
+        </label>
+        <label className="ratings-date-field">
+          <span>Notes to Prepare</span>
+          <textarea
+            value={interviewPreparationNotesDraft}
+            onChange={(event) => setInterviewPreparationNotesDraft(event.target.value)}
+            placeholder="Documents, requirements, or reminders for the applicant"
+            maxLength={2000}
+            rows={4}
+          />
+        </label>
         <div className="modal-actions">
           <button type="button" className="btn btn-secondary" onClick={closeInterviewDateModal} disabled={isSavingInterviewDate}>
             Cancel
@@ -874,7 +1155,111 @@ function RatingsPage({ uploads = [], isLoading = false, currentUser = null, onRa
     </div>
   ) : null
 
-  if (criteriaEditorOpen) {
+  const demonstrationDateNode = canManageRatingSettings && demonstrationDateModal ? (
+    <div
+      className="modal-overlay delete-confirm-overlay"
+      onClick={(event) => {
+        if (event.target === event.currentTarget) {
+          closeDemonstrationDateModal()
+        }
+      }}
+    >
+      <div className="modal-card delete-confirm-card ratings-date-card">
+        <h3>Set Demo Date</h3>
+        <p>Select the demo date for {demonstrationDateModal.name || 'this applicant'}.</p>
+        <label className="ratings-date-field">
+          <span>Date of Demo</span>
+          <input
+            type="date"
+            value={demonstrationDateDraft}
+            onChange={(event) => setDemonstrationDateDraft(event.target.value)}
+          />
+        </label>
+        <label className="ratings-date-field">
+          <span>Time</span>
+          <input
+            type="time"
+            value={demonstrationTimeDraft}
+            onChange={(event) => setDemonstrationTimeDraft(event.target.value)}
+          />
+        </label>
+        <label className="ratings-date-field">
+          <span>Place</span>
+          <input
+            type="text"
+            value={demonstrationPlaceDraft}
+            onChange={(event) => setDemonstrationPlaceDraft(event.target.value)}
+            placeholder="Demonstration venue"
+            maxLength={255}
+          />
+        </label>
+        <label className="ratings-date-field">
+          <span>Notes to Prepare</span>
+          <textarea
+            value={demonstrationPreparationNotesDraft}
+            onChange={(event) => setDemonstrationPreparationNotesDraft(event.target.value)}
+            placeholder="Materials, equipment, or reminders for the applicant"
+            maxLength={2000}
+            rows={4}
+          />
+        </label>
+        <div className="modal-actions">
+          <button type="button" className="btn btn-secondary" onClick={closeDemonstrationDateModal} disabled={isSavingDemonstrationDate}>
+            Cancel
+          </button>
+          <button type="button" className="btn" onClick={saveDemonstrationDate} disabled={isSavingDemonstrationDate}>
+            {isSavingDemonstrationDate ? 'Saving...' : 'Save Date'}
+          </button>
+        </div>
+      </div>
+    </div>
+  ) : null
+
+  const examinationNode = canManageRatingSettings && examinationModal ? (
+    <div
+      className="modal-overlay delete-confirm-overlay"
+      onClick={(event) => {
+        if (event.target === event.currentTarget) {
+          closeExaminationModal()
+        }
+      }}
+    >
+      <div className="modal-card delete-confirm-card ratings-date-card">
+        <h3>Add Examination Score</h3>
+        <p>Add the exam details for {examinationModal.name || 'this applicant'}.</p>
+        <label className="ratings-date-field">
+          <span>Date of Exam</span>
+          <input
+            type="date"
+            value={examinationDateDraft}
+            onChange={(event) => setExaminationDateDraft(event.target.value)}
+          />
+        </label>
+        <label className="ratings-date-field">
+          <span>Exam Score</span>
+          <input
+            type="number"
+            min="0"
+            max="100"
+            step="0.01"
+            value={examinationScoreDraft}
+            onChange={(event) => setExaminationScoreDraft(event.target.value)}
+            placeholder="0 - 100"
+          />
+        </label>
+        <div className="modal-actions">
+          <button type="button" className="btn btn-secondary" onClick={closeExaminationModal} disabled={isSavingExamination}>
+            Cancel
+          </button>
+          <button type="button" className="btn" onClick={saveExamination} disabled={isSavingExamination}>
+            {isSavingExamination ? 'Saving...' : 'Save Score'}
+          </button>
+        </div>
+      </div>
+    </div>
+  ) : null
+
+  if (canManageRatingSettings && criteriaEditorOpen) {
     const criteriaConfirmNode = confirmSaveCriteria ? (
       <div
         className="modal-overlay delete-confirm-overlay"
@@ -942,7 +1327,6 @@ function RatingsPage({ uploads = [], isLoading = false, currentUser = null, onRa
 
     return (
       <section className="ratings-criteria-page" aria-label="Edit rating criteria">
-        {ratingNoticeNode}
         {criteriaConfirmNode}
         {boardMemberDeleteConfirmNode}
         <div className="ratings-form-header">
@@ -1066,9 +1450,6 @@ function RatingsPage({ uploads = [], isLoading = false, currentUser = null, onRa
         </div>
 
         <div className="ratings-form-footer">
-          <button type="button" className="btn btn-secondary" onClick={resetCriteriaDraft}>
-            Reset Defaults
-          </button>
           <button type="button" className="btn btn-secondary" onClick={() => setCriteriaEditorOpen(false)}>
             Cancel
           </button>
@@ -1107,7 +1488,14 @@ function RatingsPage({ uploads = [], isLoading = false, currentUser = null, onRa
     const demonstrationStats = getRatingGroupStats('demonstration')
     const canOpenRatingForm = ratingStarted
     const isDemonstrationForm = ratingFormType === 'demonstration'
-    const interviewDate = formatInterviewDate(getInterviewDateValue(selectedApplicant))
+    const scheduledInterviewDate = formatInterviewDate(getScheduledInterviewDateValue(selectedApplicant))
+    const interviewPlace = getInterviewPlaceValue(selectedApplicant).trim()
+    const interviewTime = formatTimeLabel(getInterviewTimeValue(selectedApplicant))
+    const interviewPreparationNotes = getInterviewPreparationNotesValue(selectedApplicant).trim()
+    const demonstrationDate = formatInterviewDate(getDemonstrationDateValue(selectedApplicant))
+    const demonstrationTime = formatTimeLabel(getDemonstrationTimeValue(selectedApplicant))
+    const demonstrationPlace = getDemonstrationPlaceValue(selectedApplicant).trim()
+    const demonstrationPreparationNotes = getDemonstrationPreparationNotesValue(selectedApplicant).trim()
     const selectedBoardMemberAlreadyRated = hasBoardMemberRated(selectedApplicant, selectedBoardMember, ratingFormType)
     const saveRatingConfirmNode = confirmSaveRating ? (
       <div
@@ -1153,7 +1541,6 @@ function RatingsPage({ uploads = [], isLoading = false, currentUser = null, onRa
     if (canOpenRatingForm) {
       return (
         <section className="ratings-form-page" aria-label={isDemonstrationForm ? 'Application demonstration form' : 'Interview rating form'}>
-          {ratingNoticeNode}
           {saveRatingConfirmNode}
           <div className="ratings-form-header">
             <div>
@@ -1189,10 +1576,37 @@ function RatingsPage({ uploads = [], isLoading = false, currentUser = null, onRa
                 <dt>Position Applied:</dt>
                 <dd>{getPosition(selectedApplicant)}</dd>
               </div>
-              <div className="ratings-detail-row">
-                <dt>Date of Interview:</dt>
-                <dd>{interviewDate}</dd>
-              </div>
+              {!isDemonstrationForm ? (
+                <>
+                  <div className="ratings-detail-row">
+                    <dt>Date of Interview:</dt>
+                    <dd>{scheduledInterviewDate}</dd>
+                  </div>
+                  <div className="ratings-detail-row">
+                    <dt>Time of Interview:</dt>
+                    <dd>{interviewTime}</dd>
+                  </div>
+                  <div className="ratings-detail-row">
+                    <dt>Place of Interview:</dt>
+                    <dd>{interviewPlace || '-'}</dd>
+                  </div>
+                </>
+              ) : (
+                <>
+                  <div className="ratings-detail-row">
+                    <dt>Date of Demo:</dt>
+                    <dd>{demonstrationDate}</dd>
+                  </div>
+                  <div className="ratings-detail-row">
+                    <dt>Time of Demo:</dt>
+                    <dd>{demonstrationTime}</dd>
+                  </div>
+                  <div className="ratings-detail-row">
+                    <dt>Place of Demo:</dt>
+                    <dd>{demonstrationPlace || '-'}</dd>
+                  </div>
+                </>
+              )}
             </dl>
 
             <div className="ratings-board-block">
@@ -1293,10 +1707,15 @@ function RatingsPage({ uploads = [], isLoading = false, currentUser = null, onRa
                       <th className="demonstration-section-head">Criteria</th>
                       <th colSpan={demonstrationRatingColumns.length}>Rating</th>
                     </tr>
-                    <tr>
+                    <tr className="demonstration-rating-legend-row">
                       <th />
-                      {demonstrationRatingColumns.map((value) => (
-                        <th key={value}>{value}</th>
+                      {demonstrationRatingColumns.map((column) => (
+                        <th key={column.value}>
+                          <div className="demonstration-rating-head-content">
+                            <strong>{column.value}</strong>
+                            <span>{column.label}</span>
+                          </div>
+                        </th>
                       ))}
                     </tr>
                   </thead>
@@ -1314,20 +1733,20 @@ function RatingsPage({ uploads = [], isLoading = false, currentUser = null, onRa
                                 <span>{index + 1}</span>
                                 <strong>{criterion}</strong>
                               </td>
-                              {demonstrationRatingColumns.map((value) => (
-                                <td key={`${criterionKey}-${value}`} className="ratings-radio-cell">
+                              {demonstrationRatingColumns.map((column) => (
+                                <td key={`${criterionKey}-${column.value}`} className="ratings-radio-cell">
                                   <label className="ratings-radio-choice">
                                     <input
                                       type="radio"
                                       name={`demo-${criterionKey}`}
-                                      value={value}
+                                      value={column.value}
                                       disabled={isViewingSavedBoardMemberRating}
-                                      checked={Number(ratingScores[criterionKey] ?? -1) === (value === 'NA' ? 0 : value)}
+                                      checked={Number(ratingScores[criterionKey] ?? -1) === (column.value === 'NA' ? 0 : column.value)}
                                       onChange={() => {
                                         if (isViewingSavedBoardMemberRating) return
                                         setRatingScores((prev) => ({
                                           ...prev,
-                                          [criterionKey]: value === 'NA' ? 0 : value
+                                          [criterionKey]: column.value === 'NA' ? 0 : column.value
                                         }))
                                       }}
                                     />
@@ -1470,12 +1889,59 @@ function RatingsPage({ uploads = [], isLoading = false, currentUser = null, onRa
 
     return (
       <section className="ratings-applicant-view">
-        {ratingNoticeNode}
         {ratingStarted && (
           <div className="ratings-started-banner">
             Rating started for {selectedApplicant.name || 'this applicant'}.
           </div>
         )}
+        <div className="ratings-top-actions">
+          <button
+            type="button"
+            className="ratings-start-btn"
+            onClick={() => {
+              setSelectedApplicant(null)
+              setRatingStarted(false)
+              setRatingScores({})
+              setDemonstrationDetails(demonstrationDetailDefaults)
+              setRatingRemarks('')
+              setSelectedBoardMember('')
+              setSelectedBoardType(getDefaultBoardType(currentUser))
+              setRatingFormType('interview')
+            }}
+          >
+            Back to Ratings
+          </button>
+          <button
+            type="button"
+            className="ratings-start-btn"
+            onClick={() => {
+              setRatingFormType('interview')
+              setRatingScores({})
+              setDemonstrationDetails(demonstrationDetailDefaults)
+              setRatingRemarks('')
+              setSelectedBoardMember('')
+              setSelectedBoardType(getDefaultBoardType(currentUser))
+              setRatingStarted(true)
+            }}
+          >
+            Start Interview Rating
+          </button>
+          <button
+            type="button"
+            className="ratings-start-btn ratings-start-demo-btn"
+            onClick={() => {
+              setRatingFormType('demonstration')
+              setRatingScores({})
+              setDemonstrationDetails(demonstrationDetailDefaults)
+              setRatingRemarks('')
+              setSelectedBoardMember('')
+              setSelectedBoardType(getDefaultBoardType(currentUser))
+              setRatingStarted(true)
+            }}
+          >
+            Start Demonstration
+          </button>
+        </div>
         <div className="ratings-result-grid">
           {[
             ['interview', 'Interview Rating', interviewStats],
@@ -1522,53 +1988,51 @@ function RatingsPage({ uploads = [], isLoading = false, currentUser = null, onRa
             </section>
           ))}
         </div>
+        <div className="ratings-schedule-grid">
+          <section className="ratings-interview-summary" aria-label="Interview schedule summary">
+            <div>
+              <h3>Interview Schedule</h3>
+              <p>{interviewPreparationNotes || 'No preparation notes added yet.'}</p>
+            </div>
+            <dl>
+              <div>
+                <dt>Date</dt>
+                <dd>{scheduledInterviewDate}</dd>
+              </div>
+              <div>
+                <dt>Time</dt>
+                <dd>{interviewTime}</dd>
+              </div>
+              <div>
+                <dt>Place</dt>
+                <dd>{interviewPlace || '-'}</dd>
+              </div>
+            </dl>
+          </section>
+          <section className="ratings-interview-summary demonstration" aria-label="Demonstration schedule summary">
+            <div>
+              <h3>Demonstration Schedule</h3>
+              <p>{demonstrationPreparationNotes || 'No preparation notes added yet.'}</p>
+            </div>
+            <dl>
+              <div>
+                <dt>Date</dt>
+                <dd>{demonstrationDate}</dd>
+              </div>
+              <div>
+                <dt>Time</dt>
+                <dd>{demonstrationTime}</dd>
+              </div>
+              <div>
+                <dt>Place</dt>
+                <dd>{demonstrationPlace || '-'}</dd>
+              </div>
+            </dl>
+          </section>
+        </div>
         <ApplicantViewPage
           viewItem={selectedApplicant}
-          backLabel="Back to Ratings"
-          onBack={() => {
-            setSelectedApplicant(null)
-            setRatingStarted(false)
-            setRatingScores({})
-            setDemonstrationDetails(demonstrationDetailDefaults)
-            setRatingRemarks('')
-            setSelectedBoardMember('')
-            setSelectedBoardType(getDefaultBoardType(currentUser))
-            setRatingFormType('interview')
-          }}
-          headerActions={(
-          <div className="ratings-start-actions">
-            <button
-              type="button"
-              className="ratings-start-btn"
-              onClick={() => {
-                setRatingFormType('interview')
-                setRatingScores({})
-                setDemonstrationDetails(demonstrationDetailDefaults)
-                setRatingRemarks('')
-                setSelectedBoardMember('')
-                setSelectedBoardType(getDefaultBoardType(currentUser))
-                setRatingStarted(true)
-              }}
-            >
-              Start Interview Rating
-            </button>
-            <button
-              type="button"
-              className="ratings-start-btn ratings-start-demo-btn"
-              onClick={() => {
-                setRatingFormType('demonstration')
-                setRatingScores({})
-                setDemonstrationDetails(demonstrationDetailDefaults)
-                setRatingRemarks('')
-                setSelectedBoardMember('')
-                setSelectedBoardType(getDefaultBoardType(currentUser))
-                setRatingStarted(true)
-              }}
-            >
-              Start Demonstration
-            </button>
-          </div>
-          )}
+          onBack={null}
         />
       </section>
     )
@@ -1576,16 +2040,17 @@ function RatingsPage({ uploads = [], isLoading = false, currentUser = null, onRa
 
     return (
       <section className="ratings-page" aria-label="Ratings / Evaluation">
-      {ratingNoticeNode}
       {ratingConfirmNode}
       {interviewDateNode}
+      {demonstrationDateNode}
+      {examinationNode}
       <div className="ratings-header">
         <div>
           <h2>Ratings / Evaluation</h2>
         </div>
-        <button type="button" className="ratings-edit-criteria-btn" onClick={openCriteriaEditor}>
+        {canManageRatingSettings && <button type="button" className="ratings-edit-criteria-btn" onClick={openCriteriaEditor}>
           Edit Criteria
-        </button>
+        </button>}
       </div>
 
       <div className="ratings-toolbar">
@@ -1610,6 +2075,9 @@ function RatingsPage({ uploads = [], isLoading = false, currentUser = null, onRa
             </option>
           ))}
         </select>
+        {canManageRatingSettings && <button type="button" className="ratings-export-btn" onClick={exportRatingsOverallSummary}>
+          Export Excel
+        </button>}
       </div>
 
       <div className="ratings-table-shell">
@@ -1621,6 +2089,8 @@ function RatingsPage({ uploads = [], isLoading = false, currentUser = null, onRa
                 <th>Applicants Name</th>
                 <th>Position Applied</th>
                 <th>Date of Interview</th>
+                <th>Date of Demo</th>
+                <th>Exam Score</th>
                 <th>Status</th>
                 <th>Score</th>
                 <th>Action</th>
@@ -1629,19 +2099,35 @@ function RatingsPage({ uploads = [], isLoading = false, currentUser = null, onRa
             <tbody>
               {isLoading ? (
                 <tr>
-                  <td colSpan={7} className="ratings-empty">Loading applicants...</td>
+                  <td colSpan={9} className="ratings-empty">
+                    <span className="loading-indicator"><span className="loading-spinner" aria-hidden="true" />Loading applicants...</span>
+                  </td>
                 </tr>
               ) : filteredUploads.length === 0 ? (
                 <tr>
-                  <td colSpan={7} className="ratings-empty">No applicants found.</td>
+                  <td colSpan={9} className="ratings-empty">No applicants found.</td>
                 </tr>
               ) : (
                 paginatedUploads.map((item, index) => (
-                  <tr key={item.id || `${item.email}-${index}`}>
+                  <tr
+                    key={item.id || `${item.email}-${index}`}
+                    className="ratings-clickable-row"
+                    role="button"
+                    tabIndex={0}
+                    onClick={() => openApplicantView(item)}
+                    onKeyDown={(event) => {
+                      if (event.key === 'Enter' || event.key === ' ') {
+                        event.preventDefault()
+                        openApplicantView(item)
+                      }
+                    }}
+                  >
                     <td>{((applicantsPage - 1) * applicantsPageSize) + index + 1}</td>
                     <td className="ratings-name">{item.name || '(No name)'}</td>
                     <td>{getPosition(item)}</td>
                     <td>{formatInterviewDate(getInterviewDateValue(item))}</td>
+                    <td>{formatInterviewDate(getDemonstrationDateValue(item))}</td>
+                    <td>{getExaminationScoreLabel(item)}</td>
                     <td>
                       <span className={`ratings-status ${getEvaluationStatus(item)}`}>
                         {getEvaluationStatusLabel(item)}
@@ -1656,9 +2142,13 @@ function RatingsPage({ uploads = [], isLoading = false, currentUser = null, onRa
                       <button
                         type="button"
                         className="action-btn action-trigger"
-                        aria-label={`Open actions for ${item.name || 'applicant'}`}
+                        aria-label={canManageRatingSettings ? `Open actions for ${item.name || 'applicant'}` : `View application for ${item.name || 'applicant'}`}
                         onClick={(event) => {
                           event.stopPropagation()
+                          if (!canManageRatingSettings) {
+                            openApplicantView(item)
+                            return
+                          }
                           if (actionsMenu?.item?.id === item.id) {
                             setActionsMenu(null)
                             return
@@ -1666,7 +2156,7 @@ function RatingsPage({ uploads = [], isLoading = false, currentUser = null, onRa
                           openActionsMenu(event, item)
                         }}
                       >
-                        ...
+                        {canManageRatingSettings ? '...' : 'View'}
                       </button>
                     </td>
                   </tr>
@@ -1702,7 +2192,7 @@ function RatingsPage({ uploads = [], isLoading = false, currentUser = null, onRa
         Showing {applicantsStart}-{applicantsEnd} of {filteredUploads.length} entries
       </p>
 
-      {actionsMenu && (
+      {canManageRatingSettings && actionsMenu && (
         <div
           className="actions-menu actions-menu-floating"
           style={{ top: `${actionsMenu.top}px`, left: `${actionsMenu.left}px` }}
@@ -1711,64 +2201,70 @@ function RatingsPage({ uploads = [], isLoading = false, currentUser = null, onRa
           <button
             type="button"
             className="actions-menu-item"
-            onClick={() => {
-              setSelectedApplicant(actionsMenu.item)
-              setRatingStarted(false)
-              setRatingScores({})
-              setDemonstrationDetails(demonstrationDetailDefaults)
-              setRatingRemarks('')
-              setSelectedBoardMember('')
-              setSelectedBoardType(getDefaultBoardType(currentUser))
-              setRatingFormType('interview')
-              setActionsMenu(null)
-            }}
+            onClick={() => openApplicantView(actionsMenu.item)}
           >
             View
           </button>
-          <button
-            type="button"
-            className="actions-menu-item"
-            disabled={!String(actionsMenu.item?.email || '').trim()}
-            onClick={() => {
-              const target = actionsMenu.item
-              setActionsMenu(null)
-              emailApplicant(target)
-            }}
-          >
-            Send Email
-          </button>
-          <button
-            type="button"
-            className="actions-menu-item"
-            onClick={() => openInterviewDateModal(actionsMenu.item)}
-          >
-            Set Interview Date
-          </button>
-          {hasSavedFormRating(actionsMenu.item, 'interview') && (
+          {canManageRatingSettings && <>
             <button
               type="button"
               className="actions-menu-item"
-              onClick={() => exportRatingSummary(actionsMenu.item)}
+              disabled={!String(actionsMenu.item?.email || '').trim()}
+              onClick={() => {
+                const target = actionsMenu.item
+                setActionsMenu(null)
+                emailApplicant(target)
+              }}
             >
-              Export Interview Excel
+              Send Email
             </button>
-          )}
-          {hasSavedFormRating(actionsMenu.item, 'demonstration') && (
             <button
               type="button"
               className="actions-menu-item"
-              onClick={() => exportDemonstrationSummary(actionsMenu.item)}
+              onClick={() => openInterviewDateModal(actionsMenu.item)}
             >
-              Export Demonstration Excel
+              Set Interview Date
             </button>
-          )}
-          <button
-            type="button"
-            className="actions-menu-item danger"
-            onClick={() => openCancelConfirmation(actionsMenu.item)}
-          >
-            {isRatedApplicant(actionsMenu.item) ? 'Delete' : 'Cancel Interview'}
-          </button>
+            <button
+              type="button"
+              className="actions-menu-item"
+              onClick={() => openDemonstrationDateModal(actionsMenu.item)}
+            >
+              Set Demo Date
+            </button>
+            <button
+              type="button"
+              className="actions-menu-item"
+              onClick={() => openExaminationModal(actionsMenu.item)}
+            >
+              Add Examination Score
+            </button>
+            {canManageRatingSettings && hasSavedFormRating(actionsMenu.item, 'interview') && (
+              <button
+                type="button"
+                className="actions-menu-item"
+                onClick={() => exportRatingSummary(actionsMenu.item)}
+              >
+                Export Interview Excel
+              </button>
+            )}
+            {canManageRatingSettings && hasSavedFormRating(actionsMenu.item, 'demonstration') && (
+              <button
+                type="button"
+                className="actions-menu-item"
+                onClick={() => exportDemonstrationSummary(actionsMenu.item)}
+              >
+                Export Demonstration Excel
+              </button>
+            )}
+            <button
+              type="button"
+              className="actions-menu-item danger"
+              onClick={() => openCancelConfirmation(actionsMenu.item)}
+            >
+              {isRatedApplicant(actionsMenu.item) ? 'Delete' : 'Cancel Interview'}
+            </button>
+          </>}
         </div>
       )}
     </section>

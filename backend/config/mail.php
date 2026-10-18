@@ -13,7 +13,11 @@ return [
     |
     */
 
-    'default' => env('MAIL_MAILER', 'smtp'),
+    'default' => env('MAIL_MAILER') === 'smtp'
+        && env('MAIL_HOST') === 'mailpit'
+        && PHP_OS_FAMILY === 'Windows'
+            ? 'log'
+            : env('MAIL_MAILER', 'log'),
 
     /*
     |--------------------------------------------------------------------------

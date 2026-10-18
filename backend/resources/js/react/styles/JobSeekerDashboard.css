@@ -2063,6 +2063,146 @@ optgroup {
   box-shadow: 0 2px 10px rgba(17, 24, 39, 0.08);
 }
 
+.js-interview-notifications {
+  margin-top: 24px;
+  border: 1px solid #c7d2fe;
+  border-radius: 8px;
+  background: #ffffff;
+  box-shadow: 0 2px 10px rgba(17, 24, 39, 0.08);
+  overflow: hidden;
+}
+
+.js-interview-notifications.demonstration {
+  border-color: #99f6e4;
+}
+
+.js-interview-notifications.demonstration .js-interview-notifications-header {
+  background: #f0fdfa;
+  color: #0f766e;
+}
+
+.js-interview-notifications.demonstration .js-interview-notifications-header strong {
+  background: #0f766e;
+}
+
+.js-interview-notifications-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  background: #eef2ff;
+  color: #3730a3;
+  padding: 14px 20px;
+  font-size: var(--fs-15);
+  font-weight: 800;
+  line-height: 1.3;
+}
+
+.js-interview-notifications-header span {
+  display: inline-flex;
+  align-items: center;
+}
+
+.js-interview-notifications-header strong {
+  width: 30px;
+  height: 30px;
+  flex: 0 0 30px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  border-radius: 999px;
+  background: #3730a3;
+  color: #ffffff;
+  font-size: var(--fs-14);
+  font-weight: 800;
+  line-height: 1;
+}
+
+.js-interview-notification-list {
+  display: block;
+  background: #ffffff;
+}
+
+.js-interview-notification {
+  appearance: none;
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) minmax(260px, 0.52fr);
+  align-items: center;
+  gap: 20px;
+  width: 100%;
+  padding: 18px 20px;
+  border: 0;
+  border-radius: 0;
+  background: #ffffff;
+  color: inherit;
+  cursor: pointer;
+  font: inherit;
+  text-align: left;
+}
+
+.js-interview-notification + .js-interview-notification {
+  border-top: 1px solid #dbe3ef;
+}
+
+.js-interview-notification:hover {
+  background: #f8fbff;
+}
+
+.js-interview-notification:focus {
+  outline: none;
+}
+
+.js-interview-notification:focus-visible {
+  outline: none;
+  box-shadow: inset 0 0 0 2px rgba(55, 48, 163, 0.26);
+}
+
+.js-interview-notification h3 {
+  margin: 0 0 6px;
+  color: #111827;
+  font-size: var(--fs-17);
+  font-weight: 800;
+  line-height: 1.35;
+}
+
+.js-interview-notification p {
+  margin: 0;
+  color: #475569;
+  font-size: var(--fs-14);
+  line-height: 1.5;
+  white-space: pre-wrap;
+}
+
+.js-interview-notification dl {
+  display: grid;
+  gap: 8px;
+  margin: 0;
+}
+
+.js-interview-notification dl div {
+  display: grid;
+  grid-template-columns: 82px minmax(0, 1fr);
+  gap: 12px;
+  align-items: baseline;
+}
+
+.js-interview-notification dt {
+  color: #6b7280;
+  font-size: var(--fs-13);
+  font-weight: 800;
+  text-transform: uppercase;
+  line-height: 1.35;
+}
+
+.js-interview-notification dd {
+  margin: 0;
+  color: #172033;
+  font-size: var(--fs-15);
+  font-weight: 700;
+  line-height: 1.35;
+  overflow-wrap: anywhere;
+}
+
 .js-applied-card {
   margin-top: 24px;
 }
@@ -2273,6 +2413,14 @@ optgroup {
 
   .js-stats-grid {
     grid-template-columns: 1fr;
+  }
+
+  .js-interview-notification {
+    grid-template-columns: 1fr;
+  }
+
+  .js-interview-notification dl div {
+    grid-template-columns: 64px minmax(0, 1fr);
   }
 
   .js-applied-table {

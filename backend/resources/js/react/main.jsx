@@ -3,6 +3,7 @@ import { StrictMode } from 'react'
 import { createRoot } from 'react-dom/client'
 import './styles/index.css'
 import App from './App.jsx'
+import Toaster from './components/Toaster.jsx'
 
 const LEGACY_API_ORIGIN = 'http://localhost:5000'
 const API_BASE_URL = import.meta.env.VITE_API_BASE_URL || '/api'
@@ -21,6 +22,7 @@ window.fetch = (input, init) => {
 
 createRoot(document.getElementById('root')).render(
   <StrictMode>
+    <Toaster />
     <App />
   </StrictMode>,
 )

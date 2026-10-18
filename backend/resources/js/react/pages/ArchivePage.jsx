@@ -1,3 +1,5 @@
+import { apiMessage } from "../utils/toasts"
+import { useToastState } from "../utils/useToastState"
 import React, { useCallback, useEffect, useMemo, useState } from 'react'
 import '../styles/ArchivePage.css'
 import { getArchiveActorHeaders } from '../utils/archiveActor'
@@ -45,10 +47,10 @@ function formatActorRole(value) {
 function ArchivePage({ currentUser = null, onArchiveChanged }) {
   const [archives, setArchives] = useState([])
   const [isLoading, setIsLoading] = useState(false)
-  const [error, setError] = useState('')
+  const [error, setError] = useToastState("", "error")
   const [searchTerm, setSearchTerm] = useState('')
   const [typeFilter, setTypeFilter] = useState('all')
-  const [notice, setNotice] = useState('')
+  const [notice, setNotice] = useToastState("", "success")
   const [restoringId, setRestoringId] = useState(null)
   const [confirmRestoreItem, setConfirmRestoreItem] = useState(null)
   const [archivePage, setArchivePage] = useState(1)
@@ -66,7 +68,7 @@ function ArchivePage({ currentUser = null, onArchiveChanged }) {
       setArchives(Array.isArray(payload) ? payload : [])
     } catch (err) {
       setArchives([])
-      setError(err.message || 'Failed to load archive records.')
+      setError(apiMessage(err, 'Failed to load archive records.'))
     } finally {
       setIsLoading(false)
     }
@@ -163,14 +165,14 @@ function ArchivePage({ currentUser = null, onArchiveChanged }) {
       })
       const payload = await response.json().catch(() => null)
       if (!response.ok) {
-        throw new Error(payload?.message || `Failed to restore ${fallbackLabel}.`)
+        throw new Error(apiMessage(payload, `Failed to restore ${fallbackLabel}.`))
       }
       setArchives((prev) => prev.filter((item) => item.id !== archiveId))
-      setNotice(payload?.message || `${isJobSeeker ? 'Job seeker' : 'Job'} restored successfully.`)
+      setNotice(apiMessage(payload, `${isJobSeeker ? 'Job seeker' : 'Job'} restored successfully.`))
       setConfirmRestoreItem(null)
       onArchiveChanged?.()
     } catch (err) {
-      setError(err.message || `Failed to restore ${fallbackLabel}.`)
+      setError(apiMessage(err, `Failed to restore ${fallbackLabel}.`))
     } finally {
       setRestoringId(null)
     }
@@ -208,8 +210,6 @@ function ArchivePage({ currentUser = null, onArchiveChanged }) {
         </select>
       </div>
 
-      {error && <div className="archive-error">{error}</div>}
-      {notice && <div className="archive-notice">{notice}</div>}
 
       <div className="archive-table-wrap">
         <table className="archive-table">
@@ -227,7 +227,9 @@ function ArchivePage({ currentUser = null, onArchiveChanged }) {
           <tbody>
             {isLoading ? (
               <tr>
-                <td colSpan={7} className="archive-empty">Loading archive...</td>
+                <td colSpan={7} className="archive-empty">
+                  <span className="loading-indicator"><span className="loading-spinner" aria-hidden="true" />Loading archive...</span>
+                </td>
               </tr>
             ) : filteredArchives.length === 0 ? (
               <tr>

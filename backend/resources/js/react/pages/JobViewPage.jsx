@@ -1,6 +1,9 @@
+import { apiMessage } from "../utils/toasts"
+import { useToastState } from "../utils/useToastState"
 import React from 'react'
 import { useEffect, useRef, useState } from "react"
 import "../styles/JobViewPage.css"
+import { buildJobRequirements } from "../utils/jobRequirements"
 
 function parseSkills(skillsText) {
   if (!skillsText) return []
@@ -53,9 +56,8 @@ function JobViewPage({ job, onBack, onApply, onRequireResume, jobSeekerProfile, 
   })
   const [invalidSupportingDetails, setInvalidSupportingDetails] = useState([])
   const [forcedSupportingKey, setForcedSupportingKey] = useState(null)
-  const [applyNotice, setApplyNotice] = useState("")
-  const [applyGateNotice, setApplyGateNotice] = useState("")
-  const [qualificationPopup, setQualificationPopup] = useState(null)
+  const [applyNotice, setApplyNotice] = useToastState("", "error")
+  const [applyGateNotice, setApplyGateNotice] = useToastState("", "error")
   const [isSubmitting, setIsSubmitting] = useState(false)
   const [resumeMatch, setResumeMatch] = useState({
     status: "idle",
@@ -66,7 +68,6 @@ function JobViewPage({ job, onBack, onApply, onRequireResume, jobSeekerProfile, 
     message: ""
   })
   const supportingInputRef = useRef(null)
-  const lastQualificationKeyRef = useRef("")
   const [showErrors, setShowErrors] = useState(false)
   const [applyTab, setApplyTab] = useState("profile")
 
@@ -111,14 +112,6 @@ function JobViewPage({ job, onBack, onApply, onRequireResume, jobSeekerProfile, 
     }, 2400)
     return () => clearTimeout(timer)
   }, [applyGateNotice])
-
-  useEffect(() => {
-    if (!qualificationPopup) return
-    const timer = setTimeout(() => {
-      setQualificationPopup(null)
-    }, 4000)
-    return () => clearTimeout(timer)
-  }, [qualificationPopup])
 
   const supportingSteps = [
     { key: "certificate", label: "Certificate", accept: ".pdf,.png,.jpg,.jpeg", multiple: false },
@@ -182,6 +175,12 @@ function JobViewPage({ job, onBack, onApply, onRequireResume, jobSeekerProfile, 
   const activeSupportingStep = forcedSupportingKey
     ? getSupportingStepByKey(forcedSupportingKey)
     : currentSupportingStep
+  const jobIdForMatch = job?.id ?? ""
+  const jobTitleForMatch = job?.title || ""
+  const resumeKeyForMatch = jobSeekerResume
+    ? JSON.stringify([jobSeekerResume.id, jobSeekerResume.path, jobSeekerResume.name, jobSeekerResume.updatedAt || jobSeekerResume.updated_at])
+    : ""
+  const matchKey = JSON.stringify([jobIdForMatch, jobTitleForMatch, jobSeekerId, resumeKeyForMatch])
 
   const supportingDocumentsComplete = supportingSteps.every((step) => {
     if (step.key === "others") return true
@@ -289,11 +288,12 @@ function JobViewPage({ job, onBack, onApply, onRequireResume, jobSeekerProfile, 
   }, [isApplyModalOpen, jobSeekerId, jobSeekerSupporting])
 
   useEffect(() => {
-    if (!job || !jobSeekerId) return
+    if (!jobIdForMatch && !jobTitleForMatch) return
+    if (!jobSeekerId) return
     if (!jobSeekerResume) {
-      setQualificationPopup(null)
-      lastQualificationKeyRef.current = ""
       setResumeMatch({
+        matchKey,
+        analysis: null,
         status: "missing",
         score: null,
         qualifies: false,
@@ -305,8 +305,11 @@ function JobViewPage({ job, onBack, onApply, onRequireResume, jobSeekerProfile, 
 
     let isMounted = true
     const controller = new AbortController()
+    const timeoutId = window.setTimeout(() => controller.abort(), 10000)
     setResumeMatch((prev) => ({
       ...prev,
+      matchKey,
+      analysis: null,
       status: "loading",
       message: ""
     }))
@@ -314,12 +317,12 @@ function JobViewPage({ job, onBack, onApply, onRequireResume, jobSeekerProfile, 
     const fetchMatch = async () => {
       try {
         const response = await fetch(
-          `/api/job-seekers/${jobSeekerId}/resume/match?jobTitle=${encodeURIComponent(job.title)}&jobId=${encodeURIComponent(job.id || "")}`,
+          `/api/job-seekers/${jobSeekerId}/resume/match?jobTitle=${encodeURIComponent(jobTitleForMatch)}&jobId=${encodeURIComponent(jobIdForMatch)}`,
           { signal: controller.signal }
         )
         if (!response.ok) {
           const payload = await response.json().catch(() => null)
-          throw new Error(payload?.message || "Failed to check Personal Data Sheet(PDS) match.")
+          throw new Error(apiMessage(payload, "Failed to check Personal Data Sheet(PDS) match."))
         }
         const payload = await response.json()
         if (!isMounted) return
@@ -328,32 +331,41 @@ function JobViewPage({ job, onBack, onApply, onRequireResume, jobSeekerProfile, 
         const normalizedMinimumScore = Number.isFinite(minimumScore) ? minimumScore : 50
         const normalizedRawScore = Number.isFinite(rawScore) ? rawScore : 0
         setResumeMatch({
+          matchKey,
+          analysis: payload?.analysis || null,
           status: "ready",
           score: normalizedRawScore,
-          qualifies: normalizedRawScore >= normalizedMinimumScore,
+          qualifies: normalizedRawScore >= normalizedMinimumScore && payload?.allowApplication === true,
           allowApplication: Boolean(payload?.allowApplication),
           minimumScore: normalizedMinimumScore,
-          message: ""
+          message: payload?.applicationBlockReason || ""
         })
       } catch (error) {
-        if (!isMounted || error?.name === "AbortError") return
+        if (!isMounted) return
         setResumeMatch({
+          matchKey,
+          analysis: null,
           status: "error",
           score: null,
           qualifies: false,
           allowApplication: false,
           minimumScore: 50,
-          message: error.message || "Failed to check Personal Data Sheet(PDS) match."
+          message: error?.name === "AbortError"
+            ? "Unable to verify Personal Data Sheet(PDS) match. Please try again later."
+            : error.message || "Failed to check Personal Data Sheet(PDS) match."
         })
+      } finally {
+        window.clearTimeout(timeoutId)
       }
     }
 
     fetchMatch()
     return () => {
       isMounted = false
+      window.clearTimeout(timeoutId)
       controller.abort()
     }
-  }, [job, jobSeekerId, jobSeekerResume])
+  }, [jobIdForMatch, jobTitleForMatch, jobSeekerId, resumeKeyForMatch, jobSeekerProfile, jobSeekerSupporting])
 
   const isApplyDisabled = isSubmitting
 
@@ -372,15 +384,16 @@ function JobViewPage({ job, onBack, onApply, onRequireResume, jobSeekerProfile, 
   const resumeMatchMinimumScore = Number(resumeMatch.minimumScore ?? 50)
   const resumeMatchScore = Number(resumeMatch.score ?? 0)
   const normalizedResumeMatchScore = Number.isFinite(resumeMatchScore) ? resumeMatchScore : 0
-  const resumeMatchQualified = resumeMatchReady && normalizedResumeMatchScore >= resumeMatchMinimumScore
+  const resumeMatchQualified = resumeMatchReady && resumeMatch.allowApplication && normalizedResumeMatchScore >= resumeMatchMinimumScore
   const resumeMatchError = resumeMatch.status === "error"
   const currentJobId = job?.id != null ? String(job.id) : ""
   const currentJobTitle = String(job?.title || "").trim().toLowerCase()
-  const hasAlreadyApplied = applications.some((item) => {
-    if (Number(item?.job_seeker_hidden || item?.jobSeekerHidden || 0) === 1) {
-      return false
-    }
-
+  const currentApplications = applications.filter((item) => (
+    Number(item?.job_seeker_hidden || item?.jobSeekerHidden || 0) !== 1
+    && String(item?.application_status || item?.applicationStatus || item?.evaluation_status || item?.evaluationStatus || "")
+      .trim().toLowerCase() !== "cancelled"
+  ))
+  const hasAlreadyApplied = currentApplications.some((item) => {
     const applicationJobId = item?.job_id ?? item?.jobId
     if (currentJobId && applicationJobId != null && String(applicationJobId) === currentJobId) {
       return true
@@ -390,38 +403,41 @@ function JobViewPage({ job, onBack, onApply, onRequireResume, jobSeekerProfile, 
       .trim()
       .toLowerCase() === currentJobTitle
   })
-  const modalApplyDisabled = isApplyDisabled || hasAlreadyApplied
+  const applicationLimitReached = currentApplications.length >= 3
+  const applicationLimitMessage = "You can only apply to 3 jobs."
+  const modalApplyDisabled = isApplyDisabled || hasAlreadyApplied || applicationLimitReached
   const applyBlockedByMatch = resumeMatchReady && !resumeMatchQualified
-  const applyGateDisabled = Boolean(hasAlreadyApplied || resumeMatchLoading || applyBlockedByMatch || resumeMatchError)
+  const positionsMany = Boolean(job?.positionsMany ?? job?.positions_many) || Number(job?.positionsTotal ?? job?.positions_total) === 0
+  const positionsTotal = positionsMany ? 0 : Number(job?.positionsTotal ?? job?.positions_total ?? 1)
+  const positionsFilled = Number(job?.positionsFilled ?? job?.positions_filled ?? 0)
+  const positionsAvailable = positionsMany
+    ? null
+    : Math.max(0, Number(job?.positionsAvailable ?? job?.positions_available ?? Math.max(1, positionsTotal) - positionsFilled))
+  const positionsFilledUp = !positionsMany && positionsAvailable <= 0
+  const positionsSlotsLabel = positionsMany
+    ? "No Limit"
+    : `${positionsAvailable} of ${Math.max(1, positionsTotal)} remaining`
+  const applyGateDisabled = Boolean(applicationLimitReached || hasAlreadyApplied || resumeMatchLoading || applyBlockedByMatch || resumeMatchError || positionsFilledUp)
   const skillItems = parseSkills(job?.requiredSkills || job?.required_skills || job?.required_skills_text || "")
 
-  useEffect(() => {
-    if (!job) return
-
-    let nextPopup = null
-    if (resumeMatch.status === "missing") {
-      nextPopup = {
-        type: "fail",
-        text: "No Personal Data Sheet(PDS) uploaded. Go to your Profile and upload your Personal Data Sheet(PDS)."
-      }
-    } else if (hasAlreadyApplied) {
-      nextPopup = { type: "fail", text: "You already applied to this job." }
-    } else if (resumeMatchReady) {
-      nextPopup = resumeMatchQualified
-        ? { type: "success", text: "Your Personal Data Sheet(PDS) matches this job well. You can apply now." }
-        : { type: "fail", text: "Your Personal Data Sheet(PDS) does not match this job enough to apply." }
-    } else if (resumeMatchError) {
-      nextPopup = { type: "fail", text: resumeMatch.message || "Unable to verify Personal Data Sheet(PDS) match. Please try again later." }
+  const requirements = buildJobRequirements(
+    job || {},
+    resumeMatch.matchKey === matchKey ? resumeMatch.analysis : null,
+    resumeMatch.matchKey === matchKey ? resumeMatch.status : "idle"
+  )
+  const skillsRequirementKey = requirements.find((item) => ["skills", "training"].includes(item.key))?.key
+  const requirementProps = (key, value) => {
+    const requirement = requirements.find((item) => item.key === key)
+    if (!requirement || !["missing", "incomplete"].includes(requirement.state)) return {}
+    if (key === "skills" && requirement.missing?.length && !requirement.missing.some(
+      (skill) => skill.toLowerCase() === String(value || "").trim().toLowerCase()
+    )) return {}
+    return {
+      className: "job-view-unmet",
+      title: `${requirement.label} requirement not met`,
+      "aria-label": `${value || requirement.requirement}. Requirement not met.`
     }
-
-    if (!nextPopup) return
-
-    const nextKey = `${job.title}|${resumeMatch.status}|${resumeMatch.qualifies}|${nextPopup.text}`
-    if (lastQualificationKeyRef.current === nextKey) return
-
-    lastQualificationKeyRef.current = nextKey
-    setQualificationPopup(nextPopup)
-  }, [job, hasAlreadyApplied, resumeMatch.status, resumeMatch.qualifies, resumeMatch.message, resumeMatchError, resumeMatchQualified, resumeMatchReady])
+  }
 
   if (!job) {
     return (
@@ -434,12 +450,6 @@ function JobViewPage({ job, onBack, onApply, onRequireResume, jobSeekerProfile, 
 
   return (
     <section className="job-view-page">
-      {qualificationPopup && (
-        <div className={`job-view-popup ${qualificationPopup.type}`}>
-          {qualificationPopup.text}
-        </div>
-      )}
-
       <div className="job-view-header">
         <button type="button" className="job-view-back" onClick={onBack}>←</button>
         <div className="job-view-header-text">
@@ -498,15 +508,19 @@ function JobViewPage({ job, onBack, onApply, onRequireResume, jobSeekerProfile, 
           </div>
           <div className="job-view-info-item">
             <span>Eligibility</span>
-            <strong>{job.eligibility || "-"}</strong>
+            <strong {...requirementProps("eligibility")}>{job.eligibility || "-"}</strong>
           </div>
           <div className="job-view-info-item">
             <span>Minimum Education</span>
-            <strong>{job.minimumEducation || "-"}</strong>
+            <strong {...requirementProps("education")}>{job.minimumEducation || job.minimum_education || "-"}</strong>
           </div>
           <div className="job-view-info-item">
             <span>Minimum Experience</span>
-            <strong>{formatExperienceYears(job.minimumExperienceYears)}</strong>
+            <strong {...requirementProps("experience")}>{formatExperienceYears(job.minimumExperienceYears ?? job.minimum_experience_years)}</strong>
+          </div>
+          <div className="job-view-info-item">
+            <span>Job Vacancy</span>
+            <strong>{positionsSlotsLabel}</strong>
           </div>
         </div>
 
@@ -519,9 +533,12 @@ function JobViewPage({ job, onBack, onApply, onRequireResume, jobSeekerProfile, 
           <h4>Required Skills</h4>
           {skillItems.length ? (
             <div className="job-view-skill-grid">
-              {skillItems.map((skill) => (
-                <span className="job-view-skill-pill" key={skill}>{skill}</span>
-              ))}
+              {skillItems.map((skill) => {
+                const props = requirementProps(skillsRequirementKey, skill)
+                return (
+                  <span {...props} className={`job-view-skill-pill ${props.className || ""}`.trim()} key={skill}>{skill}</span>
+                )
+              })}
             </div>
           ) : (
             <p>-</p>
@@ -545,8 +562,16 @@ function JobViewPage({ job, onBack, onApply, onRequireResume, jobSeekerProfile, 
                 setApplyGateNotice("You already applied to this job.")
                 return
               }
+              if (applicationLimitReached) {
+                setApplyGateNotice(applicationLimitMessage)
+                return
+              }
+              if (positionsFilledUp) {
+                setApplyGateNotice("All positions for this job posting are already filled.")
+                return
+              }
               if (applyBlockedByMatch) {
-                setApplyGateNotice("Your Personal Data Sheet(PDS) does not match this job enough to apply.")
+                setApplyGateNotice(resumeMatch.message || "Your Personal Data Sheet(PDS) does not match this job enough to apply.")
                 return
               }
               if (resumeMatchError) {
@@ -556,13 +581,8 @@ function JobViewPage({ job, onBack, onApply, onRequireResume, jobSeekerProfile, 
               setIsApplyModalOpen(true)
             }}
           >
-            {hasAlreadyApplied ? "Already Applied" : resumeMatchLoading ? "Checking match..." : applyBlockedByMatch ? "Lowly Qualified" : "Apply"}
+            {applicationLimitReached ? "Limit Reached" : hasAlreadyApplied ? "Already Applied" : positionsFilledUp ? "No Vacancies Available" : applyBlockedByMatch ? "Not Qualified" : "Apply"}
           </button>
-          {applyGateNotice && (
-            <p className="job-view-apply-notice">
-              {applyGateNotice}
-            </p>
-          )}
         </div>
       )}
 
@@ -851,7 +871,6 @@ function JobViewPage({ job, onBack, onApply, onRequireResume, jobSeekerProfile, 
             )}
 
 
-            {applyNotice && <div className="toast toast-fail">{applyNotice}</div>}
 
             <div className="modal-actions">
               <button
@@ -900,11 +919,15 @@ function JobViewPage({ job, onBack, onApply, onRequireResume, jobSeekerProfile, 
                   }
 
                   if (!resumeMatchQualified) {
-                    setApplyNotice("Your Personal Data Sheet(PDS) does not match this job enough to apply.")
+                    setApplyNotice(resumeMatch.message || "Your Personal Data Sheet(PDS) does not match this job enough to apply.")
                     return
                   }
                   if (hasAlreadyApplied) {
                     setApplyNotice("You already applied to this job.")
+                    return
+                  }
+                  if (applicationLimitReached) {
+                    setApplyNotice(applicationLimitMessage)
                     return
                   }
                   setApplyNotice("")
@@ -959,7 +982,7 @@ function JobViewPage({ job, onBack, onApply, onRequireResume, jobSeekerProfile, 
                     } else {
                       setInvalidSupportingDetails([])
                     }
-                    setApplyNotice(result?.message || "Failed to submit application.")
+                    setApplyNotice(apiMessage(result, "Failed to submit application."))
                   }
                   setIsSubmitting(false)
                 }}

@@ -17,7 +17,9 @@ use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 use Illuminate\Http\UploadedFile;
 use Illuminate\Support\Facades\Hash;
+use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Storage;
+use Illuminate\Support\Facades\Validator;
 use Illuminate\Support\Str;
 
 class JobSeekerController extends Controller
@@ -33,6 +35,10 @@ class JobSeekerController extends Controller
     {
         $jobSeekers = JobSeeker::query()
             ->with(['educations', 'experiences'])
+            ->withExists([
+                'uploads as has_recruitment_records' => fn ($query) => $query->recruitmentRecords(),
+                'supportingFiles as has_linked_supporting_records' => fn ($query) => $query->whereNotNull('upload_id'),
+            ])
             ->orderBy('id')
             ->get()
             ->map(fn (JobSeeker $jobSeeker) => $this->serializeJobSeeker($jobSeeker));
@@ -125,35 +131,40 @@ class JobSeekerController extends Controller
 
     public function destroy(Request $request, int $id): JsonResponse
     {
-        $jobSeeker = JobSeeker::query()
-            ->with(['educations', 'experiences'])
-            ->findOrFail($id);
-        $serialized = $this->serializeJobSeeker($jobSeeker, true);
-        $serialized['password'] = $jobSeeker->password;
+        return DB::transaction(function () use ($request, $id) {
+            $jobSeeker = JobSeeker::query()
+                ->with(['educations', 'experiences'])
+                ->lockForUpdate()
+                ->findOrFail($id);
+            if ($jobSeeker->hasRecruitmentRecords(true)) {
+                return response()->json([
+                    'message' => JobSeeker::DELETION_BLOCK_REASON,
+                    'code' => 'APPLICANT_HAS_LINKED_RECORDS',
+                ], 409);
+            }
 
-        Archive::create([
-            'record_type' => 'job_seeker',
-            'record_id' => $jobSeeker->id,
-            'title' => $jobSeeker->full_name,
-            'subtitle' => $jobSeeker->email,
-            'data' => $serialized,
-            ...Archive::actorFromRequest($request),
-            'deleted_at' => now(),
-        ]);
+            $serialized = $this->serializeJobSeeker($jobSeeker, true);
+            $serialized['password'] = $jobSeeker->password;
+            Archive::create([
+                'record_type' => 'job_seeker',
+                'record_id' => $jobSeeker->id,
+                'title' => $jobSeeker->full_name,
+                'subtitle' => $jobSeeker->email,
+                'data' => $serialized,
+                ...Archive::actorFromRequest($request),
+                'deleted_at' => now(),
+            ]);
+            $jobSeeker->delete();
 
-        ActivityLog::record('job_seeker.deleted', "Deleted job seeker account for {$jobSeeker->full_name}.", $request, [
-            'subject_type' => 'job_seeker',
-            'subject_id' => $jobSeeker->id,
-            'subject_name' => $jobSeeker->full_name,
-            'metadata' => [
-                'email' => $jobSeeker->email,
-                'record' => $serialized,
-            ],
-        ]);
+            ActivityLog::record('job_seeker.deleted', "Deleted job seeker account for {$jobSeeker->full_name}.", $request, [
+                'subject_type' => 'job_seeker',
+                'subject_id' => $jobSeeker->id,
+                'subject_name' => $jobSeeker->full_name,
+                'metadata' => ['email' => $jobSeeker->email, 'record' => $serialized],
+            ]);
 
-        $jobSeeker->delete();
-
-        return response()->json(['message' => 'Job seeker deleted successfully.']);
+            return response()->json(['message' => 'Job seeker deleted successfully.']);
+        });
     }
 
     public function resume(Request $request, int $id): JsonResponse
@@ -194,7 +205,7 @@ class JobSeekerController extends Controller
             );
         } catch (\RuntimeException $exception) {
             $analysis = [
-                'classification' => 'Lowly Qualified',
+                'classification' => 'Not Qualified',
                 'overall_score' => 0,
                 'skills_match_score' => 0,
                 'project_score' => 0,
@@ -330,6 +341,8 @@ class JobSeekerController extends Controller
             'matchScore' => $analysis['overall_score'],
             'minimumScore' => $analysis['application_minimum_score'] ?? 50,
             'allowApplication' => ($analysis['allow_application'] ?? false) === true,
+            'experienceRequirementMet' => $analysis['experience_requirement_met'] ?? true,
+            'applicationBlockReason' => $analysis['application_block_reason'] ?? '',
             'previewText' => $analysis['preview_text'],
             'analysis' => $analysis,
         ]);
@@ -373,7 +386,10 @@ class JobSeekerController extends Controller
                 'score' => $analysis['overall_score'],
                 'minimumScore' => $analysis['application_minimum_score'] ?? 50,
                 'allowApplication' => ($analysis['allow_application'] ?? false) === true,
-                'qualifies' => $analysis['overall_score'] >= ($analysis['application_minimum_score'] ?? 50),
+                'qualifies' => ($analysis['allow_application'] ?? false) === true
+                    && $analysis['overall_score'] >= ($analysis['application_minimum_score'] ?? 50),
+                'experienceRequirementMet' => $analysis['experience_requirement_met'] ?? true,
+                'applicationBlockReason' => $analysis['application_block_reason'] ?? '',
             ];
         }
 
@@ -575,13 +591,7 @@ class JobSeekerController extends Controller
     public function storeExperience(Request $request, int $id): JsonResponse
     {
         $jobSeeker = JobSeeker::findOrFail($id);
-        $data = $request->validate([
-            'company_name' => ['nullable', 'string', 'max:255'],
-            'position' => ['nullable', 'string', 'max:255'],
-            'start_date' => ['nullable', 'string', 'max:40'],
-            'end_date' => ['nullable', 'string', 'max:40'],
-            'description' => ['nullable', 'string'],
-        ]);
+        $data = $this->validateExperience($request);
 
         $experience = $jobSeeker->experiences()->create($data);
         ActivityLog::record('profile.experience_created', "Added experience for {$jobSeeker->full_name}.", $request, [
@@ -601,13 +611,7 @@ class JobSeekerController extends Controller
         $experience = Experience::query()->where('job_seeker_id', $id)->where('id', $experienceId)->firstOrFail();
         $jobSeeker = JobSeeker::findOrFail($id);
         $before = $this->serializeExperience($experience);
-        $data = $request->validate([
-            'company_name' => ['nullable', 'string', 'max:255'],
-            'position' => ['nullable', 'string', 'max:255'],
-            'start_date' => ['nullable', 'string', 'max:40'],
-            'end_date' => ['nullable', 'string', 'max:40'],
-            'description' => ['nullable', 'string'],
-        ]);
+        $data = $this->validateExperience($request, $experience);
 
         $experience->update($data);
         ActivityLog::record('profile.experience_updated', "Updated experience for {$jobSeeker->full_name}.", $request, [
@@ -621,6 +625,44 @@ class JobSeekerController extends Controller
         ]);
 
         return response()->json($this->serializeExperience($experience));
+    }
+
+    private function validateExperience(Request $request, ?Experience $experience = null): array
+    {
+        $data = $request->validate([
+            'company_name' => ['nullable', 'string', 'max:255'],
+            'position' => ['nullable', 'string', 'max:255'],
+            'start_date' => ['nullable', 'string', 'max:40'],
+            'end_date' => ['nullable', 'string', 'max:40'],
+            'description' => ['nullable', 'string'],
+            'skills' => ['nullable', 'array', 'max:100'],
+            'skills.*' => ['required', 'string', 'max:100'],
+        ]);
+
+        if (array_key_exists('skills', $data)) {
+            $data['skills'] = Experience::normalizeSkills($data['skills'] ?? []);
+        }
+
+        $values = array_replace($experience?->only(['start_date', 'end_date', 'description']) ?? [], $data);
+        if (!$this->isTrainingProfileExperience((string) ($values['description'] ?? ''))) {
+            $today = now('Asia/Manila')->toDateString();
+            $endDateRules = ['bail', 'required', 'date_format:Y-m-d', 'before_or_equal:'.$today];
+            if (!empty($values['start_date'])) {
+                $endDateRules[] = 'after_or_equal:start_date';
+            }
+            Validator::make($values, [
+                'start_date' => ['bail', 'nullable', 'date_format:Y-m-d', 'before_or_equal:'.$today],
+                'end_date' => $endDateRules,
+            ], [
+                'start_date.before_or_equal' => 'Experience start date cannot be in the future.',
+                'end_date.required' => 'Select the experience end date.',
+                'end_date.date_format' => 'Experience end date must be a valid date.',
+                'end_date.before_or_equal' => 'Experience end date cannot be in the future.',
+                'end_date.after_or_equal' => 'Experience end date cannot be earlier than start date.',
+            ])->validate();
+        }
+
+        return $data;
     }
 
     public function deleteExperience(Request $request, int $id, int $experienceId): JsonResponse
@@ -655,8 +697,11 @@ class JobSeekerController extends Controller
 
     private function serializeJobSeeker(JobSeeker $jobSeeker, bool $includeMeta = false): array
     {
+        $deletionBlocked = $jobSeeker->hasRecruitmentRecords();
         $base = [
             'id' => $jobSeeker->id,
+            'can_delete' => !$deletionBlocked,
+            'deletion_block_reason' => $deletionBlocked ? JobSeeker::DELETION_BLOCK_REASON : null,
             'id_number' => $jobSeeker->id_number,
             'idNumber' => $jobSeeker->id_number,
             'full_name' => $jobSeeker->full_name,
@@ -670,6 +715,7 @@ class JobSeekerController extends Controller
             'address' => $jobSeeker->address,
             'about_text' => $jobSeeker->about_text,
             'aboutText' => $jobSeeker->about_text,
+            'skills' => $jobSeeker->combinedSkills(),
             'created_at' => $jobSeeker->created_at?->toISOString(),
             'createdAt' => $jobSeeker->created_at?->toISOString(),
             'updated_at' => $jobSeeker->updated_at?->toISOString(),
@@ -802,6 +848,7 @@ class JobSeekerController extends Controller
             'end_date' => $experience->end_date,
             'endDate' => $experience->end_date,
             'description' => $experience->description,
+            'skills' => $experience->skills ?? [],
             'title' => $experience->position,
             'year' => trim(implode(' - ', array_filter([$experience->start_date, $experience->end_date]))),
         ];
@@ -885,6 +932,10 @@ class JobSeekerController extends Controller
         if ($eligibilityLines) {
             $sections[] = "PROFILE ELIGIBILITY (PRIMARY SOURCE)\n".implode("\n", $eligibilityLines);
         }
+        $skills = $jobSeeker->combinedSkills();
+        if ($skills) {
+            $sections[] = "PROFILE SKILLS (PRIMARY SOURCE)\n".implode("\n", $skills);
+        }
 
         return [
             'text' => trim(implode("\n\n", $sections)),
@@ -892,6 +943,7 @@ class JobSeekerController extends Controller
             'experience_lines' => $workLines,
             'training_lines' => $trainingLines,
             'eligibility_lines' => $eligibilityLines,
+            'skills' => $skills,
         ];
     }
 

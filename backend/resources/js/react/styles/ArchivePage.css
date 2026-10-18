@@ -218,9 +218,9 @@
 }
 
 .archive-pagination {
-  display: flex;
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto minmax(0, 1fr);
   align-items: center;
-  justify-content: space-between;
   gap: 14px;
   margin-top: 16px;
 }
@@ -228,6 +228,7 @@
 .archive-page-controls {
   display: flex;
   align-items: center;
+  justify-content: center;
   gap: 10px;
   color: #516079;
   font-size: 13px;
@@ -274,13 +275,11 @@
     width: 100%;
   }
 
-  .archive-pagination,
-  .archive-page-controls {
-    align-items: stretch;
-    flex-direction: column;
+  .archive-pagination {
+    grid-template-columns: 1fr;
   }
 
-  .archive-page-btn {
-    width: 100%;
+  .archive-page-controls {
+    flex-wrap: wrap;
   }
 }

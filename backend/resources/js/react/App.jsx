@@ -1,3 +1,4 @@
+import { apiMessage, notify as showDeleteToast } from "./utils/toasts"
 import React from 'react'
 // React imports
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
@@ -18,6 +19,9 @@ import HelpPage from './pages/HelpPage'
 import ArchivePage from './pages/ArchivePage'
 import CustomDropdown from './components/CustomDropdown'
 import { getArchiveActorHeaders } from './utils/archiveActor'
+import { getNotificationExpiresAt, isNotificationActive } from './utils/notifications'
+import { useToastState } from './utils/useToastState'
+import { canManageRatings } from './utils/ratingPermissions'
 import profileIcon from './assets/circle-user-solid-full.svg'
 import bellIcon from './assets/bell-solid-full.svg'
 import brandLogo from './assets/Logo.png'
@@ -234,6 +238,7 @@ function normalizeExperienceItem(item = {}) {
     position: item?.position || item?.title || "",
     startDate: item?.startDate || item?.start_date || "",
     endDate: item?.endDate || item?.end_date || "",
+    skills: Array.isArray(item?.skills) ? item.skills : [],
     description: item?.description || "",
   }
 }
@@ -378,6 +383,7 @@ function normalizeJobSeekerProfile(payload) {
     createdAt: source.createdAt || source.created_at || payload?.createdAt || payload?.created_at || null,
     education: Array.isArray(educationSource) ? educationSource.map(normalizeEducationItem) : [],
     experience: Array.isArray(experienceSource) ? experienceSource.map(normalizeExperienceItem) : [],
+    skills: Array.isArray(source.skills) ? source.skills : [],
   }
 }
 
@@ -422,6 +428,15 @@ function isApplicationHiddenFromJobSeeker(item) {
   return Number(item?.job_seeker_hidden || item?.jobSeekerHidden || 0) === 1
 }
 
+function LoadingIndicator({ label = "Loading", compact = false }) {
+  return (
+    <div className={`loading-indicator ${compact ? "loading-indicator-compact" : ""}`} role="status" aria-live="polite">
+      <span className="loading-spinner" aria-hidden="true" />
+      <span>{label}</span>
+    </div>
+  )
+}
+
 function App() {
   const initialEmailVerificationStatus =
     window.location.pathname === "/job-seeker/email-verification"
@@ -436,7 +451,7 @@ function App() {
   const [email, setEmail] = useState("")
   const [phone, setPhone] = useState("")
   // Stores user-facing status text (success, failure, validation errors).
-  const [message, setMessage] = useState("")
+  const [message, setMessage] = useToastState("")
   // Controls upload modal visibility.
   const [isUploadModalOpen, setIsUploadModalOpen] = useState(false)
   // Keeps upload records returned by GET /uploads.
@@ -445,6 +460,9 @@ function App() {
   const [registeredJobSeekers, setRegisteredJobSeekers] = useState([])
   const [activityLogs, setActivityLogs] = useState([])
   const [isLoadingUploads, setIsLoadingUploads] = useState(false)
+  const [isLoadingJobPosts, setIsLoadingJobPosts] = useState(false)
+  const [isLoadingRegisteredJobSeekers, setIsLoadingRegisteredJobSeekers] = useState(false)
+  const [isLoadingActivityLogs, setIsLoadingActivityLogs] = useState(false)
   const [searchTerm, setSearchTerm] = useState("")
   const [sortConfig, setSortConfig] = useState({ key: "date", direction: "asc" })
   const [showTopApplicants, setShowTopApplicants] = useState(false)
@@ -466,7 +484,8 @@ function App() {
       return null
     }
   })
-  const [loginError, setLoginError] = useState("")
+  const [loginError, setLoginError] = useToastState("", "error")
+  const [isLoggingIn, setIsLoggingIn] = useState(false)
   const [rememberMe, setRememberMe] = useState(false)
   const [loginMode, setLoginMode] = useState(() => localStorage.getItem("loginMode") || "staff")
   const [isRegistering, setIsRegistering] = useState(false)
@@ -522,8 +541,9 @@ function App() {
   const [registerPhone, setRegisterPhone] = useState("")
   const [registerPassword, setRegisterPassword] = useState("")
   const [registerConfirmPassword, setRegisterConfirmPassword] = useState("")
-  const [registerError, setRegisterError] = useState("")
-  const [registerNotice, setRegisterNotice] = useState("")
+  const [registerError, setRegisterError] = useToastState("", "error")
+  const [registerNotice, setRegisterNotice] = useToastState("", "success")
+  const [isSubmittingRegistration, setIsSubmittingRegistration] = useState(false)
   const [verificationEmail, setVerificationEmail] = useState("")
   const [emailVerificationStatus, setEmailVerificationStatus] = useState(initialEmailVerificationStatus)
   const [isEmailVerificationVisible, setIsEmailVerificationVisible] = useState(Boolean(initialEmailVerificationStatus))
@@ -540,20 +560,20 @@ function App() {
   const [notificationPage, setNotificationPage] = useState(1)
   const [adminNotificationPage, setAdminNotificationPage] = useState(1)
   const [readNotificationIds, setReadNotificationIds] = useState([])
-  const [deletedNotificationIds, setDeletedNotificationIds] = useState([])
+  const [notificationNow, setNotificationNow] = useState(Date.now)
   const [selectedJobView, setSelectedJobView] = useState(null)
   const [confirmDeleteId, setConfirmDeleteId] = useState(null)
   const [confirmDeleteContext, setConfirmDeleteContext] = useState("application")
   const [confirmStatusAction, setConfirmStatusAction] = useState(null)
-  const [deleteToast, setDeleteToast] = useState(null)
-  const deleteToastTimerRef = useRef(null)
   const [summaryItem, setSummaryItem] = useState(null)
   const [summarySupportingFiles, setSummarySupportingFiles] = useState([])
-  const [summarySupportingError, setSummarySupportingError] = useState("")
+  const [summarySupportingError, setSummarySupportingError] = useToastState("", "error")
   const [resumeAttention, setResumeAttention] = useState(false)
   const [activeJobSeekerPageIntro, setActiveJobSeekerPageIntro] = useState(null)
+  const [isCheckingSession, setIsCheckingSession] = useState(() => localStorage.getItem("isAuthenticated") === "true")
   const summaryRef = useRef(null)
   const pageRef = useRef(null)
+  const notificationsRef = useRef(null)
   const isHandlingPopState = useRef(false)
   const hasCheckedServerSession = useRef(false)
   const isEmployer = userRole === "employer"
@@ -701,28 +721,6 @@ function App() {
     setLandingSectionTarget(sectionId)
   }, [])
 
-  const showDeleteToast = useCallback((message, type = "success", duration = 2600) => {
-    if (deleteToastTimerRef.current) {
-      window.clearTimeout(deleteToastTimerRef.current)
-      deleteToastTimerRef.current = null
-    }
-    setDeleteToast({ message, type })
-    if (duration > 0) {
-      deleteToastTimerRef.current = window.setTimeout(() => {
-        setDeleteToast(null)
-        deleteToastTimerRef.current = null
-      }, duration)
-    }
-  }, [])
-
-  useEffect(() => {
-    return () => {
-      if (deleteToastTimerRef.current) {
-        window.clearTimeout(deleteToastTimerRef.current)
-      }
-    }
-  }, [])
-
   const requestResumeAttention = useCallback(() => {
     setResumeAttention(true)
     setActivePage("profile")
@@ -824,14 +822,6 @@ function App() {
     return `readNotifications:${userRole || "user"}`
   }, [isAuthenticated, isJobSeeker, jobSeekerId, jobSeekerProfile?.email, userRole])
 
-  const deletedNotificationStorageKey = useMemo(() => {
-    if (!isAuthenticated) return null
-    if (isJobSeeker) {
-      return `deletedNotifications:jobseeker:${jobSeekerId || jobSeekerProfile?.email || "unknown"}`
-    }
-    return `deletedNotifications:${userRole || "user"}`
-  }, [isAuthenticated, isJobSeeker, jobSeekerId, jobSeekerProfile?.email, userRole])
-
   useEffect(() => {
     if (!notificationStorageKey) return
     const stored = localStorage.getItem(notificationStorageKey)
@@ -847,34 +837,12 @@ function App() {
     }
   }, [notificationStorageKey])
 
-  useEffect(() => {
-    if (!deletedNotificationStorageKey) return
-    const stored = localStorage.getItem(deletedNotificationStorageKey)
-    if (!stored) {
-      setDeletedNotificationIds([])
-      return
-    }
-    try {
-      const parsed = JSON.parse(stored)
-      setDeletedNotificationIds(Array.isArray(parsed) ? parsed : [])
-    } catch {
-      setDeletedNotificationIds([])
-    }
-  }, [deletedNotificationStorageKey])
-
   const markNotificationsRead = useCallback((ids) => {
     if (!notificationStorageKey || !ids.length) return
     const next = Array.from(new Set([...readNotificationIds, ...ids]))
     setReadNotificationIds(next)
     localStorage.setItem(notificationStorageKey, JSON.stringify(next))
   }, [notificationStorageKey, readNotificationIds])
-
-  const deleteNotification = useCallback((id) => {
-    if (!deletedNotificationStorageKey || id == null) return
-    const next = Array.from(new Set([...deletedNotificationIds, id]))
-    setDeletedNotificationIds(next)
-    localStorage.setItem(deletedNotificationStorageKey, JSON.stringify(next))
-  }, [deletedNotificationStorageKey, deletedNotificationIds])
 
   useEffect(() => {
     if (!uploadStatus) return
@@ -888,6 +856,7 @@ function App() {
   const showUploadNotice = (status, notice) => {
     setUploadStatus(status)
     setUploadNotice(notice)
+    showDeleteToast(notice, status)
   }
 
   // Fetch all upload records
@@ -911,7 +880,10 @@ function App() {
     }
   }, [])
 
-  const fetchJobPosts = async () => {
+  const fetchJobPosts = useCallback(async ({ silent = false } = {}) => {
+    if (!silent) {
+      setIsLoadingJobPosts(true)
+    }
     try {
       const response = await fetch("http://localhost:5000/jobs")
       if (!response.ok) {
@@ -921,15 +893,22 @@ function App() {
       setJobPosts(Array.isArray(data) ? data : [])
     } catch (error) {
       setMessage("Could not load job posts.")
+    } finally {
+      if (!silent) {
+        setIsLoadingJobPosts(false)
+      }
     }
-  }
+  }, [])
 
-  const fetchRegisteredJobSeekers = async () => {
+  const fetchRegisteredJobSeekers = useCallback(async ({ silent = false } = {}) => {
     if (isJobSeeker) {
       setRegisteredJobSeekers([])
       return
     }
 
+    if (!silent) {
+      setIsLoadingRegisteredJobSeekers(true)
+    }
     try {
       const response = await fetch("http://localhost:5000/job-seekers/all")
       if (!response.ok) {
@@ -939,15 +918,22 @@ function App() {
       setRegisteredJobSeekers(Array.isArray(data) ? data : [])
     } catch (error) {
       setRegisteredJobSeekers([])
+    } finally {
+      if (!silent) {
+        setIsLoadingRegisteredJobSeekers(false)
+      }
     }
-  }
+  }, [isJobSeeker])
 
-  const fetchActivityLogs = useCallback(async () => {
+  const fetchActivityLogs = useCallback(async ({ silent = false } = {}) => {
     if (!isAuthenticated || isJobSeeker) {
       setActivityLogs([])
       return []
     }
 
+    if (!silent) {
+      setIsLoadingActivityLogs(true)
+    }
     try {
       const response = await fetch("/api/activity-logs")
       if (!response.ok) {
@@ -960,6 +946,10 @@ function App() {
     } catch (error) {
       setActivityLogs([])
       return []
+    } finally {
+      if (!silent) {
+        setIsLoadingActivityLogs(false)
+      }
     }
   }, [isAuthenticated, isJobSeeker])
 
@@ -1033,7 +1023,7 @@ function App() {
       fetchRegisteredJobSeekers()
       fetchActivityLogs()
     }
-  }, [fetchActivityLogs, isAuthenticated])
+  }, [fetchActivityLogs, fetchJobPosts, fetchRegisteredJobSeekers, fetchUploads, isAuthenticated])
 
   useEffect(() => {
     if (!isAuthenticated || !isJobSeeker) return undefined
@@ -1115,7 +1105,10 @@ function App() {
   }, [activePage, canAccessPage, currentUser, isAuthenticated, userRole])
 
   useEffect(() => {
-    const closeActions = () => {
+    const closeActions = (event) => {
+      if (notificationsRef.current?.contains(event.target)) {
+        return
+      }
       setActionsMenu(null)
       setIsProfileMenuOpen(false)
       setIsAppliedJobOpen(false)
@@ -1183,6 +1176,8 @@ function App() {
 
   const handleLogin = async (e) => {
     e.preventDefault()
+    if (isLoggingIn) return
+    setIsLoggingIn(true)
     try {
       const normalizedMode = loginMode === "jobseeker" ? "jobseeker" : "staff"
       const isJobSeekerLogin = normalizedMode === "jobseeker"
@@ -1207,12 +1202,8 @@ function App() {
       })
       if (!response.ok) {
         const payload = await response.json().catch(() => null)
-        const firstError =
-          payload?.errors?.identifier?.[0] ||
-          payload?.errors?.email?.[0] ||
-          payload?.errors?.password?.[0]
         setLoginPassword("")
-        throw new Error(payload?.message || firstError || "Invalid personnel credentials.")
+        throw new Error(apiMessage(payload, "Invalid personnel credentials."))
       }
       const payload = await response.json().catch(() => null)
       if (isJobSeekerLogin) {
@@ -1224,18 +1215,23 @@ function App() {
           ...payload,
           role: "jobseeker",
         })
+        showDeleteToast("Signed in successfully.", "success")
         return
       }
 
       setLoginPassword("")
       applyAuthenticatedSession(payload)
+      showDeleteToast("Signed in successfully.", "success")
     } catch (err) {
-      setLoginError(err.message || "Invalid personnel credentials.")
+      setLoginError(apiMessage(err, "Invalid personnel credentials."))
+    } finally {
+      setIsLoggingIn(false)
     }
   }
 
   const handleRegister = async (e) => {
     e.preventDefault()
+    if (isSubmittingRegistration) return
     if (!registerFullName.trim() || !registerEmail.trim() || !registerPassword.trim()) {
       setRegisterError("Please fill in all fields.")
       return
@@ -1249,6 +1245,7 @@ function App() {
       return
     }
     setRegisterError("")
+    setIsSubmittingRegistration(true)
     try {
       const response = await fetch("/api/job-seekers/register", {
         method: "POST",
@@ -1266,11 +1263,7 @@ function App() {
       })
       if (!response.ok) {
         const payload = await response.json().catch(() => null)
-        const firstError =
-          payload?.errors?.name?.[0] ||
-          payload?.errors?.email?.[0] ||
-          payload?.errors?.password?.[0]
-        throw new Error(firstError || payload?.message || "Registration failed.")
+        throw new Error(apiMessage(payload, "Registration failed."))
       }
       setRegisterFullName("")
       setRegisterEmail("")
@@ -1300,11 +1293,14 @@ function App() {
       setVerificationEmail(newJobSeekerEmail)
       setEmailVerificationStatus("pending")
       setIsEmailVerificationVisible(true)
+      setRegisterNotice("Account created. Check your email to verify your account.")
       setIsRegistering(false)
       setIsViewingLanding(false)
     } catch (err) {
       setRegisterNotice("")
-      setRegisterError(err.message || "Registration failed.")
+      setRegisterError(apiMessage(err, "Registration failed."))
+    } finally {
+      setIsSubmittingRegistration(false)
     }
   }
 
@@ -1342,15 +1338,24 @@ function App() {
     setIsRegistering(false)
     setIsViewingLanding(false)
     setLandingSectionTarget("")
+    setIsCheckingSession(false)
   }, [])
 
   useEffect(() => {
     if (hasCheckedServerSession.current) return
     hasCheckedServerSession.current = true
-    if (!isAuthenticated) return
+    if (!isAuthenticated) {
+      setIsCheckingSession(false)
+      return
+    }
 
     let cancelled = false
+    let controller = null
+    let timeoutId = null
     const verifyServerSession = async () => {
+      setIsCheckingSession(true)
+      controller = new AbortController()
+      timeoutId = window.setTimeout(() => controller.abort(), 8000)
       try {
         const response = await fetch("/api/auth/session", {
           method: "GET",
@@ -1358,6 +1363,7 @@ function App() {
             "Accept": "application/json",
           },
           credentials: "same-origin",
+          signal: controller.signal,
         })
         const payload = await response.json().catch(() => null)
         if (cancelled) return
@@ -1372,6 +1378,11 @@ function App() {
         if (!cancelled) {
           await handleLogout()
         }
+      } finally {
+        if (timeoutId) {
+          window.clearTimeout(timeoutId)
+        }
+        if (!cancelled) setIsCheckingSession(false)
       }
     }
 
@@ -1379,8 +1390,22 @@ function App() {
 
     return () => {
       cancelled = true
+      hasCheckedServerSession.current = false
+      controller?.abort()
+      if (timeoutId) {
+        window.clearTimeout(timeoutId)
+      }
+      setIsCheckingSession(false)
     }
   }, [applyAuthenticatedSession, handleLogout, isAuthenticated])
+
+  useEffect(() => {
+    if (!isCheckingSession) return undefined
+    const timeoutId = window.setTimeout(() => {
+      setIsCheckingSession(false)
+    }, 9000)
+    return () => window.clearTimeout(timeoutId)
+  }, [isCheckingSession])
 
   useEffect(() => {
     if (!isAuthenticated) return
@@ -1684,7 +1709,7 @@ function App() {
         fetchActivityLogs()
       } else {
         const payload = await response.json().catch(() => null)
-        showUploadNotice("fail", payload?.message || "Failed to add applicant.")
+        showUploadNotice("fail", apiMessage(payload, "Failed to add applicant."))
       }
     } catch (error) {
       // Handles network/server errors where fetch throws before a response exists.
@@ -1770,7 +1795,7 @@ function App() {
 
       if (!response.ok) {
         const payload = await response.json().catch(() => null)
-        const message = payload?.message || "Failed to submit application."
+        const message = apiMessage(payload, "Failed to submit application.")
         showUploadNotice("fail", message)
         return { ok: false, message, invalidSupporting: payload?.invalidSupporting || [] }
       }
@@ -1802,13 +1827,11 @@ function App() {
 
       // Update UI immediately so Jobs modal/Applications table refresh without waiting for refetch.
       setUploads((prev) => prev.filter((item) => item.id !== id))
-      setMessage("Upload record deleted.")
       showDeleteToast("Delete successful.", "success")
       fetchUploads({ silent: true })
       fetchActivityLogs()
       return true
     } catch (error) {
-      setMessage("Error deleting record.")
       showDeleteToast("Failed to delete record.", "fail")
       return false
     }
@@ -1837,12 +1860,10 @@ function App() {
           }
           : item
       )))
-      setMessage("Application hidden.")
       showDeleteToast("Application deleted.", "success")
       fetchActivityLogs()
       return true
     } catch (error) {
-      setMessage("Error hiding application.")
       showDeleteToast("Failed to hide application.", "fail")
       return false
     }
@@ -1862,7 +1883,7 @@ function App() {
       })
       const payload = await response.json().catch(() => null)
       if (!response.ok) {
-        throw new Error(payload?.message || "Failed to update application status.")
+        throw new Error(apiMessage(payload, "Failed to update application status."))
       }
       setUploads((prev) => prev.map((upload) => (
         upload.id === item.id ? { ...upload, ...payload } : upload
@@ -1876,9 +1897,12 @@ function App() {
             : status === "rejected"
               ? "Application rejected."
               : "Application status updated."
-        showDeleteToast(notice, status === "rejected" ? "fail" : "success")
+        showDeleteToast(notice, "success")
       }
       await fetchUploads({ silent: true })
+      if (status === "hired" || getApplicationStatus(item) === "hired") {
+        await fetchJobPosts({ silent: true })
+      }
       await fetchActivityLogs()
       return payload
     } catch (error) {
@@ -1917,17 +1941,17 @@ function App() {
       const payload = await response.json().catch(() => null)
 
       if (!response.ok || !payload?.upload) {
-        setUploadStatus("fail")
+        showUploadNotice("fail", apiMessage(payload, "Failed to reanalyze application."))
         return
       }
 
       const updated = payload.upload
       setUploads((prev) => prev.map((item) => (item.id === updated.id ? updated : item)))
       setViewItem(updated)
-      setUploadStatus("success")
+      showUploadNotice("success", "Application reanalyzed successfully.")
       await fetchActivityLogs()
     } catch (error) {
-      setUploadStatus("fail")
+      showUploadNotice("fail", error.message || "Failed to reanalyze application.")
     }
   }
 
@@ -1946,6 +1970,42 @@ function App() {
         jobTitle: item.applied_job_title || item.matched_job_title || "-"
       }
     })
+  }
+
+  const exportApplicationsSummary = async () => {
+    if (!canManageRatings(currentUser)) return
+    try {
+      const response = await fetch("/api/uploads/summary/export", {
+        headers: getArchiveActorHeaders(currentUser || { name: loginEmail, email: loginEmail, role: userRole })
+      })
+      const blob = await response.blob()
+      if (!response.ok) {
+        const message = await blob.text().then((text) => {
+          try {
+            return JSON.parse(text)?.message
+          } catch {
+            return null
+          }
+        }).catch(() => null)
+        throw new Error(message || "Failed to export applications summary.")
+      }
+
+      const disposition = response.headers.get("content-disposition") || ""
+      const filenameMatch = disposition.match(/filename="?([^"]+)"?/i)
+      const filename = filenameMatch?.[1] || "applications-summary.xls"
+      const url = window.URL.createObjectURL(blob)
+      const link = document.createElement("a")
+      link.href = url
+      link.download = filename
+      document.body.appendChild(link)
+      link.click()
+      link.remove()
+      window.URL.revokeObjectURL(url)
+      showDeleteToast("Applications summary exported successfully.", "success")
+      await fetchActivityLogs()
+    } catch (error) {
+      showDeleteToast(error.message || "Failed to export applications summary.", "fail")
+    }
   }
 
   const toggleSort = (key) => {
@@ -2249,6 +2309,12 @@ function App() {
   const getClassificationClass = (value) =>
     String(value || "").toLowerCase().replace(/\s+/g, "-")
 
+  const getClassificationLabel = (value, fallback = "-") => {
+    const label = String(value || "").trim()
+    if (!label) return fallback
+    return label.toLowerCase().includes("lowly") ? "Not Qualified" : label
+  }
+
   const getApplicationStatus = (item) => {
     const status = String(item?.application_status || item?.applicationStatus || item?.evaluation_status || item?.evaluationStatus || "")
       .trim()
@@ -2290,9 +2356,26 @@ function App() {
     })
   }, [uploads, isJobSeeker, jobSeekerProfile, resolvedJobSeekerId])
 
+  useEffect(() => {
+    const refreshNotificationTime = () => setNotificationNow(Date.now())
+    const nextExpiry = uploads.reduce((earliest, item) => {
+      const expiresAt = getNotificationExpiresAt(item)
+      return expiresAt > notificationNow ? Math.min(earliest, expiresAt) : earliest
+    }, Infinity)
+    const timer = Number.isFinite(nextExpiry)
+      ? window.setTimeout(refreshNotificationTime, Math.max(0, nextExpiry - Date.now()))
+      : null
+
+    window.addEventListener("focus", refreshNotificationTime)
+    return () => {
+      if (timer !== null) window.clearTimeout(timer)
+      window.removeEventListener("focus", refreshNotificationTime)
+    }
+  }, [uploads, notificationNow])
+
   const visibleJobSeekerNotifications = useMemo(() => (
-    jobSeekerApplications.filter((item) => !deletedNotificationIds.includes(getApplicationNotificationId(item)))
-  ), [jobSeekerApplications, deletedNotificationIds])
+    jobSeekerApplications.filter((item) => isNotificationActive(item, notificationNow))
+  ), [jobSeekerApplications, notificationNow])
 
   const unreadJobSeekerApplications = useMemo(() => (
     visibleJobSeekerNotifications.filter((item) => !readNotificationIds.includes(getApplicationNotificationId(item)))
@@ -2324,8 +2407,8 @@ function App() {
     if (isJobSeeker) return []
     return [...uploads]
       .sort((a, b) => new Date(b.uploaded_at).getTime() - new Date(a.uploaded_at).getTime())
-      .filter((item) => !deletedNotificationIds.includes(item.id))
-  }, [uploads, isJobSeeker, deletedNotificationIds])
+      .filter((item) => isNotificationActive(item, notificationNow))
+  }, [uploads, isJobSeeker, notificationNow])
 
   const unreadAdminNotifications = useMemo(() => (
     adminNotifications.filter((item) => !readNotificationIds.includes(item.id))
@@ -2359,6 +2442,7 @@ function App() {
   const hasUnreadNotifications = isJobSeeker
     ? unreadJobSeekerApplications.length > 0
     : unreadAdminNotifications.length > 0
+  const isAppFetching = isCheckingSession || isLoadingUploads || isLoadingJobPosts || isLoadingRegisteredJobSeekers || isLoadingActivityLogs
 
   if (!isAuthenticated) {
     if (isEmailVerificationVisible) {
@@ -2417,6 +2501,7 @@ function App() {
         registerError={registerError}
         registerNotice={registerNotice}
         onSubmit={handleRegister}
+        isSubmitting={isSubmittingRegistration}
         onBack={() => {
           setIsRegistering(false)
           setIsEmailVerificationVisible(false)
@@ -2437,6 +2522,7 @@ function App() {
         loginMode={loginMode}
         setLoginMode={setLoginMode}
         onSubmit={handleLogin}
+        isSubmitting={isLoggingIn}
         onGoToLandingSection={navigateToLandingSection}
         onRegister={() => {
           setLoginMode("jobseeker")
@@ -2612,6 +2698,7 @@ function App() {
           currentUser={currentUser || { name: loginEmail, email: loginEmail, role: userRole }}
           onRatingsChanged={async () => {
             await fetchUploads({ silent: true })
+            await fetchJobPosts({ silent: true })
             await fetchActivityLogs()
           }}
         />
@@ -2631,7 +2718,11 @@ function App() {
       )
     }
     if (isLoadingUploads && !isJobSeeker && activePage === "applicants" && canAccessPage("applicants")) {
-      return <p>Loading uploads...</p>
+      return (
+        <section className="loading-panel">
+          <LoadingIndicator label="Loading applications..." />
+        </section>
+      )
     }
     if (displayedUploads.length === 0 && !isJobSeeker && activePage === "applicants" && canAccessPage("applicants")) {
       return (
@@ -2661,7 +2752,18 @@ function App() {
             </thead>
             <tbody>
               {paginatedDisplayedUploads.map((item, index) => (
-                <tr key={item.id}>
+                <tr
+                  key={item.id}
+                  className="applicant-table-row-clickable"
+                  role="button"
+                  tabIndex={0}
+                  onClick={() => handleViewApplicantFromJobs(item)}
+                  onKeyDown={(event) => {
+                    if (event.key !== "Enter" && event.key !== " ") return
+                    event.preventDefault()
+                    handleViewApplicantFromJobs(item)
+                  }}
+                >
                   <td>{((applicantsPage - 1) * applicantsPageSize) + index + 1}</td>
                   <td>
                     <div className="applicant-cell">
@@ -2679,7 +2781,7 @@ function App() {
                   </td>
                   <td>
                     <span className={`table-classification ${getClassificationClass(item.classification)}`}>
-                      {item.classification || "-"}
+                      {getClassificationLabel(item.classification)}
                     </span>
                   </td>
                   <td>{item.original_name}</td>
@@ -2734,6 +2836,11 @@ function App() {
   // UI rendering
   return (
     <>
+    {isAppFetching && (
+      <div className="app-fetch-indicator">
+        <LoadingIndicator label={isCheckingSession ? "Checking session..." : "Loading latest data..."} compact />
+      </div>
+    )}
     <main className="page" ref={pageRef} onScroll={updateBackToTopFromScroll}>
       <header className="topbar">
         <button type="button" className="brand" onClick={() => handleTopNav(firstAllowedPage(userRole, currentUser))}>
@@ -2849,7 +2956,7 @@ function App() {
         </nav>
         <div className="topbar-right">
           {showNotificationsBell && (
-            <div className="notifications-menu topbar-notifications" onClick={(e) => e.stopPropagation()}>
+            <div ref={notificationsRef} className="notifications-menu topbar-notifications" onClick={(e) => e.stopPropagation()}>
               <button
                 type="button"
                 className={`topbar-bell ${hasUnreadNotifications ? "has-unread" : ""}`}
@@ -2867,10 +2974,10 @@ function App() {
                   <div>
                     <h4>{isJobSeeker ? "My Job Applications" : "New Applications"}</h4>
                     {isJobSeeker && (
-                      <p>View and manage your job applications and track their status here.</p>
+                      <p>Track your application status here. Notifications are automatically removed after 7 days.</p>
                     )}
                     {!isJobSeeker && (
-                      <p>Recent applicants added by employers or submitted by job seekers.</p>
+                      <p>Recent applicants added by employers or submitted by job seekers. Notifications are automatically removed after 7 days.</p>
                     )}
                   </div>
                   <div className="notifications-header-actions">
@@ -2922,13 +3029,12 @@ function App() {
                             <th>Department/Units</th>
                             <th>Date Applied</th>
                             <th>Status</th>
-                            <th>Action</th>
                           </tr>
                         </thead>
                         <tbody>
                           {filteredNotifications.length === 0 ? (
                             <tr>
-                              <td colSpan={5} className="notifications-empty">
+                              <td colSpan={4} className="notifications-empty">
                                 No applications found.
                               </td>
                             </tr>
@@ -2957,15 +3063,6 @@ function App() {
                                     <span className={`notification-status status-${status}`}>
                                       {statusLabel}
                                     </span>
-                                  </td>
-                                  <td>
-                                    <button
-                                      type="button"
-                                      className="notification-delete-btn"
-                                      onClick={() => deleteNotification(getApplicationNotificationId(item))}
-                                    >
-                                      Delete
-                                    </button>
                                   </td>
                                 </tr>
                               )
@@ -3024,13 +3121,12 @@ function App() {
                             <th>Job Title</th>
                             <th>Date Submitted</th>
                             <th>Status</th>
-                            <th>Action</th>
                           </tr>
                         </thead>
                         <tbody>
                           {adminNotifications.length === 0 ? (
                             <tr>
-                              <td colSpan={5} className="notifications-empty">
+                              <td colSpan={4} className="notifications-empty">
                                 No new applicants yet.
                               </td>
                             </tr>
@@ -3058,15 +3154,6 @@ function App() {
                                     <span className={`notification-status status-${status}`}>
                                       {statusLabel}
                                     </span>
-                                  </td>
-                                  <td>
-                                    <button
-                                      type="button"
-                                      className="notification-delete-btn"
-                                      onClick={() => deleteNotification(item.id)}
-                                    >
-                                      Delete
-                                    </button>
                                   </td>
                                 </tr>
                               )
@@ -3127,7 +3214,7 @@ function App() {
               title="Logout"
               onClick={(e) => {
                 e.stopPropagation()
-                handleLogout()
+                handleLogout().then(() => showDeleteToast("Signed out successfully.", "success"))
               }}
             >
               <span className="sidebar-logout-icon" aria-hidden="true">↗</span>
@@ -3300,6 +3387,9 @@ function App() {
               onChange={setJobFilter}
               placeholder="All Jobs"
             />
+            {canManageRatings(currentUser) && <button type="button" className="btn" onClick={exportApplicationsSummary}>
+              Export Excel
+            </button>}
           </div>
 
           <div className="panel-meta applicants-meta">
@@ -3475,18 +3565,6 @@ function App() {
         </div>
       )}
 
-      {uploadStatus && (
-        <div className={`toast ${uploadStatus === "success" ? "toast-success" : "toast-fail"}`}>
-          {uploadNotice || (uploadStatus === "success" ? "Success" : "Fail")}
-        </div>
-      )}
-
-      {deleteToast && (
-        <div className={`toast ${deleteToast.type === "success" ? "toast-success" : "toast-fail"}`}>
-          {deleteToast.message}
-        </div>
-      )}
-
       {mainContent}
 
       {summaryItem && (
@@ -3523,7 +3601,6 @@ function App() {
 
                   <section className="candidate-card">
                     <h3>Supporting Documents</h3>
-                    {summarySupportingError && <p className="muted">{summarySupportingError}</p>}
                     {!summarySupportingError && summarySupportingFiles.length === 0 && (
                       <p className="muted">No supporting documents uploaded.</p>
                     )}
@@ -3617,7 +3694,7 @@ function App() {
                   <section className="candidate-card">
                     <h3>Qualification Status</h3>
                     <p className={`status-chip ${(summaryItem?.classification || "").toLowerCase().replace(/\s+/g, "-")}`}>
-                      {summaryItem?.classification || "Lowly Qualified"}
+                      {getClassificationLabel(summaryItem?.classification, "Not Qualified")}
                     </p>
                     <div className="overall-box">
                       <p className="overall-score">{`${summaryOverall.toFixed(0)}%`}</p>
