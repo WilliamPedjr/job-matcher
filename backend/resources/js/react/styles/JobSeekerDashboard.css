@@ -2123,6 +2123,40 @@ optgroup {
   background: #ffffff;
 }
 
+.js-important-dates-pagination {
+  display: flex;
+  justify-content: center;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 12px;
+  padding: 16px;
+  border-top: 1px solid #dbe3ef;
+  color: #475569;
+  font-size: 12px;
+  font-weight: 800;
+}
+
+.js-important-dates-pagination button {
+  min-width: 84px;
+  padding: 8px 12px;
+  border: 1px solid #cbd5e1;
+  border-radius: 6px;
+  background: #ffffff;
+  color: #1d4ed8;
+  font: inherit;
+  cursor: pointer;
+}
+
+.js-important-dates-pagination button:hover:not(:disabled) {
+  background: #eff6ff;
+}
+
+.js-important-dates-pagination button:disabled {
+  background: #f8fafc;
+  color: #98a2b3;
+  cursor: not-allowed;
+}
+
 .js-interview-notification {
   appearance: none;
   display: grid;

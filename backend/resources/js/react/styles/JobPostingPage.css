@@ -1315,7 +1315,8 @@ optgroup {
 }
 
 .jobs-card-view {
-  grid-template-columns: repeat(3, minmax(0, 1fr));
+  grid-template-columns: repeat(auto-fit, minmax(min(100%, 320px), 1fr));
+  align-items: stretch;
   padding: 16px;
 }
 
@@ -2165,6 +2166,41 @@ optgroup {
 .jobs-list-card.job-card-modern {
   border-radius: 8px;
   gap: 16px;
+  min-width: 0;
+}
+
+.jobs-list-card .job-card-head {
+  align-items: center;
+}
+
+.jobs-list-card .job-card-index {
+  margin: 0;
+  flex-shrink: 0;
+}
+
+.jobs-list-card .job-card-actions {
+  justify-content: flex-end;
+  flex-wrap: wrap;
+  min-width: 0;
+}
+
+.jobs-list-card .job-card-actions > .job-status,
+.jobs-list-card .job-card-actions > .job-chip {
+  flex-shrink: 0;
+  white-space: nowrap;
+}
+
+.jobs-list-card .job-title-text {
+  line-height: 1.4;
+}
+
+.jobs-list-card .job-card-skill-preview {
+  margin-top: auto;
+}
+
+.jobs-list-card .job-chip {
+  max-width: 100%;
+  overflow-wrap: anywhere;
 }
 
 .job-card-modern::before {

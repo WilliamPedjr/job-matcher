@@ -231,10 +231,10 @@ function ApplicantViewPage({
   backLabel,
   headerActions = null
 }) {
-  const classificationLabel = (value, fallback = "Not Qualified") => {
+  const classificationLabel = (value, fallback = "Lowly Qualified") => {
     const label = String(value || "").trim()
     if (!label) return fallback
-    return label.toLowerCase().includes("lowly") ? "Not Qualified" : label
+    return ["not qualified", "lowly qualified"].includes(label.toLowerCase()) ? "Lowly Qualified" : label
   }
 
   const [supportingFiles, setSupportingFiles] = useState([])

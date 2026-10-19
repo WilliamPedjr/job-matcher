@@ -6,6 +6,7 @@ import CustomDropdown from '../components/CustomDropdown'
 import { getArchiveActorHeaders } from '../utils/archiveActor'
 import { useToastState } from '../utils/useToastState'
 import { monthlySalaryForGrade } from '../utils/salaryGrades'
+import { matchesJobSearch } from '../utils/jobSearch'
 
 const defaultJobEligibility = "Open to all qualified applicants"
 const otherEligibilityOption = "Other Eligibility"
@@ -152,6 +153,7 @@ function JobPostingPage({ uploads = [], isEmployer = false, isJobSeeker = false,
   const skillsPickerRef = useRef(null)
   const skipTemplateApplyRef = useRef(false)
   const isHourlyJob = String(newJobType || "").toLowerCase().includes("part")
+  const isInternshipJob = String(newJobType || "").trim().toLowerCase() === "internship"
 
   const handleSalaryGradeChange = (value) => {
     setNewSalaryMin(value)
@@ -206,10 +208,10 @@ function JobPostingPage({ uploads = [], isEmployer = false, isJobSeeker = false,
     })
   }
 
-  const classificationLabel = (value, fallback = "Not Qualified") => {
+  const classificationLabel = (value, fallback = "Lowly Qualified") => {
     const label = String(value || "").trim()
     if (!label) return fallback
-    return label.toLowerCase().includes("lowly") ? "Not Qualified" : label
+    return ["not qualified", "lowly qualified"].includes(label.toLowerCase()) ? "Lowly Qualified" : label
   }
 
   const integerInputValue = (value) => String(value ?? "").replace(/\D/g, "")
@@ -619,9 +621,7 @@ function JobPostingPage({ uploads = [], isEmployer = false, isJobSeeker = false,
         if (matchFilter === "not-match" && match.qualifies) return false
       }
 
-      if (!query) return true
-      const haystack = `${job.title || ""} ${job.description || ""} ${job.department || ""} ${job.jobPosition || job.job_position || ""} ${job.itemNo || job.item_no || ""} ${job.location || ""} ${job.deadline || ""} ${job.eligibility || ""}`.toLowerCase()
-      return haystack.includes(query)
+      return matchesJobSearch(job, query)
     })
   }, [listedJobs, searchTerm, statusFilter, jobPositionTypeFilter, isJobSeeker, matchFilter, jobMatches])
 
@@ -735,15 +735,9 @@ function JobPostingPage({ uploads = [], isEmployer = false, isJobSeeker = false,
   }, [newJobTitle])
 
   const searchSuggestions = useMemo(() => {
-    const tokens = [
-      ...jobs.map((job) => String(job.title || "").trim()),
-      ...jobs.map((job) => String(job.department || "").trim()),
-      ...jobs.map((job) => String(job.jobPosition || job.job_position || "").trim()),
-      ...jobs.map((job) => String(job.itemNo || job.item_no || "").trim()),
-      ...jobs.map((job) => String(job.location || "").trim())
-    ].filter(Boolean)
-    return Array.from(new Set(tokens))
-  }, [jobs])
+    const titles = listedJobs.map((job) => String(job.title || "").trim()).filter(Boolean)
+    return Array.from(new Set(titles))
+  }, [listedJobs])
 
   const parseSkills = (value) => {
     if (!value) return []
@@ -877,6 +871,8 @@ function JobPostingPage({ uploads = [], isEmployer = false, isJobSeeker = false,
     const templatePool = templateSkillCatalog.length ? templateSkillCatalog : templateSkills
     const contextualPool = isEditingJob ? jobSkillCatalog : templatePool
     const pool = Array.from(new Set([...contextualPool, ...allSkillSuggestions]))
+      .filter((skill) => !/^__MATCH_(?:ALL|MODERATE|NOT_QUALIFIED|55_PERCENT)__$/i.test(String(skill).trim()))
+      .filter((skill) => !/^\s*\d+(?:\.\d+)?\s*(?:hours?|hrs?\.?)\b.*\b(?:training|learning\s+and\s+development)\b/i.test(String(skill)))
       .filter((skill) => !existing.has(String(skill).toLowerCase()))
     if (!pool.length) return []
     const query = String(skillDraft || "").trim().toLowerCase()
@@ -911,7 +907,7 @@ function JobPostingPage({ uploads = [], isEmployer = false, isJobSeeker = false,
     const query = searchTerm.trim().toLowerCase()
     if (!query) return searchSuggestions.slice(0, 8)
     return searchSuggestions
-      .filter((token) => token.toLowerCase().includes(query))
+      .filter((token) => matchesJobSearch({ title: token }, query))
       .slice(0, 8)
   }, [searchSuggestions, searchTerm])
 
@@ -964,7 +960,7 @@ function JobPostingPage({ uploads = [], isEmployer = false, isJobSeeker = false,
     setNewJobType(selected.type || "Full-time")
     setNewJobDeadline(selected.deadline || "")
     setJobEligibilityFromValue(selected.eligibility || defaultJobEligibility)
-    setNewRequiredSkills(selected.requiredSkills || "")
+    setNewRequiredSkills("")
     setNewUniversalMatchMode(selected.universalMatchMode || selected.universal_match_mode || "")
     setNewMinimumEducation(selected.minimumEducation || "")
     setNewMinimumExperienceYears(String(selected.minimumExperienceYears ?? 0))
@@ -985,7 +981,7 @@ function JobPostingPage({ uploads = [], isEmployer = false, isJobSeeker = false,
     setNewJobType(record.type || "Full-time")
     setNewJobDeadline(record.deadline || "")
     setJobEligibilityFromValue(record.eligibility || defaultJobEligibility)
-    setNewRequiredSkills(record.requiredSkills || "")
+    setNewRequiredSkills(record.source === "template" ? "" : (record.requiredSkills || ""))
     setNewUniversalMatchMode(record.universalMatchMode || record.universal_match_mode || "")
     setNewMinimumEducation(record.minimumEducation || "")
     setNewMinimumExperienceYears(String(record.minimumExperienceYears ?? 0))
@@ -1421,8 +1417,8 @@ function JobPostingPage({ uploads = [], isEmployer = false, isJobSeeker = false,
       !newMinimumEducation.trim() ||
       newMinimumExperienceYears === "" ||
       !scoringTotalIsValid ||
-      newSalaryMin === "" ||
-      newSalaryMax === "" ||
+      (!isInternshipJob && !isHourlyJob && newSalaryMin === "") ||
+      (!isInternshipJob && newSalaryMax === "") ||
       newPositionsTotal === ""
     )
 
@@ -1434,11 +1430,11 @@ function JobPostingPage({ uploads = [], isEmployer = false, isJobSeeker = false,
     }
 
     const minExp = newMinimumExperienceYears === "" ? 0 : Number(newMinimumExperienceYears)
-    const salaryGradeIsInteger = /^\d+$/.test(String(newSalaryMin))
+    const salaryGradeIsInteger = isInternshipJob || isHourlyJob || /^\d+$/.test(String(newSalaryMin))
     const positionsTotalIsMany = isManySlotsValue(newPositionsTotal)
     const positionsTotalIsInteger = positionsTotalIsMany || /^\d+$/.test(String(newPositionsTotal))
-    const parsedSalaryMin = Number(newSalaryMin)
-    const parsedSalaryMax = Number(newSalaryMax)
+    const parsedSalaryMin = isInternshipJob || isHourlyJob ? null : Number(newSalaryMin)
+    const parsedSalaryMax = isInternshipJob ? null : Number(newSalaryMax)
     const parsedPositionsTotal = getPositionsPayloadValue()
 
     if (Number.isNaN(minExp) || minExp < 0) {
@@ -1460,7 +1456,7 @@ function JobPostingPage({ uploads = [], isEmployer = false, isJobSeeker = false,
     }
 
     if (Number.isNaN(parsedSalaryMin) || parsedSalaryMin < 0 || Number.isNaN(parsedSalaryMax) || parsedSalaryMax < 0) {
-      showCreateJobNotice("fail", "Salary grade and salary amount must be valid non-negative numbers.")
+      showCreateJobNotice("fail", isHourlyJob ? "Hourly rate must be a valid non-negative number." : "Salary grade and salary amount must be valid non-negative numbers.")
       scrollCreateJobModalToTop()
       return
     }
@@ -1470,7 +1466,9 @@ function JobPostingPage({ uploads = [], isEmployer = false, isJobSeeker = false,
       scrollCreateJobModalToTop()
       return
     }
-    const { salaryMin, salaryMax } = normalizeSalaryRange(parsedSalaryMin, parsedSalaryMax)
+    const { salaryMin, salaryMax } = isInternshipJob || isHourlyJob
+      ? { salaryMin: null, salaryMax: parsedSalaryMax }
+      : normalizeSalaryRange(parsedSalaryMin, parsedSalaryMax)
     const duplicateJob = findDuplicateJobPost(newJobItemNo)
     if (duplicateJob) {
       showCreateJobNotice("fail", "This Plantilla Item No. is already used by another job post.")
@@ -1548,8 +1546,8 @@ function JobPostingPage({ uploads = [], isEmployer = false, isJobSeeker = false,
       !newMinimumEducation.trim() ||
       newMinimumExperienceYears === "" ||
       !scoringTotalIsValid ||
-      newSalaryMin === "" ||
-      newSalaryMax === "" ||
+      (!isInternshipJob && !isHourlyJob && newSalaryMin === "") ||
+      (!isInternshipJob && newSalaryMax === "") ||
       newPositionsTotal === ""
     )
 
@@ -1561,11 +1559,11 @@ function JobPostingPage({ uploads = [], isEmployer = false, isJobSeeker = false,
     }
 
     const minExp = newMinimumExperienceYears === "" ? 0 : Number(newMinimumExperienceYears)
-    const salaryGradeIsInteger = /^\d+$/.test(String(newSalaryMin))
+    const salaryGradeIsInteger = isInternshipJob || isHourlyJob || /^\d+$/.test(String(newSalaryMin))
     const positionsTotalIsMany = isManySlotsValue(newPositionsTotal)
     const positionsTotalIsInteger = positionsTotalIsMany || /^\d+$/.test(String(newPositionsTotal))
-    const parsedSalaryMin = Number(newSalaryMin)
-    const parsedSalaryMax = Number(newSalaryMax)
+    const parsedSalaryMin = isInternshipJob || isHourlyJob ? null : Number(newSalaryMin)
+    const parsedSalaryMax = isInternshipJob ? null : Number(newSalaryMax)
     const parsedPositionsTotal = getPositionsPayloadValue()
 
     if (Number.isNaN(minExp) || minExp < 0) {
@@ -1587,7 +1585,7 @@ function JobPostingPage({ uploads = [], isEmployer = false, isJobSeeker = false,
     }
 
     if (Number.isNaN(parsedSalaryMin) || parsedSalaryMin < 0 || Number.isNaN(parsedSalaryMax) || parsedSalaryMax < 0) {
-      showCreateJobNotice("fail", "Salary grade and salary amount must be valid non-negative numbers.")
+      showCreateJobNotice("fail", isHourlyJob ? "Hourly rate must be a valid non-negative number." : "Salary grade and salary amount must be valid non-negative numbers.")
       scrollCreateJobModalToTop()
       return
     }
@@ -1597,7 +1595,9 @@ function JobPostingPage({ uploads = [], isEmployer = false, isJobSeeker = false,
       scrollCreateJobModalToTop()
       return
     }
-    const { salaryMin, salaryMax } = normalizeSalaryRange(parsedSalaryMin, parsedSalaryMax)
+    const { salaryMin, salaryMax } = isInternshipJob || isHourlyJob
+      ? { salaryMin: null, salaryMax: parsedSalaryMax }
+      : normalizeSalaryRange(parsedSalaryMin, parsedSalaryMax)
     const duplicateJob = findDuplicateJobPost(newJobItemNo, editingJobId)
     if (duplicateJob) {
       showCreateJobNotice("fail", "This Plantilla Item No. is already used by another job post.")
@@ -1752,7 +1752,7 @@ function JobPostingPage({ uploads = [], isEmployer = false, isJobSeeker = false,
           <input
             className="input"
             type="text"
-            placeholder="Search jobs.."
+            placeholder="Search job positions..."
             value={searchTerm}
             onChange={(e) => {
               setSearchTerm(e.target.value)
@@ -1855,10 +1855,7 @@ function JobPostingPage({ uploads = [], isEmployer = false, isJobSeeker = false,
                     onKeyDown={(event) => handleJobRecordKeyDown(event, job)}
                   >
                     <div className="job-card-head">
-                      <div>
-                        <p className="job-card-index">#{cardStartIndex + index + 1}</p>
-                        <h2>{job.title || "-"}</h2>
-                      </div>
+                      <p className="job-card-index">#{cardStartIndex + index + 1}</p>
                       <div className="job-card-actions">
                         <span className={`job-status ${String(job.status || "active").toLowerCase()}`}>
                           {String(job.status || "active").toLowerCase()}
@@ -1867,6 +1864,8 @@ function JobPostingPage({ uploads = [], isEmployer = false, isJobSeeker = false,
                         {renderJobActions(job, actionKey)}
                       </div>
                     </div>
+
+                    <h2 className="job-title-text">{job.title || "-"}</h2>
 
                     <p className="job-description">{job.description || "-"}</p>
 
@@ -2186,7 +2185,7 @@ function JobPostingPage({ uploads = [], isEmployer = false, isJobSeeker = false,
                             </span>
                           </td>
                           <td>
-                            <span className={`table-classification ${(item.classification || "Not Qualified").toLowerCase().replace(/\s+/g, "-")}`}>
+                            <span className={`table-classification ${(item.classification || "Lowly Qualified").toLowerCase().replace(/\s+/g, "-")}`}>
                               {classificationLabel(item.classification)}
                             </span>
                           </td>
@@ -2640,34 +2639,38 @@ function JobPostingPage({ uploads = [], isEmployer = false, isJobSeeker = false,
                     </div>
                   </div>
 
-                  <div className="modal-grid">
-                    <div className="field-group">
-                      <label>{salaryLabel.min}</label>
-                      <input
-                        className={requiredInputClass(newSalaryMin)}
-                        type="number"
-                        min="1"
-                        max="33"
-                        step="1"
-                        inputMode="numeric"
-                        value={newSalaryMin}
-                        onChange={(e) => handleSalaryGradeChange(e.target.value)}
-                        placeholder="e.g., 15"
-                      />
-                    </div>
+                  {!isInternshipJob && (
+                    <div className="modal-grid">
+                      {!isHourlyJob && (
+                        <div className="field-group">
+                          <label>{salaryLabel.min}</label>
+                          <input
+                            className={requiredInputClass(newSalaryMin)}
+                            type="number"
+                            min="1"
+                            max="33"
+                            step="1"
+                            inputMode="numeric"
+                            value={newSalaryMin}
+                            onChange={(e) => handleSalaryGradeChange(e.target.value)}
+                            placeholder="e.g., 15"
+                          />
+                        </div>
+                      )}
 
-                    <div className="field-group">
-                      <label>{salaryLabel.max}</label>
-                      <input
-                        className={requiredInputClass(newSalaryMax)}
-                        type="number"
-                        min="0"
-                        value={newSalaryMax}
-                        onChange={(e) => setNewSalaryMax(e.target.value)}
-                        placeholder={isHourlyJob ? "e.g., 150" : "Enter a salary grade"}
-                      />
+                      <div className="field-group">
+                        <label>{salaryLabel.max}</label>
+                        <input
+                          className={requiredInputClass(newSalaryMax)}
+                          type="number"
+                          min="0"
+                          value={newSalaryMax}
+                          onChange={(e) => setNewSalaryMax(e.target.value)}
+                          placeholder={isHourlyJob ? "e.g., 150" : "Enter a salary grade"}
+                        />
+                      </div>
                     </div>
-                  </div>
+                  )}
                 </section>
               </div>
             </div>

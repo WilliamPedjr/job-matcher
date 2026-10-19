@@ -57,7 +57,7 @@ class ExperienceRequirementTest extends TestCase
         $response = $this->preview()->assertOk()->assertJson([
             'allowApplication' => false,
             'experienceRequirementMet' => false,
-            'analysis' => ['classification' => 'Not Qualified', 'experience_match_score' => 0],
+            'analysis' => ['classification' => 'Lowly Qualified', 'experience_match_score' => 0],
         ]);
         $this->assertGreaterThanOrEqual(50, $response->json('matchScore'));
         $this->assertStringContainsString('minimum experience', $response->json('applicationBlockReason'));
@@ -120,7 +120,7 @@ class ExperienceRequirementTest extends TestCase
         $this->assertGreaterThanOrEqual(50, $matches[0]['overallScore']);
         $this->assertFalse($matches[0]['allowApplication']);
         $this->assertFalse($matches[0]['experienceRequirementMet']);
-        $this->assertSame('Not Qualified', $matches[0]['classification']);
+        $this->assertSame('Lowly Qualified', $matches[0]['classification']);
     }
 
     public function test_zero_experience_weight_does_not_remove_the_minimum_requirement(): void

@@ -1,3 +1,4 @@
+import { buildApplicantEmailDraft } from "./utils/applicantEmail"
 import { apiMessage, notify as showDeleteToast } from "./utils/toasts"
 import React from 'react'
 // React imports
@@ -404,25 +405,6 @@ function getApplicationStatusLabel(item) {
     .join(" ")
 }
 
-function buildApplicantEmailDraft(item, senderEmail = "") {
-  const email = String(item?.email || "").trim().replace(/[\s<>()[\]\\,;:"]+/g, "")
-  if (!email) return null
-  const sender = String(senderEmail || "").trim()
-
-  const applicantName = String(item?.name || "").trim()
-  const jobTitle = String(item?.applied_job_title || item?.matched_job_title || "").trim()
-  const subject = jobTitle
-    ? `Regarding your application for ${jobTitle}`
-    : "Regarding your job application"
-  const greeting = applicantName ? `Hello ${applicantName},` : "Hello,"
-  const body = `${greeting}\n\nWe are contacting you about your application${jobTitle ? ` for ${jobTitle}` : ""}.\n\nThank you,\nLNU-HiRe Personnel`
-
-  return {
-    email,
-    gmail: `https://mail.google.com/mail/?view=cm&fs=1${sender ? `&authuser=${encodeURIComponent(sender)}` : ""}&to=${encodeURIComponent(email)}&su=${encodeURIComponent(subject)}&body=${encodeURIComponent(body)}`,
-    mailto: `mailto:${email}?subject=${encodeURIComponent(subject)}&body=${encodeURIComponent(body)}`
-  }
-}
 
 function isApplicationHiddenFromJobSeeker(item) {
   return Number(item?.job_seeker_hidden || item?.jobSeekerHidden || 0) === 1
@@ -565,6 +547,10 @@ function App() {
   const [confirmDeleteId, setConfirmDeleteId] = useState(null)
   const [confirmDeleteContext, setConfirmDeleteContext] = useState("application")
   const [confirmStatusAction, setConfirmStatusAction] = useState(null)
+  const [isSubmittingStatusAction, setIsSubmittingStatusAction] = useState(false)
+  const statusActionPendingRef = useRef(false)
+  const [isResendingApplicationEmail, setIsResendingApplicationEmail] = useState(false)
+  const applicationEmailPendingRef = useRef(false)
   const [summaryItem, setSummaryItem] = useState(null)
   const [summarySupportingFiles, setSummarySupportingFiles] = useState([])
   const [summarySupportingError, setSummarySupportingError] = useToastState("", "error")
@@ -1897,7 +1883,12 @@ function App() {
             : status === "rejected"
               ? "Application rejected."
               : "Application status updated."
-        showDeleteToast(notice, "success")
+        const emailResult = payload?.shortlistEmail || payload?.rejectionEmail
+        if (emailResult?.status === "failed") {
+          showDeleteToast(`${notice} ${emailResult.message}`, "warning")
+        } else {
+          showDeleteToast(notice, "success")
+        }
       }
       await fetchUploads({ silent: true })
       if (status === "hired" || getApplicationStatus(item) === "hired") {
@@ -1915,6 +1906,43 @@ function App() {
 
   const markApplicantForInterview = async (item) => {
     return updateApplicationStatus(item, "interview")
+  }
+
+  const resendApplicationEmail = async (item) => {
+    if (!item?.id || applicationEmailPendingRef.current || !canManageRatings(currentUser)) return
+    const status = getApplicationStatus(item)
+    if (!["shortlisted", "rejected"].includes(status)) return
+    const emailKind = status === "rejected" ? "rejection" : "shortlist"
+    applicationEmailPendingRef.current = true
+    setIsResendingApplicationEmail(true)
+    try {
+      const response = await fetch(`/api/uploads/${item.id}/${emailKind}-email`, {
+        method: "POST",
+        headers: getArchiveActorHeaders(currentUser)
+      })
+      const payload = await response.json().catch(() => null)
+      if (!response.ok) throw new Error(apiMessage(payload, "The application notification email could not be sent."))
+      showDeleteToast(payload.message || "The application notification was accepted by the mail server.", "success")
+    } catch (error) {
+      showDeleteToast(error.message || "The application notification email could not be sent.", "error")
+    } finally {
+      applicationEmailPendingRef.current = false
+      setIsResendingApplicationEmail(false)
+    }
+  }
+
+  const confirmApplicationStatus = async () => {
+    if (statusActionPendingRef.current || !confirmStatusAction?.item || !confirmStatusAction?.status) return
+    const action = confirmStatusAction
+    statusActionPendingRef.current = true
+    setIsSubmittingStatusAction(true)
+    try {
+      const result = await updateApplicationStatus(action.item, action.status)
+      if (result) setConfirmStatusAction(null)
+    } finally {
+      statusActionPendingRef.current = false
+      setIsSubmittingStatusAction(false)
+    }
   }
 
   useEffect(() => {
@@ -2312,7 +2340,7 @@ function App() {
   const getClassificationLabel = (value, fallback = "-") => {
     const label = String(value || "").trim()
     if (!label) return fallback
-    return label.toLowerCase().includes("lowly") ? "Not Qualified" : label
+    return ["not qualified", "lowly qualified"].includes(label.toLowerCase()) ? "Lowly Qualified" : label
   }
 
   const getApplicationStatus = (item) => {
@@ -2632,11 +2660,26 @@ function App() {
               >
                 Send Email
               </button>
+              {["shortlisted", "rejected"].includes(getApplicationStatus(viewItem)) && canManageRatings(currentUser) && (
+                <button
+                  className="btn"
+                  type="button"
+                  onClick={() => resendApplicationEmail(viewItem)}
+                  disabled={isResendingApplicationEmail || isSubmittingStatusAction}
+                >
+                  {isResendingApplicationEmail ? (
+                    <span className="loading-indicator loading-indicator-compact" role="status">
+                      <span className="loading-spinner" aria-hidden="true" />
+                      Sending...
+                    </span>
+                  ) : getApplicationStatus(viewItem) === "rejected" ? "Resend Rejection Email" : "Resend Shortlist Email"}
+                </button>
+              )}
               <button
                 className="btn"
                 type="button"
                 onClick={() => setConfirmStatusAction({ item: viewItem, status: "shortlisted" })}
-                disabled={["shortlisted", "interview", "rejected", "hired"].includes(getApplicationStatus(viewItem))}
+                disabled={isSubmittingStatusAction || ["shortlisted", "interview", "rejected", "hired"].includes(getApplicationStatus(viewItem))}
               >
                 Pass
               </button>
@@ -2644,7 +2687,7 @@ function App() {
                 className="btn btn-danger"
                 type="button"
                 onClick={() => setConfirmStatusAction({ item: viewItem, status: "rejected" })}
-                disabled={["rejected", "hired"].includes(getApplicationStatus(viewItem))}
+                disabled={isSubmittingStatusAction || ["rejected", "hired"].includes(getApplicationStatus(viewItem))}
               >
                 Reject
               </button>
@@ -3282,16 +3325,16 @@ function App() {
         <div
           className="modal-overlay delete-confirm-overlay"
           onClick={(e) => {
-            if (e.target === e.currentTarget) {
+            if (e.target === e.currentTarget && !statusActionPendingRef.current) {
               setConfirmStatusAction(null)
             }
           }}
         >
-          <div className="modal-card delete-confirm-card">
+          <div className="modal-card delete-confirm-card" aria-busy={isSubmittingStatusAction}>
             <h3>{confirmStatusAction.status === "rejected" ? "Reject Application" : "Pass Application"}</h3>
             <p>
               {confirmStatusAction.status === "rejected"
-                ? `Are you sure you want to reject ${confirmStatusAction.item?.name || "this applicant"}'s application?`
+                ? `Are you sure you want to reject ${confirmStatusAction.item?.name || "this applicant"}'s application? A rejection notification will be emailed to the applicant.`
                 : `Are you sure you want to pass ${confirmStatusAction.item?.name || "this applicant"} and shortlist this application?`}
             </p>
             <div className="modal-actions">
@@ -3299,21 +3342,22 @@ function App() {
                 type="button"
                 className="btn btn-secondary"
                 onClick={() => setConfirmStatusAction(null)}
+                disabled={isSubmittingStatusAction}
               >
                 Cancel
               </button>
               <button
                 type="button"
                 className={confirmStatusAction.status === "rejected" ? "btn btn-danger" : "btn"}
-                onClick={async () => {
-                  const action = confirmStatusAction
-                  setConfirmStatusAction(null)
-                  if (action?.item && action?.status) {
-                    await updateApplicationStatus(action.item, action.status)
-                  }
-                }}
+                onClick={confirmApplicationStatus}
+                disabled={isSubmittingStatusAction}
               >
-                {confirmStatusAction.status === "rejected" ? "Reject" : "Pass"}
+                {isSubmittingStatusAction ? (
+                  <span className="loading-indicator loading-indicator-compact" role="status" aria-live="polite">
+                    <span className="loading-spinner" aria-hidden="true" />
+                    {confirmStatusAction.status === "rejected" ? "Rejecting..." : "Shortlisting..."}
+                  </span>
+                ) : confirmStatusAction.status === "rejected" ? "Reject" : "Pass"}
               </button>
             </div>
           </div>
@@ -3694,7 +3738,7 @@ function App() {
                   <section className="candidate-card">
                     <h3>Qualification Status</h3>
                     <p className={`status-chip ${(summaryItem?.classification || "").toLowerCase().replace(/\s+/g, "-")}`}>
-                      {getClassificationLabel(summaryItem?.classification, "Not Qualified")}
+                      {getClassificationLabel(summaryItem?.classification, "Lowly Qualified")}
                     </p>
                     <div className="overall-box">
                       <p className="overall-score">{`${summaryOverall.toFixed(0)}%`}</p>

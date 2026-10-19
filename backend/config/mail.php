@@ -1,5 +1,10 @@
 <?php
 
+$smtpUsername = (string) env('MAIL_USERNAME', '');
+$senderDomain = filter_var($smtpUsername, FILTER_VALIDATE_EMAIL)
+    ? substr(strrchr($smtpUsername, '@'), 1)
+    : null;
+
 return [
 
     /*
@@ -46,8 +51,8 @@ return [
             'encryption' => env('MAIL_ENCRYPTION', 'tls'),
             'username' => env('MAIL_USERNAME'),
             'password' => env('MAIL_PASSWORD'),
-            'timeout' => null,
-            'local_domain' => env('MAIL_EHLO_DOMAIN'),
+            'timeout' => 20,
+            'local_domain' => env('MAIL_EHLO_DOMAIN') ?: $senderDomain,
         ],
 
         'ses' => [

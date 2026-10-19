@@ -11,6 +11,7 @@ use App\Models\JobSeeker;
 use App\Models\SupportingFile;
 use App\Models\Upload;
 use App\Notifications\ApplicationShortlistedNotification;
+use App\Notifications\ApplicationRejectedNotification;
 use App\Services\PdsExtractionService;
 use App\Services\ResumeAnalysisService;
 use App\Services\TextExtractionService;
@@ -155,7 +156,7 @@ class UploadController extends Controller
             );
         } catch (\RuntimeException $exception) {
             $analysis = [
-                'classification' => 'Not Qualified',
+                'classification' => 'Lowly Qualified',
                 'overall_score' => 0,
                 'skills_match_score' => 0,
                 'project_score' => 0,
@@ -366,8 +367,13 @@ class UploadController extends Controller
         }
         $upload->save();
 
+        $shortlistEmail = null;
+        $rejectionEmail = null;
         if ($nextStatus === 'shortlisted' && $currentStatus !== 'shortlisted') {
-            $this->sendShortlistedNotification($request, $upload->fresh(['jobSeeker', 'job']));
+            $shortlistEmail = $this->sendShortlistedNotification($request, $upload->fresh(['jobSeeker', 'job']));
+        }
+        if ($nextStatus === 'rejected' && $currentStatus !== 'rejected') {
+            $rejectionEmail = $this->sendApplicationStatusNotification($request, $upload->fresh(['jobSeeker', 'job']), 'rejected');
         }
 
         $event = match ($nextStatus) {
@@ -397,18 +403,63 @@ class UploadController extends Controller
             ],
         ]);
 
-        return response()->json($this->serializeUpload($upload->fresh(['supportingFiles', 'ratings', 'jobSeeker', 'job'])));
+        $response = $this->serializeUpload($upload->fresh(['supportingFiles', 'ratings', 'jobSeeker', 'job']));
+        if ($shortlistEmail !== null) {
+            $response['shortlistEmail'] = $shortlistEmail;
+        }
+        if ($rejectionEmail !== null) {
+            $response['rejectionEmail'] = $rejectionEmail;
+        }
+
+        return response()->json($response);
     }
 
-    private function sendShortlistedNotification(Request $request, ?Upload $upload): void
+    public function resendShortlistedNotification(Request $request, int $id): JsonResponse
+    {
+        return $this->resendApplicationStatusEmail($request, $id, 'shortlisted');
+    }
+
+    public function resendRejectedNotification(Request $request, int $id): JsonResponse
+    {
+        return $this->resendApplicationStatusEmail($request, $id, 'rejected');
+    }
+
+    private function resendApplicationStatusEmail(Request $request, int $id, string $status): JsonResponse
+    {
+        $upload = Upload::with(['jobSeeker', 'job'])->findOrFail($id);
+        $isRejection = $status === 'rejected';
+        if ($this->applicationStatus($upload) !== $status) {
+            return response()->json(['message' => $isRejection
+                ? 'Only rejected applications can receive a rejection notification.'
+                : 'Only shortlisted applications can receive a shortlisting notification.'], 422);
+        }
+
+        $result = $this->sendApplicationStatusNotification($request, $upload, $status);
+
+        return response()->json([
+            $isRejection ? 'rejectionEmail' : 'shortlistEmail' => $result,
+            'message' => $result['message'],
+        ], $result['status'] === 'accepted' ? 200 : 502);
+    }
+
+    private function sendShortlistedNotification(Request $request, ?Upload $upload): array
+    {
+        return $this->sendApplicationStatusNotification($request, $upload, 'shortlisted');
+    }
+
+    private function sendApplicationStatusNotification(Request $request, ?Upload $upload, string $status): array
     {
         if (!$upload) {
-            return;
+            return ['status' => 'failed', 'message' => 'The application could not be found.'];
         }
 
         $recipientEmail = Str::lower(trim((string) ($upload->email ?: $upload->jobSeeker?->email)));
-        if ($recipientEmail === '') {
-            return;
+        if (!filter_var($recipientEmail, FILTER_VALIDATE_EMAIL)) {
+            return ['status' => 'failed', 'message' => 'The applicant does not have a valid email address.'];
+        }
+
+        if (in_array(config('mail.default'), ['log', 'array'], true)) {
+            return ['status' => 'failed', 'message' => 'Outgoing email is not configured. Please configure the mail server before resending.'];
         }
 
         $actor = Archive::actorFromRequest($request);
@@ -416,22 +467,32 @@ class UploadController extends Controller
         $personnelEmail = trim((string) ($actor['actor_email'] ?? ''));
         $jobTitle = trim((string) ($upload->applied_job_title ?: $upload->matched_job_title ?: $upload->job?->title ?: 'your applied position'));
         $applicantName = trim((string) ($upload->name ?: $upload->jobSeeker?->full_name ?: 'Applicant'));
+        $notificationClass = $status === 'rejected' ? ApplicationRejectedNotification::class : ApplicationShortlistedNotification::class;
+        $notificationLabel = $status === 'rejected' ? 'rejection' : 'shortlisting';
 
         try {
             NotificationFacade::route('mail', $recipientEmail)->notify(
-                new ApplicationShortlistedNotification(
+                new $notificationClass(
                     $applicantName,
                     $jobTitle,
                     $personnelName !== '' ? $personnelName : null,
                     $personnelEmail !== '' ? $personnelEmail : null
                 )
             );
+
+            return ['status' => 'accepted', 'message' => 'The '.$notificationLabel.' notification was accepted by the mail server.'];
         } catch (Throwable $error) {
-            Log::warning('Failed to send shortlisted application email.', [
+            Log::warning('Failed to send '.$status.' application email.', [
                 'upload_id' => $upload->id,
                 'recipient' => $recipientEmail,
                 'message' => $error->getMessage(),
             ]);
+
+            $spamRejected = str_contains(Str::lower($error->getMessage()), 'spam');
+
+            return ['status' => 'failed', 'message' => $spamRejected
+                ? 'The mail server rejected the '.$notificationLabel.' email as spam. Please check Email Deliverability in cPanel before resending.'
+                : 'The '.$notificationLabel.' email could not be sent. Please check the mail server settings and try resending.'];
         }
     }
 
@@ -475,7 +536,7 @@ class UploadController extends Controller
             );
         } catch (\RuntimeException $exception) {
             $analysis = [
-                'classification' => 'Not Qualified',
+                'classification' => 'Lowly Qualified',
                 'overall_score' => 0,
                 'skills_match_score' => 0,
                 'project_score' => 0,
@@ -1570,7 +1631,7 @@ class UploadController extends Controller
     {
         return $score >= 80
             ? 'Highly Qualified'
-            : ($score >= 60 ? 'Moderately Qualified' : 'Not Qualified');
+            : ($score >= 60 ? 'Moderately Qualified' : 'Lowly Qualified');
     }
 
     private function displayClassification(?string $classification): string
@@ -1578,8 +1639,8 @@ class UploadController extends Controller
         $value = trim((string) $classification);
 
         return Str::lower($value) === 'not qualified'
-            ? 'Not Qualified'
-            : ($value !== '' ? $value : 'Not Qualified');
+            ? 'Lowly Qualified'
+            : ($value !== '' ? $value : 'Lowly Qualified');
     }
 
     private function getProfileResumeUpload(int $jobSeekerId): ?Upload

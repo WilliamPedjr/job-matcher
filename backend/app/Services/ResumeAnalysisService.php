@@ -187,7 +187,7 @@ class ResumeAnalysisService
 
             $summary['skills'] = $profileSkills ?? $summary['skills'];
             return [
-                'classification' => 'Not Qualified',
+                'classification' => 'Lowly Qualified',
                 'overall_score' => $overall,
                 'skills_match_score' => 30.0,
                 'project_score' => 30.0,
@@ -228,7 +228,7 @@ class ResumeAnalysisService
 
             $summary['skills'] = $profileSkills ?? $summary['skills'];
             return [
-                'classification' => 'Not Qualified',
+                'classification' => 'Lowly Qualified',
                 'overall_score' => $overall,
                 'skills_match_score' => $overall,
                 'project_score' => $overall,
@@ -295,7 +295,7 @@ class ResumeAnalysisService
         }
 
         return [
-            'classification' => !$experienceRequirementMet ? 'Not Qualified' : ($overall >= 80 ? 'Highly Qualified' : ($overall >= 60 ? 'Moderately Qualified' : 'Not Qualified')),
+            'classification' => !$experienceRequirementMet ? 'Lowly Qualified' : ($overall >= 80 ? 'Highly Qualified' : ($overall >= 60 ? 'Moderately Qualified' : 'Lowly Qualified')),
             'overall_score' => $overall,
             'skills_match_score' => $skillsScore,
             'training_match_score' => $trainingScore,
@@ -418,7 +418,7 @@ class ResumeAnalysisService
                     'minimumEducation' => $this->jobField($job, 'minimumEducation', 'minimum_education', ''),
                     'minimumExperienceYears' => (int) $this->jobField($job, 'minimumExperienceYears', 'minimum_experience_years', 0),
                     'overallScore' => 30.0,
-                    'classification' => 'Not Qualified',
+                    'classification' => 'Lowly Qualified',
                     'matchedSkills' => ['Application accepted for review'],
                     'missingSkills' => ['Marked not qualified by preset'],
                     'skillsScore' => 30.0,
@@ -445,7 +445,7 @@ class ResumeAnalysisService
                     'minimumEducation' => $this->jobField($job, 'minimumEducation', 'minimum_education', ''),
                     'minimumExperienceYears' => (int) $this->jobField($job, 'minimumExperienceYears', 'minimum_experience_years', 0),
                     'overallScore' => 55.0,
-                    'classification' => 'Not Qualified',
+                    'classification' => 'Lowly Qualified',
                     'matchedSkills' => ['Preset 55 percent match'],
                     'missingSkills' => ['Below moderate qualification threshold'],
                     'skillsScore' => 55.0,
@@ -493,7 +493,7 @@ class ResumeAnalysisService
                 'minimumEducation' => $this->jobField($job, 'minimumEducation', 'minimum_education', ''),
                 'minimumExperienceYears' => $this->jobField($job, 'minimumExperienceYears', 'minimum_experience_years', 0),
                 'overallScore' => $overall,
-                'classification' => !$experienceRequirementMet ? 'Not Qualified' : ($overall >= 80 ? 'Highly Qualified' : ($overall >= 60 ? 'Moderately Qualified' : 'Not Qualified')),
+                'classification' => !$experienceRequirementMet ? 'Lowly Qualified' : ($overall >= 80 ? 'Highly Qualified' : ($overall >= 60 ? 'Moderately Qualified' : 'Lowly Qualified')),
                 'matchedSkills' => $matchedSkills,
                 'missingSkills' => $missingSkills,
                 'matchedTraining' => $matchedTraining,

@@ -1,3 +1,4 @@
+import { buildApplicantEmailDraft } from "../utils/applicantEmail"
 import { apiMessage, notify } from "../utils/toasts"
 import React, { useEffect, useMemo, useRef, useState } from 'react'
 import '../styles/RatingsPage.css'
@@ -101,25 +102,6 @@ function getEvaluationStatusLabel(item) {
   return 'Shortlisted'
 }
 
-function buildApplicantEmailDraft(item, senderEmail = '') {
-  const email = String(item?.email || '').trim().replace(/[\s<>()[\]\\,;:"]+/g, '')
-  if (!email) return null
-  const sender = String(senderEmail || '').trim()
-
-  const applicantName = String(item?.name || '').trim()
-  const jobTitle = getPosition(item)
-  const subject = jobTitle && jobTitle !== 'No position selected'
-    ? `Regarding your application for ${jobTitle}`
-    : 'Regarding your job application'
-  const greeting = applicantName ? `Hello ${applicantName},` : 'Hello,'
-  const body = `${greeting}\n\nWe are contacting you about your application${jobTitle && jobTitle !== 'No position selected' ? ` for ${jobTitle}` : ''}.\n\nThank you,\nLNU-HiRe Personnel`
-
-  return {
-    email,
-    gmail: `https://mail.google.com/mail/?view=cm&fs=1${sender ? `&authuser=${encodeURIComponent(sender)}` : ''}&to=${encodeURIComponent(email)}&su=${encodeURIComponent(subject)}&body=${encodeURIComponent(body)}`,
-    mailto: `mailto:${email}?subject=${encodeURIComponent(subject)}&body=${encodeURIComponent(body)}`
-  }
-}
 
 const defaultRatingCriteria = [
   'Appearance and Grooming',

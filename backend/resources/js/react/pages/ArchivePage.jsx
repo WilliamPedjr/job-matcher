@@ -270,7 +270,7 @@ function ArchivePage({ currentUser = null, onArchiveChanged }) {
                         )}
                         {(data.email || data.username) && <span>Username: {data.email || data.username}</span>}
                         {data.phone && <span>Phone: {data.phone}</span>}
-                        {data.classification && <span>{data.classification}</span>}
+                        {data.classification && <span>{["not qualified", "lowly qualified"].includes(String(data.classification).trim().toLowerCase()) ? "Lowly Qualified" : data.classification}</span>}
                         {data.status && <span>Status: {data.status}</span>}
                       </div>
                     </td>

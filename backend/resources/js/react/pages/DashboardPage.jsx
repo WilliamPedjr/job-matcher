@@ -18,7 +18,7 @@ function DashboardPage({
   const classificationLabel = (value, fallback = "Unclassified") => {
     const label = String(value || "").trim()
     if (!label) return fallback
-    return label.toLowerCase().includes("lowly") ? "Not Qualified" : label
+    return ["not qualified", "lowly qualified"].includes(label.toLowerCase()) ? "Lowly Qualified" : label
   }
 
   const topApplicantsByJob = useMemo(() => {
@@ -239,7 +239,7 @@ function DashboardPage({
                     </li>
                     <li>
                       <span className="dot dot-red" />
-                      Not Qualified
+                      Lowly Qualified
                       <strong>{notQualified} ({notPct}%)</strong>
                     </li>
                   </ul>

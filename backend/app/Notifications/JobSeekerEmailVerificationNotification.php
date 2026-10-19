@@ -23,11 +23,12 @@ class JobSeekerEmailVerificationNotification extends Notification
     public function toMail(object $notifiable): MailMessage
     {
         return (new MailMessage)
-            ->subject('Verify your LNU-HiRe account')
-            ->greeting('Hello '.$notifiable->full_name.'!')
-            ->line('Thanks for creating your LNU-HiRe job seeker account.')
-            ->line('Please verify your email address before logging in.')
-            ->action('Verify Account', $this->verificationUrl)
-            ->line('If you did not create this account, you can ignore this email.');
+            ->subject('LNU-HiRe | Email Address Verification')
+            ->greeting('Dear '.(trim((string) $notifiable->full_name) ?: 'Applicant').',')
+            ->line('Thank you for registering with LNU-HiRe, the recruitment platform of Leyte Normal University.')
+            ->line('To complete your registration and enable access to your account, please verify your email address using the button below.')
+            ->action('Verify Email Address', $this->verificationUrl)
+            ->line('If you did not register for this account, please disregard this message. No further action is required.')
+            ->salutation('Respectfully, LNU-HiRe Support | Leyte Normal University');
     }
 }

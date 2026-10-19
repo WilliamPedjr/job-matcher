@@ -220,6 +220,13 @@ class JobController extends Controller
     {
         $this->mergeJobAliases($request);
 
+        $employmentType = Str::lower(trim((string) $request->input('type', '')));
+        if ($employmentType === 'internship') {
+            $request->merge(['salary_min' => null, 'salary_max' => null]);
+        } elseif (str_contains($employmentType, 'part')) {
+            $request->merge(['salary_min' => null]);
+        }
+
         $rules = [
             'title' => [$isUpdate ? 'sometimes' : 'required', 'string', 'max:255'],
             'description' => [$isUpdate ? 'sometimes' : 'required', 'string'],
@@ -652,7 +659,7 @@ class JobController extends Controller
 
     private function serializeTemplate(JobTemplate $template): array
     {
-        $requiredSkills = $this->publicRequiredSkills($template->required_skills);
+        $requiredSkills = '';
         $universalMatchMode = $this->universalMatchModeForRecord((string) $template->title, (string) $template->required_skills);
 
         return [

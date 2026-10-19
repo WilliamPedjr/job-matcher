@@ -81,6 +81,19 @@ class Upload extends Model
         'examination_score' => 'float',
     ];
 
+    public function getClassificationAttribute($value): ?string
+    {
+        if ($value === null) {
+            return null;
+        }
+
+        $classification = trim((string) $value);
+
+        return in_array(strtolower($classification), ['not qualified', 'lowly qualified'], true)
+            ? 'Lowly Qualified'
+            : $classification;
+    }
+
     public function scopeApplications(Builder $query): Builder
     {
         return $query->where(function (Builder $query) {

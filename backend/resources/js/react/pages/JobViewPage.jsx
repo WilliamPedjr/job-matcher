@@ -467,14 +467,18 @@ function JobViewPage({ job, onBack, onApply, onRequireResume, jobSeekerProfile, 
       <div className="job-view-card">
         <div className="job-view-card-header">
           <h3>Job Description</h3>
+          {String(job.type || "").trim().toLowerCase() !== "internship" && (
           <div className="job-view-salary">
-            <span>{String(job.type || "").toLowerCase().includes("part") ? "Salary Grade & Hourly Rate" : "Salary Grade & Salary per Month"}</span>
+            <span>{String(job.type || "").toLowerCase().includes("part") ? "Hourly Rate" : "Salary Grade & Salary per Month"}</span>
             <strong>
               {job.salaryMin != null || job.salaryMax != null
-                ? `Grade ${job.salaryMin ?? "0"} · ₱${job.salaryMax ?? "0"}${String(job.type || "").toLowerCase().includes("part") ? " / hour" : " / month"}`
+                ? String(job.type || "").toLowerCase().includes("part")
+                  ? `₱${job.salaryMax ?? "0"} / hour`
+                  : `Grade ${job.salaryMin ?? "0"} · ₱${job.salaryMax ?? "0"} / month`
                 : "-"}
             </strong>
           </div>
+          )}
         </div>
 
         <div className="job-view-info-grid">

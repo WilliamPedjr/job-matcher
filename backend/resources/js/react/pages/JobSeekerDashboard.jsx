@@ -61,6 +61,7 @@ function getDemonstrationPreparationNotesValue(item) {
 function JobSeekerDashboard({ jobSeekerProfile, uploads = [], onBrowseJobs, onViewApplication, onDeleteApplication }) {
   const [actionsId, setActionsId] = useState(null)
   const [applicationsPage, setApplicationsPage] = useState(1)
+  const [importantDatesPage, setImportantDatesPage] = useState(1)
   const name = jobSeekerProfile?.fullName || "Applicant"
   const email = jobSeekerProfile?.email || "-"
   const status = jobSeekerProfile?.status || "-"
@@ -131,6 +132,13 @@ function JobSeekerDashboard({ jobSeekerProfile, uploads = [], onBrowseJobs, onVi
       return aDate.getTime() - bDate.getTime()
     })
 
+  const importantDatesPageCount = Math.max(1, Math.ceil(importantDateNotifications.length / 2))
+  const currentImportantDatesPage = Math.min(importantDatesPage, importantDatesPageCount)
+  const paginatedImportantDates = importantDateNotifications.slice(
+    (currentImportantDatesPage - 1) * 2,
+    currentImportantDatesPage * 2
+  )
+
   const getStatusLabel = (item) => {
     const rawStatus = String(item?.application_status || item?.applicationStatus || item?.evaluation_status || item?.evaluationStatus || "")
       .trim()
@@ -152,7 +160,7 @@ function JobSeekerDashboard({ jobSeekerProfile, uploads = [], onBrowseJobs, onVi
   const getClassificationLabel = (item) => {
     const classification = String(item?.classification || "").trim()
     if (!classification) return "Unclassified"
-    return classification.toLowerCase().includes("lowly") ? "Not Qualified" : classification
+    return ["not qualified", "lowly qualified"].includes(classification.toLowerCase()) ? "Lowly Qualified" : classification
   }
 
   const classificationClass = (value) => {
@@ -172,7 +180,12 @@ function JobSeekerDashboard({ jobSeekerProfile, uploads = [], onBrowseJobs, onVi
 
   useEffect(() => {
     setApplicationsPage(1)
+    setImportantDatesPage(1)
   }, [emailKey])
+
+  useEffect(() => {
+    setImportantDatesPage((page) => Math.min(page, importantDatesPageCount))
+  }, [importantDatesPageCount])
 
   useEffect(() => {
     setApplicationsPage((page) => Math.min(page, applicationsPageCount))
@@ -223,7 +236,7 @@ function JobSeekerDashboard({ jobSeekerProfile, uploads = [], onBrowseJobs, onVi
         <div className="js-stat-card">
           <div className="js-stat-label">
             <span className="js-icon js-icon-not">NO</span>
-            <span>Not Qualified</span>
+            <span>Lowly Qualified</span>
           </div>
           <div className="js-stat-value">{notQualifiedCount}</div>
         </div>
@@ -250,7 +263,7 @@ function JobSeekerDashboard({ jobSeekerProfile, uploads = [], onBrowseJobs, onVi
             <strong>{importantDateNotifications.length}</strong>
           </div>
           <div className="js-interview-notification-list">
-            {importantDateNotifications.map((notification) => {
+            {paginatedImportantDates.map((notification) => {
               const item = notification.item
               const jobTitle = item.applied_job_title || item.matched_job_title || "your application"
               return (
@@ -282,6 +295,25 @@ function JobSeekerDashboard({ jobSeekerProfile, uploads = [], onBrowseJobs, onVi
               )
             })}
           </div>
+          {importantDateNotifications.length > 2 && (
+            <nav className="js-important-dates-pagination" aria-label="Important dates pagination">
+              <button
+                type="button"
+                disabled={currentImportantDatesPage === 1}
+                onClick={() => setImportantDatesPage(currentImportantDatesPage - 1)}
+              >
+                Previous
+              </button>
+              <span aria-live="polite">Page {currentImportantDatesPage} of {importantDatesPageCount}</span>
+              <button
+                type="button"
+                disabled={currentImportantDatesPage === importantDatesPageCount}
+                onClick={() => setImportantDatesPage(currentImportantDatesPage + 1)}
+              >
+                Next
+              </button>
+            </nav>
+          )}
         </div>
       )}
 

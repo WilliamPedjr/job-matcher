@@ -205,7 +205,7 @@ class JobSeekerController extends Controller
             );
         } catch (\RuntimeException $exception) {
             $analysis = [
-                'classification' => 'Not Qualified',
+                'classification' => 'Lowly Qualified',
                 'overall_score' => 0,
                 'skills_match_score' => 0,
                 'project_score' => 0,

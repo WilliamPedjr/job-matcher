@@ -111,6 +111,10 @@ Route::get('/uploads/{id}/rating-summary/export', [UploadController::class, 'exp
 Route::get('/uploads/{id}/demonstration-summary/export', [UploadController::class, 'exportDemonstrationSummary'])
     ->middleware(['api-session', EnsurePersonnelRatingAccess::class]);
 Route::put('/uploads/{id}/status', [UploadController::class, 'updateStatus']);
+Route::post('/uploads/{id}/shortlist-email', [UploadController::class, 'resendShortlistedNotification'])
+    ->middleware(['api-session', EnsurePersonnelRatingAccess::class.':actions']);
+Route::post('/uploads/{id}/rejection-email', [UploadController::class, 'resendRejectedNotification'])
+    ->middleware(['api-session', EnsurePersonnelRatingAccess::class.':actions']);
 Route::put('/uploads/{id}/evaluation', [UploadController::class, 'markForEvaluation']);
 Route::put('/uploads/{id}/interview-date', [UploadController::class, 'updateInterviewDate'])
     ->middleware(['api-session', EnsurePersonnelRatingAccess::class.':actions']);
