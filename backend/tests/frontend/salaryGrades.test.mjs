@@ -1,6 +1,6 @@
 import test from "node:test"
 import assert from "node:assert/strict"
-import { monthlySalaryForGrade } from "../../resources/js/react/utils/salaryGrades.js"
+import { isHourlyEmployment, monthlySalaryForGrade } from "../../resources/js/react/utils/salaryGrades.js"
 
 test("every integer grade from 1 through 33 has a monthly salary", () => {
   for (let grade = 1; grade <= 33; grade++) {
@@ -19,5 +19,14 @@ test("monthly salaries follow the supplied schedule, including the highest grade
 test("missing or invalid grades never produce a salary for another grade", () => {
   for (const grade of [null, undefined, "", " ", 0, -1, 34, 100, 1.5, "1.5", "Grade 15", "abc"]) {
     assert.equal(monthlySalaryForGrade(grade), null)
+  }
+})
+
+test("Contract of Service and Part-time use hourly rates", () => {
+  for (const type of ["Contract of Service", " contract  OF service ", "Part-time", "Part Time"]) {
+    assert.equal(isHourlyEmployment(type), true)
+  }
+  for (const type of ["Permanent", "Temporary", "Contractual", "Full-time", "Internship", null]) {
+    assert.equal(isHourlyEmployment(type), false)
   }
 })

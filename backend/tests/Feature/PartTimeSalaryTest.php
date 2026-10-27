@@ -34,6 +34,22 @@ class PartTimeSalaryTest extends TestCase
             ->assertCreated()->assertJsonPath('salaryMin', 15)->assertJsonPath('salaryMax', 36619);
     }
 
+    public function test_contract_of_service_uses_only_an_hourly_rate(): void
+    {
+        $payload = $this->payload('Contract of Service');
+        $this->postJson('/api/jobs', $payload)->assertCreated()
+            ->assertJsonPath('salaryMin', null)->assertJsonPath('salaryMax', 150);
+        $this->assertDatabaseHas('jobs', ['title' => $payload['title'], 'salary_min' => null, 'salary_max' => 150]);
+    }
+
+    public function test_changing_to_contract_of_service_discards_the_previous_salary_grade(): void
+    {
+        $job = Job::create(['title' => 'Salary test '.Str::uuid(), 'description' => 'Test job', 'type' => 'Permanent', 'salary_min' => 15, 'salary_max' => 36619]);
+        $this->putJson('/api/jobs/'.$job->id, [...$this->payload('Contract of Service'), 'salaryMin' => 15])
+            ->assertOk()->assertJsonPath('salaryMin', null)->assertJsonPath('salaryMax', 150);
+        $this->assertNull($job->fresh()->salary_min);
+    }
+
     public function test_internship_can_be_created_without_a_salary_or_grade(): void
     {
         $payload = $this->payload('Internship');

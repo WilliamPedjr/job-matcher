@@ -220,10 +220,10 @@ class JobController extends Controller
     {
         $this->mergeJobAliases($request);
 
-        $employmentType = Str::lower(trim((string) $request->input('type', '')));
+        $employmentType = Str::lower(Str::squish((string) $request->input('type', '')));
         if ($employmentType === 'internship') {
             $request->merge(['salary_min' => null, 'salary_max' => null]);
-        } elseif (str_contains($employmentType, 'part')) {
+        } elseif (str_contains($employmentType, 'part') || $employmentType === 'contract of service') {
             $request->merge(['salary_min' => null]);
         }
 
@@ -257,7 +257,7 @@ class JobController extends Controller
             'salary_min.integer' => 'Salary grade must be a whole number.',
             'salary_min.min' => 'Salary grade must be a non-negative whole number.',
             'positions_total.integer' => 'Job Vacancy must be a whole number.',
-            'positions_total.min' => 'Job Vacancy must be at least 1, or choose No Limit.',
+            'positions_total.min' => 'Job Vacancy must be at least 1, or choose None.',
         ]);
         $weights = $this->scoringWeightsFromData($data);
         if (array_sum($weights) > 100) {

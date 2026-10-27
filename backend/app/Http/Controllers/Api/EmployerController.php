@@ -137,13 +137,14 @@ class EmployerController extends Controller
         $employer = Employer::findOrFail($id);
         $name = $employer->company_name ?: $employer->full_name ?: $employer->email;
         $serialized = $this->serialize($employer);
+        $archiveData = [...$serialized, 'password' => $employer->password];
 
         Archive::create([
             'record_type' => 'personnel',
             'record_id' => $employer->id,
             'title' => $name,
             'subtitle' => $employer->email,
-            'data' => $serialized,
+            'data' => $archiveData,
             ...Archive::actorFromRequest($request),
             'deleted_at' => now(),
         ]);

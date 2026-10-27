@@ -1,4 +1,9 @@
 // Monthly amounts supplied for this application's salary grade schedule.
+export function isHourlyEmployment(type) {
+  const normalized = String(type || "").trim().replace(/\s+/g, " ").toLowerCase()
+  return normalized.includes("part") || normalized === "contract of service"
+}
+
 const monthlySalaries = Object.freeze([
   13000, 13819, 14678, 15586, 16543, 17553, 18620, 19744, 21211,
   23176, 27000, 29165, 31320, 33843, 36619, 39672, 43030, 46725,

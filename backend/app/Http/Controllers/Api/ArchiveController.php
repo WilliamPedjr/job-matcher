@@ -5,6 +5,9 @@ namespace App\Http\Controllers\Api;
 use App\Http\Controllers\Controller;
 use App\Models\ActivityLog;
 use App\Models\Archive;
+use App\Models\ApplicationRating;
+use App\Models\Upload;
+use App\Models\Employer;
 use App\Models\GlobalSkillCatalog;
 use App\Models\Job;
 use App\Models\JobSeeker;
@@ -12,6 +15,8 @@ use App\Models\JobSkillCatalog;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Hash;
+use Illuminate\Support\Facades\DB;
+use Illuminate\Support\Facades\Auth;
 use Illuminate\Support\Str;
 
 class ArchiveController extends Controller
@@ -31,6 +36,7 @@ class ArchiveController extends Controller
                 'title' => $archive->title,
                 'subtitle' => $archive->subtitle,
                 'data' => $this->sanitizeArchiveData($archive->data ?? []),
+                'requires_password' => $archive->record_type === 'personnel' && empty($archive->data['password']),
                 'actor_name' => $archive->actor_name,
                 'actorName' => $archive->actor_name,
                 'actor_email' => $archive->actor_email,
@@ -145,6 +151,9 @@ class ArchiveController extends Controller
             'status' => $data['status'] ?? 'active',
             'address' => $data['address'] ?? null,
             'about_text' => $data['about_text'] ?? $data['aboutText'] ?? null,
+            'manual_skills' => $data['manual_skills'] ?? [],
+            'profile_photo_path' => $data['profile_photo_path'] ?? null,
+            'linked_in_url' => $data['linkedInUrl'] ?? $data['linked_in_url'] ?? null,
             'password' => $data['password'] ?? Hash::make(Str::random(40)),
         ]);
 
@@ -177,6 +186,99 @@ class ArchiveController extends Controller
                 'email' => $jobSeeker->email,
             ],
         ]);
+    }
+
+    public function restorePersonnel(Request $request, int $id): JsonResponse
+    {
+        $staff = Auth::guard('web')->user();
+        $personnel = Auth::guard('employer')->user();
+        abort_unless($staff || $personnel || Auth::guard('job_seeker')->check(), 401, 'Please sign in to continue.');
+        $allowed = $staff && !in_array(Str::lower((string) $staff->role), ['board', 'jobseeker'], true);
+        if ($personnel && Str::lower((string) $personnel->position_type) !== 'board') {
+            $access = $personnel->page_access;
+            $allowed = !$access || (in_array('users', $access, true) && in_array('archive', $access, true));
+        }
+        abort_unless($allowed, 403, 'You need permission to manage personnel accounts and archives.');
+
+        return DB::transaction(function () use ($request, $id) {
+            $archive = Archive::query()->lockForUpdate()->findOrFail($id);
+            abort_unless($archive->record_type === 'personnel', 422, 'Only archived personnel accounts can be restored here.');
+            $data = $archive->data ?? [];
+            $email = Str::lower(trim((string) ($data['email'] ?? $archive->subtitle ?? '')));
+            $username = trim((string) ($data['username'] ?? ''));
+            $idNumber = trim((string) ($data['id_number'] ?? $data['idNumber'] ?? ''));
+            abort_if($email === '', 422, 'Archived personnel account has no email address to restore.');
+            foreach (['email' => $email, 'username' => $username, 'id_number' => $idNumber] as $field => $value) {
+                if ($value !== '' && Employer::query()->whereRaw('LOWER('.$field.') = ?', [Str::lower($value)])->exists()) {
+                    $label = $field === 'id_number' ? 'ID number' : $field;
+                    abort(422, "A personnel account with this {$label} already exists.");
+                }
+            }
+            $validated = $request->validate([
+                'password' => [empty($data['password']) ? 'required' : 'nullable', 'string', 'min:8', 'max:72'],
+            ]);
+            $personnel = Employer::create([
+                'company_name' => $data['company_name'] ?? $data['companyName'] ?? $archive->title,
+                'full_name' => $data['full_name'] ?? $data['fullName'] ?? $data['contactName'] ?? null,
+                'email' => $email, 'username' => $username !== '' ? $username : null,
+                'id_number' => $idNumber !== '' ? $idNumber : null, 'phone' => $data['phone'] ?? null,
+                'position_type' => $data['position_type'] ?? $data['positionType'] ?? 'personnel',
+                'page_access' => $data['page_access'] ?? $data['pageAccess'] ?? null,
+                'password' => !empty($validated['password']) ? Hash::make($validated['password']) : $data['password'],
+            ]);
+            $archive->delete();
+            ActivityLog::record('personnel.restored', "Restored archived personnel account {$personnel->company_name}.", $request, [
+                'subject_type' => 'personnel', 'subject_id' => $personnel->id, 'subject_name' => $personnel->company_name,
+                'metadata' => ['archiveId' => $id, 'email' => $personnel->email],
+            ]);
+
+            return response()->json([
+                'message' => 'Personnel account restored successfully.',
+                'personnel' => ['id' => $personnel->id, 'email' => $personnel->email, 'fullName' => $personnel->full_name],
+            ]);
+        });
+    }
+
+    public function restoreRating(Request $request, int $id): JsonResponse
+    {
+        return DB::transaction(function () use ($request, $id) {
+            $archive = Archive::query()->lockForUpdate()->findOrFail($id);
+            abort_unless($archive->record_type === 'rating', 422, 'Only archived ratings can be restored here.');
+            $upload = Upload::query()->lockForUpdate()->find($archive->record_id);
+            abort_unless($upload, 422, 'The original application no longer exists. These ratings cannot be restored.');
+            abort_if($upload->ratings()->exists(), 409, 'This application already has ratings. Restore cancelled to protect the current ratings.');
+            $data = $archive->data ?? [];
+            $ratings = $data['ratings'] ?? [];
+            abort_unless(is_array($ratings) && count($ratings) > 0, 422, 'This archive has no saved ratings to restore.');
+            foreach ($ratings as $saved) {
+                abort_unless(is_array($saved) && is_array($saved['scores'] ?? null), 422, 'The archived rating data is incomplete.');
+                $rating = new ApplicationRating([
+                    'upload_id' => $upload->id,
+                    'rater_name' => $saved['rater_name'] ?? $saved['raterName'] ?? null,
+                    'rater_email' => $saved['rater_email'] ?? $saved['raterEmail'] ?? null,
+                    'scores' => $saved['scores'],
+                    'remarks' => $saved['remarks'] ?? null,
+                    'total_score' => $saved['total_score'] ?? $saved['totalScore'] ?? array_sum($saved['scores']),
+                    'percentage_score' => $saved['percentage_score'] ?? $saved['percentageScore'] ?? 0,
+                ]);
+                $rating->created_at = $saved['created_at'] ?? $saved['createdAt'] ?? now();
+                $rating->save();
+            }
+            // Recover the evaluation without assigning a vacancy or hiring the applicant.
+            if ($upload->evaluation_status !== 'hired') {
+                $upload->evaluation_status = 'rated';
+            }
+            $upload->evaluation_started_at ??= $data['applicant']['evaluation_started_at']
+                ?? $data['applicant']['evaluationStartedAt'] ?? now();
+            $upload->save();
+            $archive->delete();
+            ActivityLog::record('rating.restored', "Restored archived ratings for {$upload->name}.", $request, [
+                'subject_type' => 'application', 'subject_id' => $upload->id, 'subject_name' => $upload->name,
+                'metadata' => ['archiveId' => $id, 'ratingCount' => count($ratings)],
+            ]);
+
+            return response()->json(['message' => 'Ratings restored successfully.', 'applicationId' => $upload->id]);
+        });
     }
 
     private function parseSkills(string|array|null $value): array

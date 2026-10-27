@@ -47,6 +47,9 @@ class JobSeeker extends Authenticatable
         'status',
         'address',
         'about_text',
+        'manual_skills',
+        'profile_photo_path',
+        'linked_in_url',
         'password',
     ];
 
@@ -57,10 +60,18 @@ class JobSeeker extends Authenticatable
     ];
 
     protected $casts = [
+        'manual_skills' => 'array',
         'password' => 'hashed',
         'email_verified_at' => 'datetime',
         'email_verification_sent_at' => 'datetime',
     ];
+
+    public function profilePhotoUrl(): ?string
+    {
+        return $this->profile_photo_path
+            ? '/api/job-seekers/'.$this->id.'/photo?v='.sha1($this->profile_photo_path)
+            : null;
+    }
 
     public function educations()
     {
@@ -76,9 +87,9 @@ class JobSeeker extends Authenticatable
     {
         $this->loadMissing('experiences');
 
-        return Experience::normalizeSkills($this->experiences
+        return Experience::normalizeSkills(array_merge($this->manual_skills ?? [], $this->experiences
             ->flatMap(fn (Experience $experience) => $experience->skills ?? [])
-            ->all());
+            ->all()));
     }
 
     public function uploads()

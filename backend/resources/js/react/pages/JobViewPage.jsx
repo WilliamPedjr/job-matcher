@@ -3,7 +3,9 @@ import { useToastState } from "../utils/useToastState"
 import React from 'react'
 import { useEffect, useRef, useState } from "react"
 import "../styles/JobViewPage.css"
+import "../styles/Skills.css"
 import { buildJobRequirements } from "../utils/jobRequirements"
+import { isHourlyEmployment } from "../utils/salaryGrades"
 
 function parseSkills(skillsText) {
   if (!skillsText) return []
@@ -40,7 +42,7 @@ function isAlreadyAppliedMessage(message) {
   return String(message || "").toLowerCase().includes("already applied")
 }
 
-function JobViewPage({ job, onBack, onApply, onRequireResume, jobSeekerProfile, jobSeekerResume, jobSeekerSupporting, jobSeekerId, applications = [] }) {
+function JobViewPage({ job, onBack, onApply, onRequireResume, jobSeekerProfile, jobSeekerResume, jobSeekerSupporting, jobSeekerId, applications = [], matchingEnabled = true, onCompleteProfile }) {
   const [isApplyModalOpen, setIsApplyModalOpen] = useState(false)
   const [applicantName, setApplicantName] = useState("")
   const [applicantEmail, setApplicantEmail] = useState("")
@@ -288,6 +290,10 @@ function JobViewPage({ job, onBack, onApply, onRequireResume, jobSeekerProfile, 
   }, [isApplyModalOpen, jobSeekerId, jobSeekerSupporting])
 
   useEffect(() => {
+    if (!matchingEnabled) {
+      setResumeMatch({ status: "idle", analysis: null })
+      return
+    }
     if (!jobIdForMatch && !jobTitleForMatch) return
     if (!jobSeekerId) return
     if (!jobSeekerResume) {
@@ -365,7 +371,7 @@ function JobViewPage({ job, onBack, onApply, onRequireResume, jobSeekerProfile, 
       window.clearTimeout(timeoutId)
       controller.abort()
     }
-  }, [jobIdForMatch, jobTitleForMatch, jobSeekerId, resumeKeyForMatch, jobSeekerProfile, jobSeekerSupporting])
+  }, [matchingEnabled, jobIdForMatch, jobTitleForMatch, jobSeekerId, resumeKeyForMatch, jobSeekerProfile, jobSeekerSupporting])
 
   const isApplyDisabled = isSubmitting
 
@@ -415,8 +421,8 @@ function JobViewPage({ job, onBack, onApply, onRequireResume, jobSeekerProfile, 
     : Math.max(0, Number(job?.positionsAvailable ?? job?.positions_available ?? Math.max(1, positionsTotal) - positionsFilled))
   const positionsFilledUp = !positionsMany && positionsAvailable <= 0
   const positionsSlotsLabel = positionsMany
-    ? "No Limit"
-    : `${positionsAvailable} of ${Math.max(1, positionsTotal)} remaining`
+    ? "None"
+    : `${positionsAvailable} ${positionsAvailable === 1 ? "vacancy" : "vacancies"} left`
   const applyGateDisabled = Boolean(applicationLimitReached || hasAlreadyApplied || resumeMatchLoading || applyBlockedByMatch || resumeMatchError || positionsFilledUp)
   const skillItems = parseSkills(job?.requiredSkills || job?.required_skills || job?.required_skills_text || "")
 
@@ -427,6 +433,7 @@ function JobViewPage({ job, onBack, onApply, onRequireResume, jobSeekerProfile, 
   )
   const skillsRequirementKey = requirements.find((item) => ["skills", "training"].includes(item.key))?.key
   const requirementProps = (key, value) => {
+    if (!matchingEnabled) return {}
     const requirement = requirements.find((item) => item.key === key)
     if (!requirement || !["missing", "incomplete"].includes(requirement.state)) return {}
     if (key === "skills" && requirement.missing?.length && !requirement.missing.some(
@@ -450,6 +457,10 @@ function JobViewPage({ job, onBack, onApply, onRequireResume, jobSeekerProfile, 
 
   return (
     <section className="job-view-page">
+      {!matchingEnabled && <div className="profile-matching-notice">
+        <p>Complete your profile to see job matches and apply.</p>
+        <button type="button" className="btn btn-secondary" onClick={onCompleteProfile}>Go to Profile</button>
+      </div>}
       <div className="job-view-header">
         <button type="button" className="job-view-back" onClick={onBack}>←</button>
         <div className="job-view-header-text">
@@ -469,10 +480,10 @@ function JobViewPage({ job, onBack, onApply, onRequireResume, jobSeekerProfile, 
           <h3>Job Description</h3>
           {String(job.type || "").trim().toLowerCase() !== "internship" && (
           <div className="job-view-salary">
-            <span>{String(job.type || "").toLowerCase().includes("part") ? "Hourly Rate" : "Salary Grade & Salary per Month"}</span>
+            <span>{isHourlyEmployment(job.type) ? "Hourly Rate" : "Salary Grade & Salary per Month"}</span>
             <strong>
               {job.salaryMin != null || job.salaryMax != null
-                ? String(job.type || "").toLowerCase().includes("part")
+                ? isHourlyEmployment(job.type)
                   ? `₱${job.salaryMax ?? "0"} / hour`
                   : `Grade ${job.salaryMin ?? "0"} · ₱${job.salaryMax ?? "0"} / month`
                 : "-"}
@@ -555,8 +566,9 @@ function JobViewPage({ job, onBack, onApply, onRequireResume, jobSeekerProfile, 
           <button
             type="button"
             className="btn"
-            disabled={applyGateDisabled}
+            disabled={matchingEnabled && applyGateDisabled}
             onClick={() => {
+              if (!matchingEnabled) { onCompleteProfile?.(); return }
               if (!jobSeekerResume) {
                 setApplyGateNotice("Please upload your Personal Data Sheet(PDS) in Profile before applying.")
                 onRequireResume?.()
@@ -585,7 +597,7 @@ function JobViewPage({ job, onBack, onApply, onRequireResume, jobSeekerProfile, 
               setIsApplyModalOpen(true)
             }}
           >
-            {applicationLimitReached ? "Limit Reached" : hasAlreadyApplied ? "Already Applied" : positionsFilledUp ? "No Vacancies Available" : applyBlockedByMatch ? "Not Qualified" : "Apply"}
+            {!matchingEnabled ? "Complete Profile to Apply" : applicationLimitReached ? "Limit Reached" : hasAlreadyApplied ? "Already Applied" : positionsFilledUp ? "No Vacancies Available" : applyBlockedByMatch ? "Not Qualified" : "Apply"}
           </button>
         </div>
       )}
@@ -690,6 +702,16 @@ function JobViewPage({ job, onBack, onApply, onRequireResume, jobSeekerProfile, 
                       placeholder="Brgy, City, Province"
                     />
                   </div>
+                </div>
+                <div className="field-group">
+                  <label>Profile Skills</label>
+                  <p>These saved skills are used for job matching and your application. Update them in Profile.</p>
+                  <div className="profile-skill-tags">
+                    {parseSkills(jobSeekerProfile?.skills).map((skill) => (
+                      <span className="profile-skill-tag" key={skill}>{skill}</span>
+                    ))}
+                  </div>
+                  {!jobSeekerProfile?.skills?.length && <p>No skills added yet.</p>}
                 </div>
               </div>
             )}

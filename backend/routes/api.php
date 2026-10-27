@@ -9,6 +9,7 @@ use App\Http\Controllers\Api\LandingController;
 use App\Http\Controllers\Api\JobSeekerController;
 use App\Http\Controllers\Api\MatchController;
 use App\Http\Controllers\Api\PdsController;
+use App\Http\Controllers\Api\PresenceController;
 use App\Http\Controllers\Api\SkillController;
 use App\Http\Controllers\Api\UploadController;
 use App\Http\Middleware\EnsurePersonnelRatingAccess;
@@ -26,9 +27,12 @@ Route::get('/', function () {
 });
 
 Route::post('/auth/verify-recaptcha', [AuthController::class, 'verifyRecaptcha']);
+Route::post('/job-seekers/email-verification/resend', [AuthController::class, 'resendJobSeekerVerification'])->middleware('throttle:5,1');
 Route::middleware('api-session')->withoutMiddleware(['throttle:api'])->group(function () {
     Route::get('/auth/session', [AuthController::class, 'session']);
     Route::post('/auth/logout', [AuthController::class, 'logout']);
+    Route::post('/auth/heartbeat', [PresenceController::class, 'heartbeat']);
+    Route::get('/users/presence', [PresenceController::class, 'index']);
     Route::post('/staff/register', [AuthController::class, 'staffRegister']);
     Route::post('/staff/login', [AuthController::class, 'staffLogin']);
     Route::post('/job-seekers/register', [AuthController::class, 'jobSeekerRegister']);
@@ -44,16 +48,23 @@ Route::put('/staff/me', [AuthController::class, 'updateStaffMe']);
 Route::get('/archives', [ArchiveController::class, 'index']);
 Route::post('/archives/{id}/restore-job', [ArchiveController::class, 'restoreJob']);
 Route::post('/archives/{id}/restore-job-seeker', [ArchiveController::class, 'restoreJobSeeker']);
+Route::post('/archives/{id}/restore-personnel', [ArchiveController::class, 'restorePersonnel'])->middleware('api-session');
+Route::post('/archives/{id}/restore-rating', [ArchiveController::class, 'restoreRating'])
+    ->middleware(['api-session', EnsurePersonnelRatingAccess::class.':actions']);
 
 Route::get('/job-seekers/all', [JobSeekerController::class, 'indexAll']);
 Route::get('/job-seekers/{id}', [JobSeekerController::class, 'show']);
+Route::get('/job-seekers/{id}/photo', [JobSeekerController::class, 'photo']);
+Route::post('/job-seekers/{id}/photo', [JobSeekerController::class, 'storePhoto'])->middleware('api-session');
 Route::put('/job-seekers/{id}', [JobSeekerController::class, 'update']);
+Route::delete('/job-seekers/{id}/skills', [JobSeekerController::class, 'deleteSkill'])->middleware('api-session');
 Route::put('/job-seekers/{id}/admin', [JobSeekerController::class, 'updateAdmin']);
 Route::delete('/job-seekers/{id}', [JobSeekerController::class, 'destroy']);
 Route::get('/job-seekers/{id}/resume', [JobSeekerController::class, 'resume']);
 Route::post('/job-seekers/{id}/resume', [JobSeekerController::class, 'storeResume'])
     ->withoutMiddleware(['throttle:api']);
 Route::get('/job-seekers/{id}/resume/download', [JobSeekerController::class, 'downloadResume']);
+Route::get('/job-seekers/{id}/resume/view', [JobSeekerController::class, 'viewResume']);
 Route::delete('/job-seekers/{id}/resume', [JobSeekerController::class, 'deleteResume']);
 Route::get('/job-seekers/{id}/resume/match', [JobSeekerController::class, 'resumeMatch'])
     ->withoutMiddleware(['throttle:api']);
@@ -63,6 +74,7 @@ Route::get('/job-seekers/{id}/supporting', [JobSeekerController::class, 'support
 Route::post('/job-seekers/{id}/supporting', [JobSeekerController::class, 'storeSupportingFiles'])
     ->withoutMiddleware(['throttle:api']);
 Route::get('/job-seekers/{id}/supporting/{supportId}/download', [JobSeekerController::class, 'downloadSupportingFile']);
+Route::get('/job-seekers/{id}/supporting/{supportId}/view', [JobSeekerController::class, 'viewSupportingFile']);
 Route::delete('/job-seekers/{id}/supporting/{supportId}', [JobSeekerController::class, 'deleteSupportingFile']);
 Route::post('/job-seekers/{id}/education', [JobSeekerController::class, 'storeEducation']);
 Route::put('/job-seekers/{id}/education/{educationId}', [JobSeekerController::class, 'updateEducation']);

@@ -61,6 +61,44 @@ class JobSeekerController extends Controller
         ]);
     }
 
+    public function storePhoto(Request $request, int $id): JsonResponse
+    {
+        $account = $request->user('job_seeker');
+        abort_unless($account, 401, 'Please sign in to upload a profile photo.');
+        abort_unless((int) $account->id === $id, 403, 'You can only change your own profile photo.');
+        $request->validate([
+            'photo' => ['required', 'image', 'mimes:jpg,jpeg,png,webp', 'max:5120', 'dimensions:max_width=8192,max_height=8192'],
+        ]);
+        $jobSeeker = JobSeeker::findOrFail($id);
+        $oldPath = $jobSeeker->profile_photo_path;
+        $path = $request->file('photo')->store('profile-photos/'.$id, 'local');
+        abort_unless($path, 500, 'Unable to save profile photo. Please try again.');
+        try {
+            $jobSeeker->profile_photo_path = $path;
+            $jobSeeker->save();
+        } catch (\Throwable $exception) {
+            Storage::disk('local')->delete($path);
+            throw $exception;
+        }
+        if ($oldPath) {
+            Storage::disk('local')->delete($oldPath);
+        }
+
+        return response()->json(['profilePhotoUrl' => $jobSeeker->profilePhotoUrl()]);
+    }
+
+    public function photo(int $id)
+    {
+        $jobSeeker = JobSeeker::findOrFail($id);
+        $path = $jobSeeker->profile_photo_path;
+        abort_if(!$path || !Storage::disk('local')->exists($path), 404, 'Profile photo not found.');
+
+        return response()->file(Storage::disk('local')->path($path), [
+            'Cache-Control' => 'private, max-age=3600',
+            'X-Content-Type-Options' => 'nosniff',
+        ]);
+    }
+
     public function update(Request $request, int $id): JsonResponse
     {
         $jobSeeker = JobSeeker::findOrFail($id);
@@ -68,13 +106,16 @@ class JobSeekerController extends Controller
         $data = $request->validate([
             'full_name' => ['nullable', 'string', 'max:255'],
             'fullName' => ['nullable', 'string', 'max:255'],
-            'email' => ['nullable', 'email', 'max:255'],
+            'email' => ['nullable', 'email', 'max:255', \Illuminate\Validation\Rule::unique('job_seekers', 'email')->ignore($jobSeeker->id)],
+            'linkedInUrl' => ['nullable', 'url:http,https', 'max:2048'],
             'username' => ['nullable', 'string', 'max:255'],
             'phone' => ['nullable', 'string', 'max:30'],
             'status' => ['nullable', 'string', 'max:255'],
             'address' => ['nullable', 'string', 'max:255'],
             'about_text' => ['nullable', 'string'],
             'aboutText' => ['nullable', 'string'],
+            'manual_skills' => ['sometimes', 'array', 'max:100'],
+            'manual_skills.*' => ['required', 'string', 'max:100'],
             'password' => ['nullable', 'string', 'min:8', 'max:72'],
         ]);
 
@@ -96,6 +137,9 @@ class JobSeekerController extends Controller
         if (array_key_exists('phone', $data)) {
             $jobSeeker->phone = $data['phone'];
         }
+        if (array_key_exists('linkedInUrl', $data)) {
+            $jobSeeker->linked_in_url = $data['linkedInUrl'];
+        }
         if (array_key_exists('status', $data)) {
             $jobSeeker->status = $data['status'];
         }
@@ -109,6 +153,9 @@ class JobSeekerController extends Controller
             $jobSeeker->password = Hash::make($data['password']);
         }
 
+        if (array_key_exists('manual_skills', $data)) {
+            $jobSeeker->manual_skills = Experience::normalizeSkills($data['manual_skills']);
+        }
         $jobSeeker->save();
         ActivityLog::record('job_seeker.updated', "Updated job seeker account for {$jobSeeker->full_name}.", $request, [
             'subject_type' => 'job_seeker',
@@ -122,6 +169,39 @@ class JobSeekerController extends Controller
         ]);
 
         return response()->json($this->serializeJobSeeker($jobSeeker));
+    }
+
+    public function deleteSkill(Request $request, int $id): JsonResponse
+    {
+        $account = $request->user('job_seeker');
+        abort_unless($account, 401, 'Please sign in to manage your skills.');
+        abort_unless((int) $account->id === $id, 403, 'You can only change your own skills.');
+        $data = $request->validate(['skill' => ['required', 'string', 'max:100']]);
+        $skill = Str::lower(Str::squish($data['skill']));
+
+        return DB::transaction(function () use ($id, $skill, $request) {
+            $jobSeeker = JobSeeker::query()->lockForUpdate()->findOrFail($id);
+            $experiences = $jobSeeker->experiences()->lockForUpdate()->get();
+            $removeSkill = fn (array $skills) => array_values(array_filter(
+                Experience::normalizeSkills($skills), fn ($value) => Str::lower($value) !== $skill
+            ));
+            $jobSeeker->manual_skills = $removeSkill($jobSeeker->manual_skills ?? []);
+            $jobSeeker->save();
+            foreach ($experiences as $experience) {
+                $experience->skills = $removeSkill($experience->skills ?? []);
+                if ($experience->isDirty('skills')) $experience->save();
+            }
+            $jobSeeker->setRelation('experiences', $experiences);
+            ActivityLog::record('profile.skill_deleted', "Removed a profile skill for {$jobSeeker->full_name}.", $request, [
+                'subject_type' => 'job_seeker', 'subject_id' => $id, 'subject_name' => $jobSeeker->full_name,
+                'metadata' => ['skill' => $request->input('skill')],
+            ]);
+
+            return response()->json([
+                'jobSeeker' => $this->serializeJobSeeker($jobSeeker),
+                'experiences' => $experiences->map(fn (Experience $experience) => $this->serializeExperience($experience))->values(),
+            ]);
+        });
     }
 
     public function updateAdmin(Request $request, int $id): JsonResponse
@@ -279,6 +359,14 @@ class JobSeekerController extends Controller
             'message' => $existing ? 'Personal Data Sheet(PDS) replaced successfully.' : 'Personal Data Sheet(PDS) uploaded successfully.',
             'resume' => $this->serializeResume($resume),
         ], $existing ? 200 : 201);
+    }
+
+    public function viewResume(int $id): mixed
+    {
+        $resume = $this->getResumeUpload($id);
+        abort_if(!$resume, 404, 'Personal Data Sheet(PDS) not found.');
+
+        return $this->inlineDocument($resume->file_path, $resume->original_name);
     }
 
     public function downloadResume(int $id): mixed
@@ -482,6 +570,27 @@ class JobSeekerController extends Controller
             'message' => 'Supporting files uploaded successfully.',
             'files' => $this->serializeSupportingFiles($created),
         ], 201);
+    }
+
+    public function viewSupportingFile(int $id, int $supportId): mixed
+    {
+        $file = SupportingFile::query()->where('job_seeker_id', $id)->where('id', $supportId)->firstOrFail();
+
+        return $this->inlineDocument($file->file_path, $file->original_name);
+    }
+
+    private function inlineDocument(?string $path, ?string $name): mixed
+    {
+        $disk = Storage::disk('local');
+        abort_if(!$path || !$disk->exists($path), 404, 'File not found.');
+        $mime = $disk->mimeType($path);
+        abort_unless(in_array($mime, ['application/pdf', 'image/jpeg', 'image/png', 'image/webp'], true), 415, 'Preview is unavailable for this file type. Please download it to view.');
+
+        return $disk->response($path, $name ?: basename($path), [
+            'Content-Type' => $mime,
+            'X-Content-Type-Options' => 'nosniff',
+            'Cache-Control' => 'private, no-store',
+        ], 'inline');
     }
 
     public function downloadSupportingFile(int $id, int $supportId): mixed
@@ -716,6 +825,9 @@ class JobSeekerController extends Controller
             'about_text' => $jobSeeker->about_text,
             'aboutText' => $jobSeeker->about_text,
             'skills' => $jobSeeker->combinedSkills(),
+            'manual_skills' => $jobSeeker->manual_skills ?? [],
+            'profilePhotoUrl' => $jobSeeker->profilePhotoUrl(),
+            'linkedInUrl' => $jobSeeker->linked_in_url,
             'created_at' => $jobSeeker->created_at?->toISOString(),
             'createdAt' => $jobSeeker->created_at?->toISOString(),
             'updated_at' => $jobSeeker->updated_at?->toISOString(),
@@ -723,6 +835,7 @@ class JobSeekerController extends Controller
         ];
 
         if ($includeMeta) {
+            $base['profile_photo_path'] = $jobSeeker->profile_photo_path;
             $base['educations_count'] = $jobSeeker->educations->count();
             $base['experiences_count'] = $jobSeeker->experiences->count();
         }
@@ -773,6 +886,8 @@ class JobSeekerController extends Controller
             'updated_at' => $uploadedAt,
             'size_bytes' => $resume->size_bytes,
             'download_url' => url("/api/job-seekers/{$resume->job_seeker_id}/resume/download"),
+            'view_url' => "/api/job-seekers/{$resume->job_seeker_id}/resume/view",
+            'available' => $resume->file_path && Storage::disk('local')->exists($resume->file_path),
         ];
     }
 
@@ -811,6 +926,8 @@ class JobSeekerController extends Controller
                 'size_bytes' => $file->size_bytes,
                 'uploaded_at' => $file->uploaded_at,
                 'download_url' => url("/api/job-seekers/{$file->job_seeker_id}/supporting/{$file->id}/download"),
+                'view_url' => "/api/job-seekers/{$file->job_seeker_id}/supporting/{$file->id}/view",
+                'available' => $file->file_path && Storage::disk('local')->exists($file->file_path),
             ];
         })->values()->all();
     }

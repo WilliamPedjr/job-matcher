@@ -69,6 +69,24 @@ class ResumeAnalysisServiceTest extends TestCase
         $this->assertSame([], $this->callPrivate('skillRequirementsFromRequirement', '4 hours relevant training'));
     }
 
+    public function test_development_skills_do_not_become_training_or_receive_unearned_credit(): void
+    {
+        $requirements = ['Teaching', 'Lesson Planning', 'Classroom Management', 'Student Assessment', 'Curriculum Development'];
+        $requiredSkills = $this->callPrivate('skillRequirementsFromRequirement', implode(', ', $requirements));
+        $this->assertSame($requirements, $requiredSkills);
+        $weights = ['education' => 0, 'training' => 0, 'experience' => 0, 'eligibility' => 0, 'skills' => 100];
+
+        foreach ([0, 1, 5] as $matchCount) {
+            $skillsScore = $this->callPrivate('calculateSkillsScore', $requiredSkills, array_slice($requirements, 0, $matchCount));
+            $this->assertSame($matchCount * 20.0, $skillsScore);
+            $this->assertSame($skillsScore, $this->callPrivate('calculateQualificationStandardsScore', 100.0, 100.0, 100.0, 100.0, $skillsScore, $weights));
+        }
+
+        foreach (['Software Development', 'Machine Learning', 'Course Design', 'Crisis Intervention', 'Teaching, Leadership Workshop'] as $skillList) {
+            $this->assertNotEmpty($this->callPrivate('skillRequirementsFromRequirement', $skillList));
+        }
+    }
+
     public function test_eligibility_requirement_matches_common_civil_service_wording(): void
     {
         $text = 'Eligibility certificate: Career Service Professional Second Level Eligibility.';

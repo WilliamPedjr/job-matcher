@@ -3,8 +3,14 @@ import { useToastState } from "../utils/useToastState"
 import React from 'react'
 import { useEffect, useMemo, useRef, useState } from "react"
 import "../styles/ProfilePage.css"
+import "../styles/Skills.css"
 import profileIcon from "../assets/circle-user-solid-full.svg"
+import ProfilePhotoEditor from "../components/ProfilePhotoEditor"
+import ProfileAttachmentInput from "../components/ProfileAttachmentInput"
 import { normalizeSkills, validateLearnedSkills } from "../utils/profileSkills"
+import { missingProfileFields } from "../utils/profileCompletion"
+import { experienceDocuments as findExperienceDocuments } from "../utils/profileDocuments"
+import "../styles/ProfileCompletion.css"
 
 const readJsonResponse = async (response) => {
   const contentType = response.headers.get("content-type") || ""
@@ -43,6 +49,15 @@ function ProfilePage({
       : "Employer"
   const isJobSeeker = userRole === "jobseeker"
   const [isLoadingProfile, setIsLoadingProfile] = useState(false)
+  const photoInputRef = useRef(null)
+  const photoUploadingRef = useRef(false)
+  const [isUploadingPhoto, setIsUploadingPhoto] = useState(false)
+  const [photoError, setPhotoError] = useState("")
+  const [photoToEdit, setPhotoToEdit] = useState(null)
+  const [skillInput, setSkillInput] = useState("")
+  const [isSavingSkills, setIsSavingSkills] = useState(false)
+  const skillsSavingRef = useRef(false)
+  const [skillsError, setSkillsError] = useState("")
   const [profileError, setProfileError] = useToastState("", "error")
   const [editMode, setEditMode] = useState(null)
   const [formState, setFormState] = useState({
@@ -71,6 +86,9 @@ function ProfilePage({
     phone: ""
   })
   const [isEditingContact, setIsEditingContact] = useState(false)
+  const [isSavingContact, setIsSavingContact] = useState(false)
+  const contactSavingRef = useRef(false)
+  const [contactError, setContactError] = useState("")
   const [resumeStatus, setResumeStatus] = useToastState("")
   const [supportingStatus, setSupportingStatus] = useToastState("")
   const [supportingErrorToast, setSupportingErrorToast] = useToastState("", "error")
@@ -79,6 +97,7 @@ function ProfilePage({
   const [eligibilityStatus, setEligibilityStatus] = useToastState("")
   const [eligibilityForm, setEligibilityForm] = useState({
     classification: "",
+    otherClassification: "",
     file: null
   })
   const [resumeAttentionActive, setResumeAttentionActive] = useState(false)
@@ -95,6 +114,7 @@ function ProfilePage({
   const supportingTypeConfig = [
     { key: "certificate", label: "Certificate" },
     { key: "portfolio", label: "Portfolio" },
+    { key: "recommendation", label: "Application Letter" },
     { key: "transcript", label: "Transcript" },
     { key: "others", label: "Other Supporting Documents" }
   ]
@@ -130,23 +150,21 @@ function ProfilePage({
   const appointmentStatusOptions = [
     "Permanent",
     "Temporary",
+    "Probationary",
+    "Substitute",
     "Contractual",
-    "Casual",
-    "Job Order",
-    "Part-time",
-    "Other"
+    "Casual"
   ]
   const eligibilityClassificationOptions = [
     "Career Service Eligibility - Preference Rating (CSE-PR)",
     "Career Service Eligibility - Sub Professional (CSE-Sub)",
     "Career Service Eligibility - Professional (CSE-Prof)",
-    "Bar/Board Eligibility (RA 1080)",
+    "Bar Eligibility (RA 1080)",
+    "Board Eligibility (RA 1080)",
     "Barangay Health Worker Eligibility (RA 7883)",
     "Barangay Nutrition Scholar Eligibility (PD 1569)",
     "Barangay Official Eligibility (RA 7160)",
     "Electronic Data Processing Specialist Eligibility (CSC Res. 90-083)",
-    "Foreign School Honor Graduate Eligibility (CSC Res. 1302714)",
-    "Honor Graduate Eligibility (PD 907)",
     "Sanggunian Member Eligibility (RA 10156)",
     "Scientific and Technological Specialist Eligibility (PD 997)",
     "Skills Eligibility - Category II (CSC MC 11, s. 1996, as Amended)",
@@ -161,7 +179,8 @@ function ProfilePage({
   const supportingFiles = Array.isArray(jobSeekerSupporting) ? jobSeekerSupporting : []
   const requiredSupportingKeys = ["certificate", "portfolio", "transcript"]
   const supportingByType = supportingFiles.reduce((acc, item) => {
-    const type = String(item?.type || "others")
+    const rawType = String(item?.type || item?.doc_type || "others").toLowerCase()
+    const type = rawType.startsWith("eligibility:") || supportingTypeConfig.some((config) => config.key === rawType) ? rawType : "others"
     if (!acc[type]) acc[type] = []
     acc[type].push(item)
     return acc
@@ -299,6 +318,9 @@ function ProfilePage({
   )
 
   const eligibilityDocType = (classification = "") => `eligibility:${classification}`
+  const resolvedEligibilityClassification = eligibilityForm.classification === "Other Eligibility"
+    ? (eligibilityForm.otherClassification || "").trim()
+    : eligibilityForm.classification
 
   const eligibilityClassificationFromType = (type = "") => {
     const value = String(type || "")
@@ -359,7 +381,7 @@ function ProfilePage({
       if (isBlank(formState.trainingHours) || !Number.isFinite(trainingHours) || trainingHours <= 0) fields.push("trainingHours")
       if (isBlank(formState.ldClassification)) fields.push("ldClassification")
       if (isBlank(formState.companyName)) fields.push("companyName")
-      if (!formState.trainingCertificateFile && !formState.trainingCertificateName) fields.push("trainingCertificateFile")
+      if (!formState.trainingCertificateFile && !editingExperienceDocument) fields.push("trainingCertificateFile")
       if (validateDocumentFile(formState.trainingCertificateFile, "Certificate of training")) fields.push("trainingCertificateFile")
       return Array.from(new Set(fields))
     }
@@ -374,9 +396,9 @@ function ProfilePage({
     if (isBlank(formState.companyName)) fields.push("companyName")
     if (isBlank(formState.governmentService)) fields.push("governmentService")
     const monthlySalary = Number(String(formState.monthlySalary || "").replace(/,/g, ""))
-    if (isBlank(formState.monthlySalary) || !Number.isFinite(monthlySalary) || monthlySalary <= 0) fields.push("monthlySalary")
+    if (!isBlank(formState.monthlySalary) && (!Number.isFinite(monthlySalary) || monthlySalary <= 0)) fields.push("monthlySalary")
     if (isBlank(formState.appointmentStatus)) fields.push("appointmentStatus")
-    if (!formState.coeFile && !formState.coeFileName) fields.push("coeFile")
+    if (!formState.coeFile && !editingExperienceDocument) fields.push("coeFile")
     if (validateDocumentFile(formState.coeFile, "Certificate of employment")) fields.push("coeFile")
     return Array.from(new Set(fields))
   }
@@ -384,6 +406,7 @@ function ProfilePage({
   const getInvalidEligibilityFields = () => {
     const fields = []
     if (!eligibilityForm.classification) fields.push("eligibilityClassification")
+    if (eligibilityForm.classification === "Other Eligibility" && !resolvedEligibilityClassification) fields.push("eligibilityOtherClassification")
     if (!eligibilityForm.file) fields.push("eligibilityFile")
     if (validateDocumentFile(eligibilityForm.file, "Eligibility certificate")) fields.push("eligibilityFile")
     return Array.from(new Set(fields))
@@ -416,6 +439,9 @@ function ProfilePage({
       address: source.address || source.location || "",
       aboutText: source.aboutText || "",
       linkedInUrl: source.linkedInUrl || "",
+      skills: normalizeSkills(source.skills),
+      manual_skills: normalizeSkills(source.manual_skills),
+      profilePhotoUrl: source.profilePhotoUrl || null,
       createdAt: source.createdAt || source.created_at || null,
       education: Array.isArray(educationSource) ? educationSource.map(normalizeEducationItem) : [],
     experience: Array.isArray(experienceSource) ? experienceSource.map(normalizeExperienceItem) : [],
@@ -488,6 +514,110 @@ function ProfilePage({
   }
 
   const resolvedJobSeekerId = jobSeekerId || normalizedJobSeekerProfile?.id || null
+  const missingProfile = missingProfileFields(normalizedJobSeekerProfile, jobSeekerResume, supportingFiles)
+
+  const supportingPreviewUrl = (doc) => `/api/job-seekers/${resolvedJobSeekerId}/supporting/${doc.id}/view`
+
+  const experienceDocuments = (item) => findExperienceDocuments(item, supportingFiles)
+  const editingExperienceDocument = editingItem ? experienceDocuments(editingItem)[0] : null
+
+  const uploadProfilePhoto = (event) => {
+    const file = event.target.files?.[0]
+    event.target.value = ""
+    if (!file || !resolvedJobSeekerId || photoUploadingRef.current) return
+    setPhotoError("")
+    if (!["image/jpeg", "image/png", "image/webp"].includes(file.type)) {
+      setPhotoError("Choose a JPG, PNG, or WebP picture.")
+      return
+    }
+    if (file.size > 5 * 1024 * 1024) {
+      setPhotoError("Choose a picture smaller than 5 MB.")
+      return
+    }
+    setPhotoToEdit(file)
+  }
+
+  const saveProfilePhoto = async (file) => {
+    if (!resolvedJobSeekerId || photoUploadingRef.current) return
+    setPhotoError("")
+    photoUploadingRef.current = true
+    setIsUploadingPhoto(true)
+    try {
+      const body = new FormData()
+      body.append("photo", file)
+      const response = await fetch(`/api/job-seekers/${resolvedJobSeekerId}/photo`, {
+        method: "POST", headers: { Accept: "application/json" }, body,
+      })
+      const payload = await readJsonResponse(response)
+      if (!response.ok) throw new Error(apiMessage(payload, "Failed to upload profile photo."))
+      onJobSeekerProfileUpdate?.({ ...normalizedJobSeekerProfile, profilePhotoUrl: payload.profilePhotoUrl })
+      setPhotoToEdit(null)
+    } catch (error) {
+      setPhotoError(error.message || "Failed to upload profile photo.")
+    } finally {
+      photoUploadingRef.current = false
+      setIsUploadingPhoto(false)
+    }
+  }
+
+  const saveSkills = async (skills, clearInput = false) => {
+    if (skillsSavingRef.current || !resolvedJobSeekerId) return
+    const validationMessage = validateLearnedSkills(skills)
+    if (validationMessage) {
+      setSkillsError(validationMessage)
+      return
+    }
+    skillsSavingRef.current = true
+    setIsSavingSkills(true)
+    setSkillsError("")
+    try {
+      const response = await fetch(`/api/job-seekers/${resolvedJobSeekerId}`, {
+        method: "PUT",
+        headers: { "Content-Type": "application/json", Accept: "application/json" },
+        body: JSON.stringify({ manual_skills: skills }),
+      })
+      const payload = await readJsonResponse(response)
+      if (!response.ok) throw new Error(apiMessage(payload, "Failed to save skills."))
+      onJobSeekerProfileUpdate?.({ ...normalizedJobSeekerProfile, ...payload })
+      if (clearInput) setSkillInput("")
+    } catch (error) {
+      setSkillsError(error.message || "Failed to save skills.")
+    } finally {
+      skillsSavingRef.current = false
+      setIsSavingSkills(false)
+    }
+  }
+
+  const removeSkill = async (skill) => {
+    if (skillsSavingRef.current || !resolvedJobSeekerId) return
+    skillsSavingRef.current = true
+    setIsSavingSkills(true)
+    setSkillsError("")
+    try {
+      const response = await fetch(`/api/job-seekers/${resolvedJobSeekerId}/skills`, {
+        method: "DELETE",
+        headers: { "Content-Type": "application/json", Accept: "application/json" },
+        body: JSON.stringify({ skill }),
+      })
+      const payload = await readJsonResponse(response)
+      if (!response.ok) throw new Error(apiMessage(payload, "Failed to remove skill."))
+      onJobSeekerProfileUpdate?.({
+        ...normalizedJobSeekerProfile, ...payload.jobSeeker,
+        experience: payload.experiences.map(normalizeExperienceItem),
+      })
+    } catch (error) {
+      setSkillsError(error.message || "Failed to remove skill.")
+    } finally {
+      skillsSavingRef.current = false
+      setIsSavingSkills(false)
+    }
+  }
+
+  const addSkills = (event) => {
+    event.preventDefault()
+    if (!skillInput.trim()) return
+    saveSkills(normalizeSkills([...(normalizedJobSeekerProfile?.manual_skills || []), ...normalizeSkills(skillInput)]), true)
+  }
 
   useEffect(() => {
     if (resumeAttention) {
@@ -581,43 +711,51 @@ function ProfilePage({
 
   const openContactInfo = () => {
     setContactForm({
-      linkedInUrl: jobSeekerProfile?.linkedInUrl || "",
-      email: jobSeekerProfile?.email || email || "",
-      phone: normalizePhoneInput(jobSeekerProfile?.phone || phone || "")
+      linkedInUrl: normalizedJobSeekerProfile?.linkedInUrl || "",
+      email: normalizedJobSeekerProfile?.email || "",
+      phone: normalizePhoneInput(normalizedJobSeekerProfile?.phone || "")
     })
+    setContactError("")
     setIsContactOpen(true)
     setIsEditingContact(false)
   }
 
-  const saveContactInfo = async () => {
+  const saveContactInfo = async (event) => {
+    event.preventDefault()
+    if (contactSavingRef.current) return
     if (!resolvedJobSeekerId) {
-      setSaveStatus("Missing job seeker id.")
+      setContactError("Missing job seeker id.")
       return
     }
-    setSaveStatus("Saving...")
+    if (contactForm.phone && contactForm.phone.length !== 10) {
+      setContactError("Enter a 10-digit phone number after +63.")
+      return
+    }
+    setContactError("")
+    contactSavingRef.current = true
+    setIsSavingContact(true)
     try {
       const response = await fetch(`http://localhost:5000/job-seekers/${resolvedJobSeekerId}`, {
         method: "PUT",
-        headers: { "Content-Type": "application/json" },
+        headers: { "Content-Type": "application/json", Accept: "application/json" },
         body: JSON.stringify({
-          fullName: formState.fullName || displayName,
-          username: formState.username || username,
-          email: contactForm.email || email,
-          phone: formatPhoneWithPrefix(contactForm.phone || phone),
-          address,
-          aboutText,
-          linkedInUrl: contactForm.linkedInUrl
+          email: contactForm.email.trim(),
+          phone: formatPhoneWithPrefix(contactForm.phone),
+          linkedInUrl: contactForm.linkedInUrl.trim() || null
         })
       })
+      const payload = await readJsonResponse(response)
       if (!response.ok) {
-        const payload = await response.json().catch(() => null)
         throw new Error(apiMessage(payload, "Failed to update contact info."))
       }
-      await refreshProfile()
+      onJobSeekerProfileUpdate?.({ ...normalizedJobSeekerProfile, ...payload })
       setSaveStatus("Contact information saved.")
       setIsContactOpen(false)
     } catch (error) {
-      setSaveStatus(error.message || "Failed to update.")
+      setContactError(error.message || "Failed to update contact info.")
+    } finally {
+      contactSavingRef.current = false
+      setIsSavingContact(false)
     }
   }
 
@@ -858,7 +996,7 @@ function ProfilePage({
       if (!Number.isFinite(trainingHours) || trainingHours <= 0) {
         return "Training hours must be greater than zero."
       }
-      if (!formState.trainingCertificateFile && !formState.trainingCertificateName) {
+      if (!formState.trainingCertificateFile && !editingExperienceDocument) {
         return "Upload a certificate of training."
       }
       return validateDocumentFile(formState.trainingCertificateFile, "Certificate of training")
@@ -870,7 +1008,6 @@ function ProfilePage({
       [formState.endDate, "Select the end date."],
       [formState.companyName, "Enter the department, agency, or company name."],
       [formState.governmentService, "Select whether this is government service."],
-      [formState.monthlySalary, "Enter the monthly gross salary."],
       [formState.appointmentStatus, "Select the status of appointment."]
     ]
     const missing = requiredFields.find(([value]) => isBlank(value))
@@ -882,10 +1019,10 @@ function ProfilePage({
       return "Experience start date cannot be later than end date."
     }
     const monthlySalary = Number(String(formState.monthlySalary || "").replace(/,/g, ""))
-    if (!Number.isFinite(monthlySalary) || monthlySalary <= 0) {
+    if (!isBlank(formState.monthlySalary) && (!Number.isFinite(monthlySalary) || monthlySalary <= 0)) {
       return "Monthly gross salary must be greater than zero."
     }
-    if (!formState.coeFile && !formState.coeFileName) {
+    if (!formState.coeFile && !editingExperienceDocument) {
       return "Upload a certificate of employment."
     }
     return validateDocumentFile(formState.coeFile, "Certificate of employment")
@@ -894,6 +1031,8 @@ function ProfilePage({
   const validateEligibilityForm = () => {
     if (!resolvedJobSeekerId) return "Missing job seeker id."
     if (!eligibilityForm.classification) return "Select an eligibility classification."
+    if (!resolvedEligibilityClassification) return "Enter your eligibility name."
+    if (resolvedEligibilityClassification.length > 240) return "Eligibility name must be 240 characters or fewer."
     if (!eligibilityForm.file) return "Upload an eligibility certificate."
     return validateDocumentFile(eligibilityForm.file, "Eligibility certificate")
   }
@@ -1052,6 +1191,22 @@ function ProfilePage({
       ? buildTrainingDescription(formState)
       : buildWorkExperienceDescription(formState)
     try {
+      const supportingFile = isTrainingRecord ? formState.trainingCertificateFile : formState.coeFile
+      if (supportingFile) {
+        const certificateData = new FormData()
+        certificateData.append("supportingFiles", supportingFile)
+        certificateData.append("supportingTypes", isTrainingRecord ? "certificate" : "others")
+        const certificateResponse = await fetch(`http://localhost:5000/job-seekers/${resolvedJobSeekerId}/supporting`, {
+          method: "POST",
+          headers: { Accept: "application/json" },
+          body: certificateData
+        })
+        if (!certificateResponse.ok) {
+          const payload = await certificateResponse.json().catch(() => null)
+          throw new Error(apiMessage(payload, isTrainingRecord ? "Certificate upload failed. Training was not saved." : "COE upload failed. Experience was not saved."))
+        }
+        await refreshSupportingFiles()
+      }
       const response = await fetch(
         `http://localhost:5000/job-seekers/${resolvedJobSeekerId}/experience${editingItem?.id ? `/${editingItem.id}` : ""}`,
         {
@@ -1081,25 +1236,6 @@ function ProfilePage({
         description: experienceDescription,
         skills: normalizeSkills(formState.skillsLearned)
       })
-      const supportingFile = isTrainingRecord ? formState.trainingCertificateFile : formState.coeFile
-      const supportingType = isTrainingRecord ? "certificate" : "others"
-      const uploadFailureMessage = isTrainingRecord
-        ? "Training saved, but certificate upload failed."
-        : "Experience saved, but COE upload failed."
-      if (supportingFile) {
-        const certificateData = new FormData()
-        certificateData.append("supportingFiles", supportingFile)
-        certificateData.append("supportingTypes", supportingType)
-        const certificateResponse = await fetch(`http://localhost:5000/job-seekers/${resolvedJobSeekerId}/supporting`, {
-          method: "POST",
-          body: certificateData
-        })
-        if (!certificateResponse.ok) {
-          const payload = await certificateResponse.json().catch(() => null)
-          throw new Error(apiMessage(payload, uploadFailureMessage))
-        }
-        await refreshSupportingFiles()
-      }
       updateProfileLocal((prev) => {
         const list = Array.isArray(prev.experience) ? [...prev.experience] : []
         if (editingItem?.id) {
@@ -1294,7 +1430,7 @@ function ProfilePage({
     setEligibilityStatus("Saving...")
     const formData = new FormData()
     formData.append("supportingFiles", eligibilityForm.file)
-    formData.append("supportingTypes", eligibilityDocType(eligibilityForm.classification))
+    formData.append("supportingTypes", eligibilityDocType(resolvedEligibilityClassification))
 
     fetch(`http://localhost:5000/job-seekers/${resolvedJobSeekerId}/supporting`, {
       method: "POST",
@@ -1310,7 +1446,7 @@ function ProfilePage({
       .then(() => {
         return refreshSupportingFiles().then(() => {
           notify("Eligibility certificate uploaded.", "success")
-          setEligibilityForm({ classification: "", file: null })
+          setEligibilityForm({ classification: "", otherClassification: "", file: null })
           setInvalidFields([])
           setEligibilityStatus("")
           setIsEligibilityModalOpen(false)
@@ -1357,30 +1493,42 @@ function ProfilePage({
               <button type="button" className="js-profile-edit" onClick={openEditProfile}>
                 Edit
               </button>
-              <div className="js-profile-avatar">
-                <img src={profileIcon} alt="Profile" />
-              </div>
+              <input ref={photoInputRef} type="file" className="hidden-file-input"
+                accept="image/jpeg,image/png,image/webp" aria-label="Choose profile picture"
+                onChange={uploadProfilePhoto} disabled={isUploadingPhoto} />
+              <button type="button" className="js-profile-avatar js-profile-photo-button"
+                aria-label={isUploadingPhoto ? "Uploading profile picture" : "Upload profile picture"}
+                title="Upload profile picture (JPG, PNG, WebP, up to 5 MB)"
+                disabled={isUploadingPhoto || !resolvedJobSeekerId}
+                onClick={() => photoInputRef.current?.click()}>
+                <img src={normalizedJobSeekerProfile?.profilePhotoUrl || profileIcon} alt="Profile"
+                  onError={(event) => { if (event.currentTarget.getAttribute("src") !== profileIcon) event.currentTarget.src = profileIcon }} />
+                <span className="js-profile-photo-action">{isUploadingPhoto ? "Saving..." : "Change"}</span>
+              </button>
               <div className="js-profile-main">
+                {photoError && <p className="js-profile-photo-error" role="alert">{photoError}</p>}
                 <h2>{displayName.toUpperCase()}</h2>
                 <div className="js-profile-meta">
-                  <span className="js-contact-anchor">
-                    <button type="button" className="js-profile-link" onClick={openContactInfo}>
+                  <div className="js-contact-anchor">
+                    <button type="button" className="js-profile-link" onClick={openContactInfo} aria-expanded={isContactOpen} aria-controls="profile-contact-info" disabled={isSavingContact}>
                       Contact Info
                     </button>
                     {isContactOpen && (
-                      <div className="js-contact-popover" onClick={(e) => e.stopPropagation()}>
+                      <div id="profile-contact-info" className="js-contact-popover" onClick={(e) => e.stopPropagation()}>
                         <div className="js-contact-head">
                           <strong>Contact Info</strong>
                           <div className="js-contact-head-actions">
                             <button
                               type="button"
                               className="js-contact-edit"
-                              onClick={() => setIsEditingContact((prev) => !prev)}
+                              disabled={isSavingContact}
+                              aria-label={isEditingContact ? "Cancel contact edits" : "Edit contact info"}
+                              onClick={() => { if (isEditingContact) openContactInfo(); else setIsEditingContact(true) }}
                               title="Edit"
                             >
                               ✎
                             </button>
-                            <button type="button" className="js-contact-close" onClick={() => setIsContactOpen(false)}>×</button>
+                            <button type="button" className="js-contact-close" aria-label="Close contact info" disabled={isSavingContact} onClick={() => setIsContactOpen(false)}>×</button>
                           </div>
                         </div>
                         {!isEditingContact ? (
@@ -1388,7 +1536,7 @@ function ProfilePage({
                             <div className="js-contact-row">
                               <span className="js-contact-icon">in</span>
                               <div>
-                                <div className="js-contact-label">Your Profile</div>
+                                <div className="js-contact-label">LinkedIn Profile</div>
                                 {contactForm.linkedInUrl ? (
                                   <a className="js-contact-link" href={contactForm.linkedInUrl} target="_blank" rel="noreferrer">
                                     {contactForm.linkedInUrl}
@@ -1411,32 +1559,48 @@ function ProfilePage({
                                 )}
                               </div>
                             </div>
+                            <div className="js-contact-row">
+                              <span className="js-contact-icon" aria-hidden="true">☎</span>
+                              <div>
+                                <div className="js-contact-label">Phone</div>
+                                {contactForm.phone ? (
+                                  <a className="js-contact-link" href={`tel:${formatPhoneWithPrefix(contactForm.phone)}`}>{formatPhoneWithPrefix(contactForm.phone)}</a>
+                                ) : <span className="js-contact-muted">No phone number</span>}
+                              </div>
+                            </div>
                           </div>
                         ) : (
-                          <>
+                          <form onSubmit={saveContactInfo}>
+                            <fieldset className="js-contact-fields" disabled={isSavingContact}>
                             <div className="js-contact-body">
                               <div className="field-group">
-                                <label>LinkedIn Profile</label>
+                                <label htmlFor="contact-linkedin">LinkedIn Profile (optional)</label>
                                 <input
+                                  id="contact-linkedin"
                                   className="input"
-                                  type="text"
+                                  type="url"
+                                  maxLength={2048}
                                   value={contactForm.linkedInUrl}
                                   onChange={(e) => setContactForm((prev) => ({ ...prev, linkedInUrl: e.target.value }))}
                                   placeholder="https://linkedin.com/in/your-profile"
                                 />
                               </div>
                               <div className="field-group">
-                                <label>Email</label>
+                                <label htmlFor="contact-email">Email</label>
                                 <input
+                                  id="contact-email"
                                   className="input"
                                   type="email"
+                                  required
+                                  maxLength={255}
                                   value={contactForm.email}
                                   onChange={(e) => setContactForm((prev) => ({ ...prev, email: e.target.value }))}
                                 />
                               </div>
                               <div className="field-group">
-                                <label>Phone</label>
+                                <label htmlFor="contact-phone">Phone</label>
                                 <input
+                                  id="contact-phone"
                                   className="input"
                                   type="text"
                                   inputMode="numeric"
@@ -1445,15 +1609,17 @@ function ProfilePage({
                                 />
                               </div>
                             </div>
+                            {contactError && <p className="js-profile-photo-error" role="alert">{contactError}</p>}
                             <div className="js-contact-actions">
-                              <button className="btn btn-small" onClick={saveContactInfo}>Save</button>
-                              <button className="btn btn-secondary btn-small" onClick={() => setIsEditingContact(false)}>Cancel</button>
+                              <button type="submit" className="btn btn-small">{isSavingContact ? "Saving..." : "Save"}</button>
+                              <button type="button" className="btn btn-secondary btn-small" onClick={openContactInfo}>Cancel</button>
                             </div>
-                          </>
+                            </fieldset>
+                          </form>
                         )}
                       </div>
                     )}
-                  </span>
+                  </div>
                 </div>
                 <div className="js-profile-unique-id">
                   <span>Unique ID</span>
@@ -1482,11 +1648,51 @@ function ProfilePage({
           </div>
 
           <div className="js-profile-sections">
+            {missingProfile.length > 0 && (
+              <section className="profile-completion-summary" aria-label="Profile completion checklist">
+                <h3>Complete your profile</h3>
+                <p>Complete the following to enable job matching and applications:</p>
+                <ul>{missingProfile.map((label) => <li key={label}>{label}</li>)}</ul>
+              </section>
+            )}
             {isJobSeeker && (
               <div className="js-profile-status">
                 {isLoadingProfile && <span className="muted">Loading profile...</span>}
               </div>
             )}
+
+            <section className="js-profile-panel profile-skills-panel" aria-labelledby="profile-skills-heading">
+              <div className="js-panel-header">
+                <div>
+                  <h3 id="profile-skills-heading">Skills</h3>
+                </div>
+              </div>
+              <form className="profile-skills-form" onSubmit={addSkills}>
+                <label className="profile-skill-input-label" htmlFor="profile-skill-input">Add a skill</label>
+                <input id="profile-skill-input" className="input" placeholder="Add a skill"
+                  value={skillInput} disabled={isSavingSkills || !resolvedJobSeekerId}
+                  aria-describedby="profile-skills-feedback"
+                  onChange={(event) => { setSkillInput(event.target.value); setSkillsError("") }} />
+                <button className="btn primary" type="submit" disabled={isSavingSkills || !skillInput.trim() || !resolvedJobSeekerId}>
+                  {isSavingSkills ? "Saving..." : "Add"}
+                </button>
+              </form>
+              <div className="profile-skill-tags" aria-label="Your skills">
+                {normalizeSkills([
+                  ...(normalizedJobSeekerProfile?.manual_skills || []),
+                  ...experience.flatMap((item) => item.skills || []),
+                ]).map((skill) => (
+                  <span className="profile-skill-tag" key={skill}>
+                    {skill}
+                    <button type="button" aria-label={`Remove ${skill}`} disabled={isSavingSkills}
+                      onClick={() => removeSkill(skill)}>×</button>
+                  </span>
+                ))}
+              </div>
+              <p id="profile-skills-feedback" role="status" className={skillsError ? "js-panel-subtext profile-skills-error" : "profile-skill-input-label"}>
+                {skillsError || (isSavingSkills ? "Saving skills..." : "")}
+              </p>
+            </section>
 
             <section className="js-profile-panel js-profile-pds-panel" ref={resumeSectionRef}>
               <div className="js-panel-header">
@@ -1519,6 +1725,8 @@ function ProfilePage({
                           {resumeUpdatedAt ? `Updated ${resumeUpdatedAt}` : "Personal Data Sheet(PDS) on file"}
                         </div>
                         <div className="js-panel-actions">
+                          <a className="js-text-btn js-file-view-btn" href={`/api/job-seekers/${resolvedJobSeekerId}/resume/view`}
+                            target="_blank" rel="noopener noreferrer" aria-label="View PDS in a new tab">View file</a>
                           <label htmlFor="job-seeker-resume" className="js-text-btn">Replace</label>
                           <button type="button" className="js-text-btn danger" onClick={() => setConfirmDeleteResume(true)}>
                             Delete
@@ -1594,6 +1802,7 @@ function ProfilePage({
                                   : "Uploaded"}
                               </div>
                               <div className="js-panel-actions">
+                                <a className="js-text-btn js-file-view-btn" href={supportingPreviewUrl(doc)} target="_blank" rel="noopener noreferrer">View file</a>
                                 <button type="button" className="js-text-btn danger" onClick={() => setConfirmDeleteSupportingId(doc.id)}>
                                   Remove
                                 </button>
@@ -1621,7 +1830,7 @@ function ProfilePage({
                   className="js-icon-btn"
                   title="Add"
                   onClick={() => {
-                    setEligibilityForm({ classification: "", file: null })
+                    setEligibilityForm({ classification: "", otherClassification: "", file: null })
                     setEligibilityStatus("")
                     setInvalidFields([])
                     setIsEligibilityModalOpen(true)
@@ -1643,6 +1852,7 @@ function ProfilePage({
                           : "Uploaded"}
                       </div>
                       <div className="js-panel-actions">
+                        <a className="js-text-btn js-file-view-btn" href={supportingPreviewUrl(doc)} target="_blank" rel="noopener noreferrer">View file</a>
                         <button type="button" className="js-text-btn danger" onClick={() => setConfirmDeleteSupportingId(doc.id)}>
                           Remove
                         </button>
@@ -1660,7 +1870,7 @@ function ProfilePage({
                 type="button"
                 className="js-outline-btn"
                 onClick={() => {
-                  setEligibilityForm({ classification: "", file: null })
+                  setEligibilityForm({ classification: "", otherClassification: "", file: null })
                   setEligibilityStatus("")
                   setInvalidFields([])
                   setIsEligibilityModalOpen(true)
@@ -1738,9 +1948,16 @@ function ProfilePage({
                         </div>
                       ) : null}
                       <div className="js-panel-actions">
+                        {experienceDocuments(item).map((doc) => (
+                          <a key={doc.id} className="js-text-btn js-file-view-btn" href={supportingPreviewUrl(doc)} target="_blank" rel="noopener noreferrer">View COE</a>
+                        ))}
+                        {!experienceDocuments(item).length && (
+                          <button type="button" className="js-text-btn" onClick={() => openEditWorkExperience(item)}>Upload COE</button>
+                        )}
                         <button type="button" className="js-text-btn" onClick={() => openEditWorkExperience(item)}>Edit</button>
                         <button type="button" className="js-text-btn danger" onClick={() => deleteExperience(item.id)}>Delete</button>
                       </div>
+                      {!experienceDocuments(item).length && <p className="js-panel-subtext">COE file unavailable. Upload it again to view.</p>}
                     </div>
                   </div>
                 ))
@@ -1780,9 +1997,16 @@ function ProfilePage({
                         </div>
                       ) : null}
                       <div className="js-panel-actions">
+                        {experienceDocuments(item).map((doc) => (
+                          <a key={doc.id} className="js-text-btn js-file-view-btn" href={supportingPreviewUrl(doc)} target="_blank" rel="noopener noreferrer">View Certificate</a>
+                        ))}
+                        {!experienceDocuments(item).length && (
+                          <button type="button" className="js-text-btn" onClick={() => openEditTraining(item)}>Upload Certificate</button>
+                        )}
                         <button type="button" className="js-text-btn" onClick={() => openEditTraining(item)}>Edit</button>
                         <button type="button" className="js-text-btn danger" onClick={() => deleteExperience(item.id)}>Delete</button>
                       </div>
+                      {!experienceDocuments(item).length && <p className="js-panel-subtext">Certificate unavailable. Upload it again to view.</p>}
                     </div>
                   </div>
                 ))
@@ -2026,6 +2250,7 @@ function ProfilePage({
                   <label>Year Graduated</label>
                   <select className={inputClass("yearGraduated")} value={formState.yearGraduated || ""} onChange={(e) => setFormState((prev) => ({ ...prev, yearGraduated: e.target.value }))}>
                     <option value="">Select graduation year</option>
+                    <option value="N/A">Not Applicable (N/A)</option>
                     {academicYearOptions.map((year) => (
                       <option key={`grad-${year}`} value={year}>{year}</option>
                     ))}
@@ -2090,39 +2315,32 @@ function ProfilePage({
                     </select>
                   </div>
                   <div className="field-group">
-                    <label>Monthly Gross Salary</label>
-                    <input className={inputClass("monthlySalary")} inputMode="decimal" placeholder="0.00" value={formState.monthlySalary || ""} onChange={(e) => setFormState((prev) => ({ ...prev, monthlySalary: e.target.value }))} />
+                    <label htmlFor="experience-monthly-salary" className="salary-grade-label">Monthly Gross Salary <span className="academic-label-note">(If applicable)</span></label>
+                    <input id="experience-monthly-salary" className={inputClass("monthlySalary")} inputMode="decimal" placeholder="Leave empty if not applicable" value={formState.monthlySalary || ""} onChange={(e) => setFormState((prev) => ({ ...prev, monthlySalary: e.target.value }))} />
                   </div>
                 </div>
                 <div className="modal-grid">
                   <div className="field-group">
-                    <label>Salary Grade (SG)</label>
-                    <span className="academic-label-note">If applicable</span>
-                    <input className="input" placeholder="Leave empty if private" value={formState.salaryGrade || ""} onChange={(e) => setFormState((prev) => ({ ...prev, salaryGrade: e.target.value }))} />
+                    <label htmlFor="experience-salary-grade" className="salary-grade-label">Salary Grade (SG) <span className="academic-label-note">(If applicable)</span></label>
+                    <input id="experience-salary-grade" className="input" placeholder="Leave empty if private" value={formState.salaryGrade || ""} onChange={(e) => setFormState((prev) => ({ ...prev, salaryGrade: e.target.value }))} />
                   </div>
                   <div className="field-group">
                     <label>Status of Appointment</label>
                     <select className={inputClass("appointmentStatus")} value={formState.appointmentStatus || ""} onChange={(e) => setFormState((prev) => ({ ...prev, appointmentStatus: e.target.value }))}>
                       <option value="">Select status</option>
                       {appointmentStatusOptions.map((statusOption) => (
-                        <option key={statusOption} value={statusOption}>{statusOption}</option>
+                        <option key={statusOption} value={statusOption}>{statusOption.toUpperCase()}</option>
                       ))}
                     </select>
                   </div>
                 </div>
                 <div className="field-group">
-                  <label>Certificate of Employment (COE) <span className="academic-label-note">PDF, JPG, or PNG</span></label>
-                  <input
-                    type="file"
-                    className={inputClass("coeFile", "input training-file-input")}
-                    accept=".pdf,.jpg,.jpeg,.png,application/pdf,image/jpeg,image/png"
-                    onChange={(e) => setFormState((prev) => ({ ...prev, coeFile: e.target.files?.[0] || null }))}
-                  />
-                  {(formState.coeFile?.name || formState.coeFileName) && (
-                    <div className="js-panel-subtext training-file-name">
-                      {formState.coeFile?.name || formState.coeFileName}
-                    </div>
-                  )}
+                  <label htmlFor="experience-coe-file">Certificate of Employment (COE) <span className="academic-label-note">PDF, JPG, or PNG</span></label>
+                  <ProfileAttachmentInput id="experience-coe-file" label="Certificate of employment"
+                    className={inputClass("coeFile", "")}
+                    file={formState.coeFile} savedName={formState.coeFileName}
+                    savedUrl={editingExperienceDocument ? supportingPreviewUrl(editingExperienceDocument) : null}
+                    onChange={(file) => setFormState((prev) => ({ ...prev, coeFile: file }))} />
                 </div>
               </div>
             )}
@@ -2168,18 +2386,12 @@ function ProfilePage({
                   <input className={inputClass("companyName")} value={formState.companyName || ""} onChange={(e) => setFormState((prev) => ({ ...prev, companyName: e.target.value }))} />
                 </div>
                 <div className="field-group">
-                  <label>Certificate of Training <span className="academic-label-note">PDF, JPG, or PNG</span></label>
-                  <input
-                    type="file"
-                    className={inputClass("trainingCertificateFile", "input training-file-input")}
-                    accept=".pdf,.jpg,.jpeg,.png,application/pdf,image/jpeg,image/png"
-                    onChange={(e) => setFormState((prev) => ({ ...prev, trainingCertificateFile: e.target.files?.[0] || null }))}
-                  />
-                  {(formState.trainingCertificateFile?.name || formState.trainingCertificateName) && (
-                    <div className="js-panel-subtext training-file-name">
-                      {formState.trainingCertificateFile?.name || formState.trainingCertificateName}
-                    </div>
-                  )}
+                  <label htmlFor="experience-training-file">Certificate of Training <span className="academic-label-note">PDF, JPG, or PNG</span></label>
+                  <ProfileAttachmentInput id="experience-training-file" label="Certificate of training"
+                    className={inputClass("trainingCertificateFile", "")}
+                    file={formState.trainingCertificateFile} savedName={formState.trainingCertificateName}
+                    savedUrl={editingExperienceDocument ? supportingPreviewUrl(editingExperienceDocument) : null}
+                    onChange={(file) => setFormState((prev) => ({ ...prev, trainingCertificateFile: file }))} />
                 </div>
               </div>
             )}
@@ -2278,8 +2490,9 @@ function ProfilePage({
             </div>
             <div className="js-edit-body">
               <div className="field-group">
-                <label>Eligibility Type Classification</label>
+                <label htmlFor="profile-eligibility-classification">Eligibility Type Classification</label>
                 <select
+                  id="profile-eligibility-classification"
                   className={inputClass("eligibilityClassification")}
                   value={eligibilityForm.classification}
                   onChange={(e) => setEligibilityForm((prev) => ({ ...prev, classification: e.target.value }))}
@@ -2290,6 +2503,16 @@ function ProfilePage({
                   ))}
                 </select>
               </div>
+              {eligibilityForm.classification === "Other Eligibility" && (
+                <div className="field-group">
+                  <label htmlFor="profile-other-eligibility">Specify Eligibility</label>
+                  <input id="profile-other-eligibility" type="text" required maxLength={240}
+                    className={inputClass("eligibilityOtherClassification")}
+                    value={eligibilityForm.otherClassification || ""}
+                    onChange={(event) => setEligibilityForm((previous) => ({ ...previous, otherClassification: event.target.value }))}
+                    placeholder="Enter your eligibility name" />
+                </div>
+              )}
               <div className="field-group">
                 <label>Certificate of Eligibility / Board Rating Certificate</label>
                 <input
@@ -2466,6 +2689,11 @@ function ProfilePage({
             </div>
           </div>
         </div>
+      )}
+
+      {photoToEdit && (
+        <ProfilePhotoEditor source={photoToEdit} saving={isUploadingPhoto} error={photoError}
+          onSave={saveProfilePhoto} onClose={() => { setPhotoToEdit(null); setPhotoError("") }} />
       )}
 
       {confirmDeleteResume && (

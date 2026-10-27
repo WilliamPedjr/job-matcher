@@ -87,6 +87,12 @@
   margin-top: 26px;
 }
 
+.email-verification-resend { margin-top: 24px; }
+.email-verification-resend .email-verification-btn { margin-top: 14px; }
+.email-verification-card .email-verification-feedback { margin-top: 12px; font-size: 14px; }
+.email-verification-feedback.is-success { color: #167448; }
+.email-verification-feedback.is-error { color: #b42318; }
+
 @media (max-width: 560px) {
   .email-verification-card {
     padding: 28px 20px;

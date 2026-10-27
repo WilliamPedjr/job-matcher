@@ -9,6 +9,26 @@
   z-index: -2;
 }
 
+.user-presence {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  color: #64748b;
+  font-size: 12px;
+  white-space: nowrap;
+}
+
+.user-presence-dot {
+  width: 8px;
+  height: 8px;
+  flex-shrink: 0;
+  border-radius: 50%;
+  background: #94a3b8;
+}
+
+.user-presence.is-online { color: #15803d; font-weight: 700; }
+.user-presence.is-online .user-presence-dot { background: #16a34a; }
+
 .users-hero {
   padding: 18px 20px;
   border-radius: 16px;

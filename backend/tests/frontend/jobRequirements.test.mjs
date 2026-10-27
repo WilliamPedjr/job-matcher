@@ -90,6 +90,23 @@ test("displays training hours as training rather than missing skills", () => {
   assert.equal(byKey(rows, "skills"), undefined)
 })
 
+test("development and learning skills stay skills and use the actual skills score", () => {
+  for (const skills of [
+    "Teaching, Lesson Planning, Classroom Management, Student Assessment, Curriculum Development",
+    ["Software Development", "Machine Learning"],
+    "Course Design|Crisis Intervention",
+    "Teaching, Leadership Workshop"
+  ]) {
+    const rows = buildJobRequirements({ ...job, requiredSkills: skills }, {
+      ...complete, skills_match_score: 0, matched_skills: [], missing_skills: ["Curriculum Development"],
+      training_match_score: 100
+    }, "ready")
+    assert.equal(byKey(rows, "training"), undefined)
+    assert.equal(byKey(rows, "skills").state, "missing")
+    assert.equal(byKey(rows, "skills").score, 0)
+  }
+})
+
 test("uses the score breakdown when direct category scores are absent", () => {
   const rows = buildJobRequirements(job, {
     resume_summary: { score_breakdown: { eligibility: 0, education: 100, experience: 50, skills: 0 } }

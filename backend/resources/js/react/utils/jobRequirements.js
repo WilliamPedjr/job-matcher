@@ -13,7 +13,10 @@ export function buildJobRequirements(job = {}, analysis = null, status = "idle")
   const eligibility = job.eligibility || ""
   const experienceYears = Number(job.minimumExperienceYears ?? job.minimum_experience_years ?? 0)
   const skills = job.requiredSkills || job.required_skills || job.required_skills_text || ""
-  const isTraining = /\b(?:training|trainings|learning|development|seminar|workshop|course|hours?|hrs?|l&d|intervention)\b/i.test(String(skills))
+  const requirementItems = (Array.isArray(skills) ? skills : String(skills).split(/[,;\n|]+/))
+    .map((item) => String(item).trim()).filter((item) => !noRequirementValues.has(normalize(item)))
+  const isTraining = requirementItems.length > 0 && requirementItems.every((item) =>
+    /\b(?:training|trainings|seminar|workshop)\b|\b\d+\s*(?:hours?|hrs?)\b/i.test(item))
   const breakdown = analysis?.resume_summary?.score_breakdown || {}
   const definitions = [
     {

@@ -12,6 +12,8 @@ import DashboardPage from './pages/DashboardPage'
 import JobSeekerDashboard from './pages/JobSeekerDashboard'
 import JobViewPage from './pages/JobViewPage'
 import ProfilePage from './pages/ProfilePage'
+import ProfileCompletionModal from './components/ProfileCompletionModal'
+import { missingProfileFields } from './utils/profileCompletion'
 import UsersPage from './pages/UsersPage'
 import RegisterPage from './pages/RegisterPage'
 import EmailVerificationPage from './pages/EmailVerificationPage'
@@ -385,6 +387,8 @@ function normalizeJobSeekerProfile(payload) {
     education: Array.isArray(educationSource) ? educationSource.map(normalizeEducationItem) : [],
     experience: Array.isArray(experienceSource) ? experienceSource.map(normalizeExperienceItem) : [],
     skills: Array.isArray(source.skills) ? source.skills : [],
+    manual_skills: Array.isArray(source.manual_skills) ? source.manual_skills : [],
+    profilePhotoUrl: source.profilePhotoUrl || null,
   }
 }
 
@@ -483,6 +487,8 @@ function App() {
   })
   const [jobSeekerResume, setJobSeekerResume] = useState(null)
   const [jobSeekerSupporting, setJobSeekerSupporting] = useState([])
+  const [profileCheckStatus, setProfileCheckStatus] = useState("loading")
+  const [browseWithoutMatches, setBrowseWithoutMatches] = useState(false)
   const [jobSeekerId, setJobSeekerId] = useState(() => {
     const stored = localStorage.getItem("jobSeekerId")
     return stored ? Number(stored) : null
@@ -490,6 +496,7 @@ function App() {
   const handleJobSeekerProfileUpdate = useCallback((profile) => {
     const normalized = normalizeJobSeekerProfile(profile)
     setJobSeekerProfile(normalized)
+    setProfileCheckStatus("ready")
     localStorage.setItem("jobSeekerProfile", JSON.stringify(normalized))
   }, [])
   const handleCurrentUserUpdate = useCallback((user) => {
@@ -669,23 +676,57 @@ function App() {
   }, [])
 
   useEffect(() => {
+    if (!isAuthenticated) return
+    const controller = new AbortController()
+    let sending = false
+    const heartbeat = async () => {
+      if (document.visibilityState === "hidden" || sending) return
+      sending = true
+      try {
+        await fetch("http://localhost:5000/auth/heartbeat", {
+          method: "POST", credentials: "include", signal: controller.signal,
+          headers: { Accept: "application/json" }
+        })
+      } catch {
+        // A missed heartbeat expires naturally; retry on the next interval.
+      } finally {
+        sending = false
+      }
+    }
+    heartbeat()
+    const timer = window.setInterval(heartbeat, 60000)
+    document.addEventListener("visibilitychange", heartbeat)
+    return () => {
+      controller.abort()
+      window.clearInterval(timer)
+      document.removeEventListener("visibilitychange", heartbeat)
+    }
+  }, [isAuthenticated, currentUser?.id, userRole])
+
+  useEffect(() => {
     if (!isAuthenticated || !isJobSeeker || !resolvedJobSeekerId) return
     let cancelled = false
 
     const refreshJobSeekerProfile = async () => {
+      setProfileCheckStatus("loading")
+      setBrowseWithoutMatches(false)
       try {
         const response = await fetch(`http://localhost:5000/job-seekers/${resolvedJobSeekerId}`, {
           headers: { Accept: "application/json" },
           credentials: "same-origin",
         })
         const payload = await response.json().catch(() => null)
-        if (cancelled || !response.ok || !payload) return
+        if (cancelled) return
+        if (!response.ok || !payload) throw new Error("Unable to load profile.")
 
         const refreshedProfile = normalizeJobSeekerProfile(payload)
         setJobSeekerProfile(refreshedProfile)
         localStorage.setItem("jobSeekerProfile", JSON.stringify(refreshedProfile))
+        setJobSeekerResume(payload.resume || null)
+        setJobSeekerSupporting(Array.isArray(payload.supportingFiles) ? payload.supportingFiles : [])
+        setProfileCheckStatus("ready")
       } catch {
-        // Keep the current session profile when the refresh endpoint is unavailable.
+        if (!cancelled) setProfileCheckStatus("error")
       }
     }
 
@@ -699,6 +740,10 @@ function App() {
   const handleJobSeekerSupportingUpdate = useCallback((files) => {
     setJobSeekerSupporting(Array.isArray(files) ? files : [])
   }, [])
+
+  useEffect(() => {
+    if (activePage !== "jobs" && activePage !== "job-view") setBrowseWithoutMatches(false)
+  }, [activePage, resolvedJobSeekerId])
 
   const navigateToLandingSection = useCallback((sectionId = "landing-hero") => {
     setIsRegistering(false)
@@ -1619,6 +1664,7 @@ function App() {
 
   const handleTopNav = (page) => {
     if (!canAccessPage(page)) return
+    if (page === "jobs") setBrowseWithoutMatches(false)
     setActivePage(page)
     setActionsMenu(null)
     setIsProfileMenuOpen(false)
@@ -2561,7 +2607,16 @@ function App() {
     )
   }
 
+  const missingProfile = missingProfileFields(jobSeekerProfile, jobSeekerResume, jobSeekerSupporting)
+  const matchingEnabled = !isJobSeeker || (profileCheckStatus === "ready" && missingProfile.length === 0)
+  const isBrowsingJobs = activePage === "jobs" || activePage === "job-view"
+  const showProfileCompletionModal = isJobSeeker && isBrowsingJobs && profileCheckStatus !== "loading" && !matchingEnabled && !browseWithoutMatches
+  const goToProfile = () => { setBrowseWithoutMatches(false); handleTopNav("profile") }
+
   const mainContent = (() => {
+    if (isJobSeeker && isBrowsingJobs && (profileCheckStatus === "loading" || showProfileCompletionModal)) {
+      return <section className="empty-state"><p>{profileCheckStatus === "loading" ? "Checking your profile..." : "Complete your profile or choose to browse without matching."}</p></section>
+    }
     if (activePage === "profile" && canAccessPage("profile")) {
       return (
         <ProfilePage
@@ -2608,7 +2663,11 @@ function App() {
           jobSeekerId={resolvedJobSeekerId}
           jobSeekerResume={jobSeekerResume}
           onViewApplicant={handleViewApplicantFromJobs}
+          jobSeekerProfile={jobSeekerProfile}
+          jobSeekerSupporting={jobSeekerSupporting}
           onDeleteApplicant={handleDelete}
+          matchingEnabled={matchingEnabled}
+          onCompleteProfile={goToProfile}
           onJobsChanged={async () => {
             await fetchJobPosts()
             await fetchActivityLogs()
@@ -2635,6 +2694,8 @@ function App() {
           jobSeekerSupporting={jobSeekerSupporting}
           jobSeekerId={resolvedJobSeekerId}
           applications={jobSeekerApplications}
+          matchingEnabled={matchingEnabled}
+          onCompleteProfile={goToProfile}
         />
       )
     }
@@ -2879,6 +2940,8 @@ function App() {
   // UI rendering
   return (
     <>
+    {showProfileCompletionModal && <ProfileCompletionModal missing={missingProfile} checkFailed={profileCheckStatus === "error"}
+      onGoToProfile={goToProfile} onViewAnyway={() => setBrowseWithoutMatches(true)} />}
     {isAppFetching && (
       <div className="app-fetch-indicator">
         <LoadingIndicator label={isCheckingSession ? "Checking session..." : "Loading latest data..."} compact />

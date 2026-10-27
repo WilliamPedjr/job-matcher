@@ -12,6 +12,7 @@ use App\Models\SupportingFile;
 use App\Models\Upload;
 use App\Notifications\ApplicationShortlistedNotification;
 use App\Notifications\ApplicationRejectedNotification;
+use App\Notifications\ApplicationScheduleNotification;
 use App\Services\PdsExtractionService;
 use App\Services\ResumeAnalysisService;
 use App\Services\TextExtractionService;
@@ -183,11 +184,9 @@ class UploadController extends Controller
             ], 422);
         }
 
+        // Browser preview scores may be stale; only the current server analysis
+        // can determine eligibility, classification, and the saved match score.
         $effectiveMatchScore = (float) ($analysis['overall_score'] ?? 0);
-        $providedMatchScore = $data['totalMatchScore'] ?? $data['matchScore'] ?? null;
-        if ($providedMatchScore !== null) {
-            $effectiveMatchScore = min(100, (float) $providedMatchScore);
-        }
         $minimumMatchScore = (float) ($analysis['application_minimum_score'] ?? self::APPLICATION_MINIMUM_MATCH_SCORE);
         if ($appliedJobTitle !== '' && $effectiveMatchScore < $minimumMatchScore) {
             Storage::disk('local')->delete($stored['path']);
@@ -1254,6 +1253,45 @@ class UploadController extends Controller
         return response()->json($this->serializeUpload($upload->fresh(['supportingFiles', 'ratings', 'jobSeeker', 'job'])));
     }
 
+    private function sendScheduleNotification(Request $request, Upload $upload, string $stage): array
+    {
+        $upload->loadMissing(['jobSeeker', 'job']);
+        $email = Str::lower(trim((string) ($upload->jobSeeker?->email ?: $upload->email)));
+        if (!filter_var($email, FILTER_VALIDATE_EMAIL)) {
+            return ['status' => 'failed', 'message' => 'The job seeker has no valid email address.'];
+        }
+        $schedule = [
+            'date' => $upload->getAttribute($stage.'_date')?->toDateString(),
+            'time' => substr(trim((string) $upload->getAttribute($stage.'_time')), 0, 5),
+            'place' => trim((string) $upload->getAttribute($stage.'_place')),
+            'notes' => trim((string) $upload->getAttribute($stage.'_preparation_notes')),
+        ];
+        $title = trim((string) ($upload->applied_job_title ?: $upload->matched_job_title ?: $upload->job?->title ?: 'your applied position'));
+        $signature = hash('sha256', json_encode([$email, $title, $schedule]));
+        $column = $stage.'_email_signature';
+        if ($upload->getAttribute($column) === $signature) {
+            return ['status' => 'unchanged', 'message' => 'These schedule details have already been emailed.'];
+        }
+        if (in_array(config('mail.default'), ['log', 'array'], true)) {
+            return ['status' => 'failed', 'message' => 'Outgoing email is not configured. Please configure the mail server, then save the schedule again to send the email.'];
+        }
+        $actor = Archive::actorFromRequest($request);
+        try {
+            NotificationFacade::route('mail', $email)->notify(new ApplicationScheduleNotification(
+                trim((string) ($upload->name ?: $upload->jobSeeker?->full_name ?: 'Applicant')),
+                $title, $stage, $schedule, $actor['actor_name'] ?? null, $actor['actor_email'] ?? null
+            ));
+            $upload->setAttribute($column, $signature);
+            $upload->save();
+
+            return ['status' => 'accepted', 'message' => 'The schedule email was accepted by the mail server.'];
+        } catch (Throwable $error) {
+            Log::warning('Failed to send application schedule email.', ['upload_id' => $upload->id, 'stage' => $stage, 'message' => $error->getMessage()]);
+
+            return ['status' => 'failed', 'message' => 'The schedule email could not be sent. Check the mail server settings, then save the schedule again to retry.'];
+        }
+    }
+
     public function updateInterviewDate(Request $request, int $id): JsonResponse
     {
         if (
@@ -1299,7 +1337,8 @@ class UploadController extends Controller
             ],
         ]);
 
-        return response()->json($this->serializeUpload($upload->fresh(['supportingFiles', 'ratings', 'jobSeeker', 'job'])));
+        $emailResult = $this->sendScheduleNotification($request, $upload, 'interview');
+        return response()->json([...$this->serializeUpload($upload->fresh(['supportingFiles', 'ratings', 'jobSeeker', 'job'])), 'interviewEmail' => $emailResult]);
     }
 
     public function updateDemonstrationDate(Request $request, int $id): JsonResponse
@@ -1347,7 +1386,8 @@ class UploadController extends Controller
             ],
         ]);
 
-        return response()->json($this->serializeUpload($upload->fresh(['supportingFiles', 'ratings', 'jobSeeker', 'job'])));
+        $emailResult = $this->sendScheduleNotification($request, $upload, 'demonstration');
+        return response()->json([...$this->serializeUpload($upload->fresh(['supportingFiles', 'ratings', 'jobSeeker', 'job'])), 'demonstrationEmail' => $emailResult]);
     }
 
     public function storeRating(Request $request, int $id): JsonResponse
@@ -1764,7 +1804,7 @@ class UploadController extends Controller
             return false;
         }
 
-        return preg_match('/\b(?:training|trainings|learning|development|seminar|workshop|course|hours?|hrs?|l&d|intervention)\b/i', $value) === 1;
+        return preg_match('/\b(?:training|trainings|seminar|workshop)\b|\b\d+\s*(?:hours?|hrs?)\b/i', $value) === 1;
     }
 
     private function serializeUpload(Upload $upload): array
@@ -1787,9 +1827,11 @@ class UploadController extends Controller
         $missingSkills = array_values(array_unique(array_filter(array_merge($upload->missing_skills ?? [], $staleSkillTraining))));
         $matchedSkills = is_array($upload->matched_skills ?? null) ? array_values(array_filter($upload->matched_skills)) : [];
         $skillRequirementCount = count($matchedSkills) + count($missingSkills);
-        $displaySkillsScore = $skillRequirementCount > 0
-            ? round((count($matchedSkills) / max($skillRequirementCount, 1)) * 100, 2)
-            : ($upload->skills_match_score ?? ($scoreBreakdown['skills'] ?? null));
+        $displaySkillsScore = $upload->skills_match_score ?? $scoreBreakdown['skills'] ?? (
+            $skillRequirementCount > 0
+                ? round((count($matchedSkills) / $skillRequirementCount) * 100, 2)
+                : null
+        );
         $classification = $upload->match_score !== null
             ? $this->classificationForMatchScore((float) $upload->match_score)
             : $this->displayClassification($upload->classification);

@@ -146,6 +146,74 @@ class ExperienceRequirementTest extends TestCase
         }
     }
 
+    public function test_skills_only_job_rejects_unmatched_applicant_even_with_client_score_override(): void
+    {
+        $this->addExperience('2020-01-01', '2021-12-31');
+        $this->job->update([
+            'required_skills' => 'Teaching, Lesson Planning, Classroom Management, Student Assessment, Curriculum Development',
+            'skills_weight' => 100, 'training_weight' => 0, 'education_weight' => 0,
+            'experience_weight' => 0, 'eligibility_weight' => 0,
+        ]);
+
+        $this->preview()->assertOk()->assertJsonPath('matchScore', 0)
+            ->assertJsonPath('analysis.skills_match_score', 0)
+            ->assertJsonPath('allowApplication', false);
+        $this->postJson('/api/job-seekers/'.$this->jobSeeker->id.'/resume/match/batch', [
+            'jobIds' => [$this->job->id], 'jobTitles' => [$this->job->title],
+        ])->assertOk()->assertJsonPath('matches.0.score', 0)
+            ->assertJsonPath('matches.0.allowApplication', false);
+
+        $this->submit()->assertUnprocessable();
+        $this->assertSame(0, Upload::query()->applications()->where('job_seeker_id', $this->jobSeeker->id)->count());
+        $this->assertSame([], Storage::disk('local')->files('uploads/resumes'));
+    }
+
+    public function test_skills_only_application_saves_server_score_and_consistent_breakdown(): void
+    {
+        $this->addExperience('2020-01-01', '2021-12-31');
+        Experience::where('job_seeker_id', $this->jobSeeker->id)->firstOrFail()->update([
+            'skills' => ['Teaching', 'Lesson Planning', 'Classroom Management'],
+        ]);
+        $this->job->update([
+            'required_skills' => 'Teaching, Lesson Planning, Classroom Management, Student Assessment, Curriculum Development',
+            'skills_weight' => 100, 'training_weight' => 0, 'education_weight' => 0,
+            'experience_weight' => 0, 'eligibility_weight' => 0,
+        ]);
+
+        $this->preview()->assertOk()->assertJsonPath('matchScore', 60)
+            ->assertJsonPath('analysis.skills_match_score', 60)
+            ->assertJsonPath('allowApplication', true);
+        // submit() deliberately sends totalMatchScore=100; it must be ignored.
+        $this->submit()->assertCreated()->assertJsonPath('match_score', 60)
+            ->assertJsonPath('skills_match_score', 60)
+            ->assertJsonPath('missing_skills', ['Student Assessment', 'Curriculum Development']);
+        $this->assertSame(60.0, (float) Upload::query()->applications()
+            ->where('job_seeker_id', $this->jobSeeker->id)->firstOrFail()->match_score);
+    }
+
+    public function test_same_title_postings_keep_distinct_eligibility_in_batch_and_single_preview(): void
+    {
+        $this->addExperience('2020-01-01', '2021-12-31');
+        $this->job->update([
+            'required_skills' => 'Teaching, Curriculum Development',
+            'skills_weight' => 100, 'training_weight' => 0, 'education_weight' => 0,
+            'experience_weight' => 0, 'eligibility_weight' => 0,
+        ]);
+        $otherJob = $this->job->replicate();
+        $otherJob->required_skills = 'None required';
+        $otherJob->save();
+
+        $this->postJson('/api/job-seekers/'.$this->jobSeeker->id.'/resume/match/batch', [
+            'jobTitles' => [$this->job->title, $otherJob->title],
+            'jobIds' => [$this->job->id, $otherJob->id],
+        ])->assertOk()->assertJsonPath('matches.0.id', $this->job->id)
+            ->assertJsonPath('matches.0.score', 0)->assertJsonPath('matches.0.allowApplication', false)
+            ->assertJsonPath('matches.1.id', $otherJob->id)
+            ->assertJsonPath('matches.1.score', 100)->assertJsonPath('matches.1.allowApplication', true);
+        $this->preview()->assertOk()->assertJsonPath('matchScore', 0)
+            ->assertJsonPath('allowApplication', false);
+    }
+
     private function addExperience(string $start, string $end): void
     {
         Experience::create([

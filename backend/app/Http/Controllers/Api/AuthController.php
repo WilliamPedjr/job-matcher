@@ -13,6 +13,8 @@ use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Auth;
 use Illuminate\Support\Facades\Hash;
+use Illuminate\Support\Facades\DB;
+use Illuminate\Support\Facades\Log;
 use Illuminate\Validation\Rule;
 use Illuminate\Support\Str;
 
@@ -369,6 +371,42 @@ class AuthController extends Controller
         ], 201);
     }
 
+    public function resendJobSeekerVerification(Request $request): JsonResponse
+    {
+        $data = $request->validate(['email' => ['required', 'email', 'max:255']]);
+        $email = Str::lower(trim($data['email']));
+
+        return DB::transaction(function () use ($email) {
+            $jobSeeker = JobSeeker::query()->whereRaw('LOWER(email) = ?', [$email])->lockForUpdate()->first();
+            $success = ['message' => 'If this email belongs to an account awaiting verification, a verification email has been sent. Please check your inbox and Spam/Junk folder.', 'retryAfter' => 60];
+            if (!$jobSeeker || $jobSeeker->email_verified_at) return response()->json($success, 202);
+            $remaining = $jobSeeker->email_verification_sent_at
+                ? $jobSeeker->email_verification_sent_at->getTimestamp() + 60 - now()->getTimestamp() : 0;
+            if ($remaining > 0) {
+                return response()->json(['message' => 'Please wait before requesting another verification email.', 'retryAfter' => $remaining], 429)->header('Retry-After', (string) $remaining);
+            }
+            if (in_array(config('mail.default'), ['log', 'array'], true)) {
+                return response()->json(['message' => 'Email delivery is unavailable. Please try again later or contact support.'], 503);
+            }
+            if (!$jobSeeker->email_verification_token) {
+                $jobSeeker->email_verification_token = $this->makeJobSeekerEmailVerificationToken();
+                $jobSeeker->save();
+            }
+            try {
+                $jobSeeker->notify(new JobSeekerEmailVerificationNotification(
+                    url("/job-seeker/verify-email/{$jobSeeker->email_verification_token}")
+                ));
+                $jobSeeker->email_verification_sent_at = now();
+                $jobSeeker->save();
+            } catch (\Throwable $error) {
+                Log::warning('Failed to resend verification email.', ['job_seeker_id' => $jobSeeker->id, 'message' => $error->getMessage()]);
+                return response()->json(['message' => 'The verification email could not be sent. Please try again later.'], 503);
+            }
+
+            return response()->json($success, 202);
+        });
+    }
+
     public function jobSeekerLogin(Request $request): JsonResponse
     {
         $data = $request->validate([
@@ -500,6 +538,8 @@ class AuthController extends Controller
             'address' => $jobSeeker->address,
             'about_text' => $jobSeeker->about_text,
             'aboutText' => $jobSeeker->about_text,
+            'profilePhotoUrl' => $jobSeeker->profilePhotoUrl(),
+            'linkedInUrl' => $jobSeeker->linked_in_url,
             'created_at' => $jobSeeker->created_at?->toISOString(),
             'createdAt' => $jobSeeker->created_at?->toISOString(),
             'updated_at' => $jobSeeker->updated_at?->toISOString(),

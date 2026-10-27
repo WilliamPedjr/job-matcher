@@ -602,7 +602,8 @@ function RatingsPage({ uploads = [], isLoading = false, currentUser = null, onRa
       setInterviewTimeDraft('')
       setInterviewPreparationNotesDraft('')
       await onRatingsChanged?.()
-      showRatingNotice('success', 'Interview date saved successfully.')
+      showRatingNotice(payload?.interviewEmail?.status === 'failed' ? 'warning' : 'success',
+        `Interview schedule saved. ${payload?.interviewEmail?.message || ''}`.trim())
     } catch (error) {
       showRatingNotice('fail', error.message || 'Failed to set interview date.')
     } finally {
@@ -666,7 +667,8 @@ function RatingsPage({ uploads = [], isLoading = false, currentUser = null, onRa
       setDemonstrationPlaceDraft('')
       setDemonstrationPreparationNotesDraft('')
       await onRatingsChanged?.()
-      showRatingNotice('success', 'Demo date saved successfully.')
+      showRatingNotice(payload?.demonstrationEmail?.status === 'failed' ? 'warning' : 'success',
+        `Demonstration schedule saved. ${payload?.demonstrationEmail?.message || ''}`.trim())
     } catch (error) {
       showRatingNotice('fail', error.message || 'Failed to set demo date.')
     } finally {

@@ -5,6 +5,7 @@ import "../styles/UsersPage.css"
 import eyeSolidIcon from "../assets/eye-solid-full.svg"
 import eyeRegularIcon from "../assets/eye-regular-full.svg"
 import { getArchiveActorHeaders } from "../utils/archiveActor"
+import { describePresence } from "../utils/presence"
 
 const usersPageSize = 10
 const positionOptions = [
@@ -56,6 +57,8 @@ function UsersPage({ currentUser = null, onUsersChanged }) {
   const [jobSeekerUsers, setJobSeekerUsers] = useState([])
   const [employerUsers, setEmployerUsers] = useState([])
   const [isLoadingUsers, setIsLoadingUsers] = useState(false)
+  const [presence, setPresence] = useState(null)
+  const [presenceStatus, setPresenceStatus] = useState("loading")
   const [jobSeekerSearch, setJobSeekerSearch] = useState("")
   const [employerSearch, setEmployerSearch] = useState("")
   const [activeUserTab, setActiveUserTab] = useState("jobseekers")
@@ -119,6 +122,51 @@ function UsersPage({ currentUser = null, onUsersChanged }) {
   useEffect(() => {
     fetchUsers()
   }, [fetchUsers])
+
+  useEffect(() => {
+    const controller = new AbortController()
+    let pending = false
+    const refreshPresence = async () => {
+      if (document.visibilityState === "hidden" || pending) return
+      pending = true
+      try {
+        const response = await fetch("http://localhost:5000/users/presence", {
+          credentials: "include", cache: "no-store", signal: controller.signal,
+          headers: { Accept: "application/json" }
+        })
+        if (!response.ok) throw new Error("Presence unavailable")
+        const data = await response.json()
+        if (controller.signal.aborted) return
+        setPresence(data)
+        setPresenceStatus("ready")
+      } catch (error) {
+        if (error.name !== "AbortError") {
+          setPresence(null)
+          setPresenceStatus("error")
+        }
+      } finally {
+        pending = false
+      }
+    }
+    refreshPresence()
+    const timer = window.setInterval(refreshPresence, 30000)
+    document.addEventListener("visibilitychange", refreshPresence)
+    return () => {
+      controller.abort()
+      window.clearInterval(timer)
+      document.removeEventListener("visibilitychange", refreshPresence)
+    }
+  }, [])
+
+  const renderPresence = (type, user) => {
+    if (presenceStatus === "loading") return <span className="user-presence">Checking…</span>
+    const account = presence?.accounts?.[`${type}:${user.id}`]
+    const status = describePresence(account, Date.parse(presence?.checkedAt) || Date.now())
+    const lastSeen = account?.lastSeenAt ? new Date(account.lastSeenAt).toLocaleString() : undefined
+    return <span className={`user-presence${status.online ? " is-online" : ""}`} title={lastSeen}>
+      <span className="user-presence-dot" aria-hidden="true" />{status.label}
+    </span>
+  }
 
   const formatDate = (value) => {
     const d = new Date(value)
@@ -445,6 +493,7 @@ function UsersPage({ currentUser = null, onUsersChanged }) {
                 <th>Username</th>
                 <th>Email</th>
                 <th>Status</th>
+                <th>Activity</th>
                 <th>Created</th>
                 <th>Action</th>
               </tr>
@@ -452,13 +501,13 @@ function UsersPage({ currentUser = null, onUsersChanged }) {
             <tbody>
               {isLoadingUsers ? (
                 <tr>
-                  <td colSpan={9} className="users-empty">
+                  <td colSpan={10} className="users-empty">
                     <span className="loading-indicator"><span className="loading-spinner" aria-hidden="true" />Loading job seekers...</span>
                   </td>
                 </tr>
               ) : filteredJobSeekers.length === 0 ? (
                 <tr>
-                  <td colSpan={9} className="users-empty">No job seeker users found.</td>
+                  <td colSpan={10} className="users-empty">No job seeker users found.</td>
                 </tr>
               ) : (
                 paginatedJobSeekers.map((user, index) => {
@@ -481,6 +530,7 @@ function UsersPage({ currentUser = null, onUsersChanged }) {
                           {verified ? "Verified" : "Not Verified"}
                         </span>
                         </td>
+                        <td>{renderPresence("jobseeker", user)}</td>
                         <td>{formatDate(user.createdAt)}</td>
                         <td className="actions-cell">
                           <span
@@ -570,6 +620,7 @@ function UsersPage({ currentUser = null, onUsersChanged }) {
                 <th>Phone</th>
                 <th>Username</th>
                 <th>Email</th>
+                <th>Activity</th>
                 <th>Created</th>
                 <th>Action</th>
               </tr>
@@ -577,13 +628,13 @@ function UsersPage({ currentUser = null, onUsersChanged }) {
             <tbody>
               {isLoadingUsers ? (
                 <tr>
-                  <td colSpan={9} className="users-empty">
+                  <td colSpan={10} className="users-empty">
                     <span className="loading-indicator"><span className="loading-spinner" aria-hidden="true" />Loading employers...</span>
                   </td>
                 </tr>
               ) : filteredEmployers.length === 0 ? (
                 <tr>
-                  <td colSpan={9} className="users-empty">No Personnel users found.</td>
+                  <td colSpan={10} className="users-empty">No Personnel users found.</td>
                 </tr>
               ) : (
                 paginatedEmployers.map((user, index) => (
@@ -600,6 +651,7 @@ function UsersPage({ currentUser = null, onUsersChanged }) {
                     <td>{user.phone || "-"}</td>
                     <td>{user.username || "-"}</td>
                     <td>{user.email || "-"}</td>
+                    <td>{renderPresence("employer", user)}</td>
                     <td>{formatDate(user.createdAt)}</td>
                     <td className="actions-cell users-inline-actions">
                       <button

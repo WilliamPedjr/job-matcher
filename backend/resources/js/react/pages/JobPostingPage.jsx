@@ -5,23 +5,23 @@ import '../styles/JobPostingPage.css'
 import CustomDropdown from '../components/CustomDropdown'
 import { getArchiveActorHeaders } from '../utils/archiveActor'
 import { useToastState } from '../utils/useToastState'
-import { monthlySalaryForGrade } from '../utils/salaryGrades'
+import { isHourlyEmployment, monthlySalaryForGrade } from '../utils/salaryGrades'
 import { matchesJobSearch } from '../utils/jobSearch'
+import { buildJobMatchMap, jobMatchKey } from '../utils/jobMatches'
+import { jobDescriptionForPosition } from '../utils/jobDescription'
 
-const defaultJobEligibility = "Open to all qualified applicants"
+const defaultJobEligibility = ""
 const otherEligibilityOption = "Other Eligibility"
 const jobEligibilityLabels = [
-  defaultJobEligibility,
   "Career Service Eligibility - Preference Rating (CSE-PR)",
   "Career Service Eligibility - Sub Professional (CSE-Sub)",
   "Career Service Eligibility - Professional (CSE-Prof)",
-  "Bar/Board Eligibility (RA 1080)",
+  "Bar Eligibility (RA 1080)",
+  "Board Eligibility (RA 1080)",
   "Barangay Health Worker Eligibility (RA 7883)",
   "Barangay Nutrition Scholar Eligibility (PD 1569)",
   "Barangay Official Eligibility (RA 7160)",
   "Electronic Data Processing Specialist Eligibility (CSC Res. 90-083)",
-  "Foreign School Honor Graduate Eligibility (CSC Res. 1302714)",
-  "Honor Graduate Eligibility (PD 907)",
   "Sanggunian Member Eligibility (RA 10156)",
   "Scientific and Technological Specialist Eligibility (PD 997)",
   "Skills Eligibility - Category II (CSC MC 11, s. 1996, as Amended)",
@@ -54,7 +54,7 @@ const scoringWeightsFromRecord = (record = {}) => ({
 
 const resolveJobEligibilitySelection = (value) => {
   const cleaned = String(value || "").trim()
-  if (!cleaned) {
+  if (!cleaned || cleaned.toLowerCase() === "open to all qualified applicants") {
     return { selected: defaultJobEligibility, custom: "" }
   }
   if (jobEligibilityLabels.includes(cleaned)) {
@@ -79,7 +79,7 @@ function getApplicationStatusLabel(item) {
     .join(" ")
 }
 
-function JobPostingPage({ uploads = [], isEmployer = false, isJobSeeker = false, currentUser = null, jobSeekerId, jobSeekerResume, onViewApplicant, onDeleteApplicant, onJobsChanged, onViewJob }) {
+function JobPostingPage({ uploads = [], isEmployer = false, isJobSeeker = false, currentUser = null, jobSeekerId, jobSeekerResume, jobSeekerProfile, jobSeekerSupporting, onViewApplicant, onDeleteApplicant, onJobsChanged, onViewJob, matchingEnabled = true, onCompleteProfile }) {
   const JOB_FORM_DRAFT_KEY = "lnu-hire-job-form-draft"
   const [jobs, setJobs] = useState([])
   const [templates, setTemplates] = useState([])
@@ -99,6 +99,7 @@ function JobPostingPage({ uploads = [], isEmployer = false, isJobSeeker = false,
   const [editingJobId, setEditingJobId] = useState(null)
   const [newJobTitle, setNewJobTitle] = useState("")
   const [newJobDescription, setNewJobDescription] = useState("")
+  const [isDescriptionAutomatic, setIsDescriptionAutomatic] = useState(true)
   const [newJobDepartment, setNewJobDepartment] = useState("")
   const [newJobPositionType, setNewJobPositionType] = useState("Teaching")
   const [newJobItemNo, setNewJobItemNo] = useState("")
@@ -114,7 +115,7 @@ function JobPostingPage({ uploads = [], isEmployer = false, isJobSeeker = false,
   const [newJobCustomEligibility, setNewJobCustomEligibility] = useState("")
   const [newRequiredSkills, setNewRequiredSkills] = useState("")
   const [newUniversalMatchMode, setNewUniversalMatchMode] = useState("")
-  const [newMinimumEducation, setNewMinimumEducation] = useState("Bachelor's Degree")
+  const [newMinimumEducation, setNewMinimumEducation] = useState("")
   const [newMinimumExperienceYears, setNewMinimumExperienceYears] = useState("0")
   const [newApplicationThresholdScore, setNewApplicationThresholdScore] = useState("50")
   const [newScoringWeights, setNewScoringWeights] = useState(defaultScoringWeights)
@@ -152,8 +153,16 @@ function JobPostingPage({ uploads = [], isEmployer = false, isJobSeeker = false,
   const departmentRef = useRef(null)
   const skillsPickerRef = useRef(null)
   const skipTemplateApplyRef = useRef(false)
-  const isHourlyJob = String(newJobType || "").toLowerCase().includes("part")
+  const isHourlyJob = isHourlyEmployment(newJobType)
   const isInternshipJob = String(newJobType || "").trim().toLowerCase() === "internship"
+
+  const handleEmploymentTypeChange = (type) => {
+    if (isHourlyEmployment(type) !== isHourlyJob || (type === "Internship") !== isInternshipJob) {
+      setNewSalaryMin("")
+      setNewSalaryMax("")
+    }
+    setNewJobType(type)
+  }
 
   const handleSalaryGradeChange = (value) => {
     setNewSalaryMin(value)
@@ -233,13 +242,13 @@ function JobPostingPage({ uploads = [], isEmployer = false, isJobSeeker = false,
   const isManySlotsValue = (value) => String(value ?? "").trim().toLowerCase() === "many"
   const getPositionsPayloadValue = () => (isManySlotsValue(newPositionsTotal) ? 0 : Number(newPositionsTotal))
   const getJobAvailableSlotsLabel = (job = {}) => {
-    if (isManySlotsRecord(job)) return "No Limit"
+    if (isManySlotsRecord(job)) return "None"
     const value = Number(job.positionsAvailable ?? job.positions_available ?? job.positionsTotal ?? job.positions_total ?? 1)
     return String(Math.max(0, value))
   }
   const getJobAvailableSlotsText = (job = {}) => {
     const label = getJobAvailableSlotsLabel(job)
-    return label === "No Limit" ? "No Limit" : `${label} ${Number(label) === 1 ? "vacancy" : "vacancies"} left`
+    return label === "None" ? "None" : `${label} ${Number(label) === 1 ? "vacancy" : "vacancies"} left`
   }
 
   const normalizeSalaryRange = (minValue, maxValue) => {
@@ -513,7 +522,7 @@ function JobPostingPage({ uploads = [], isEmployer = false, isJobSeeker = false,
   ), [jobs, templates])
 
   useEffect(() => {
-    if (!isJobSeeker || !jobSeekerId) {
+    if (!matchingEnabled || !isJobSeeker || !jobSeekerId) {
       setJobMatches({})
       setJobMatchStatus("idle")
       return
@@ -566,21 +575,7 @@ function JobPostingPage({ uploads = [], isEmployer = false, isJobSeeker = false,
         const results = Array.isArray(payload?.matches) ? payload.matches : []
 
         if (!isMounted) return
-        const next = {}
-        results.filter(Boolean).forEach((item) => {
-          const key = String(item.key || "").trim().toLowerCase()
-          if (!key) return
-          const score = Number(item.score)
-          const minimumScore = Number(item.minimumScore ?? 50)
-          const normalizedMinimumScore = Number.isFinite(minimumScore) ? minimumScore : 50
-          const normalizedScore = Number.isFinite(score) ? score : null
-          next[key] = {
-            score: normalizedScore,
-            qualifies: normalizedScore != null && normalizedScore >= normalizedMinimumScore && item.allowApplication === true,
-            minimumScore: normalizedMinimumScore
-          }
-        })
-        setJobMatches(next)
+        setJobMatches(buildJobMatchMap(results))
         setJobMatchStatus("ready")
       } catch (error) {
         if (error?.name === "AbortError") return
@@ -595,7 +590,7 @@ function JobPostingPage({ uploads = [], isEmployer = false, isJobSeeker = false,
       isMounted = false
       controller.abort()
     }
-  }, [isJobSeeker, jobSeekerId, jobSeekerResume, listedJobs])
+  }, [matchingEnabled, isJobSeeker, jobSeekerId, jobSeekerResume, jobSeekerProfile, jobSeekerSupporting, listedJobs])
 
   const filteredJobs = useMemo(() => {
     return listedJobs.filter((job) => {
@@ -613,8 +608,8 @@ function JobPostingPage({ uploads = [], isEmployer = false, isJobSeeker = false,
         : jobPositionType === jobPositionTypeFilter
       if (!matchesJobPositionType) return false
 
-      if (isJobSeeker && matchFilter !== "all") {
-        const key = String(job.title || "").trim().toLowerCase()
+      if (isJobSeeker && matchingEnabled && matchFilter !== "all") {
+        const key = jobMatchKey(job)
         const match = key ? jobMatches[key] : null
         if (!match || match.score == null) return false
         if (matchFilter === "match" && !match.qualifies) return false
@@ -623,7 +618,7 @@ function JobPostingPage({ uploads = [], isEmployer = false, isJobSeeker = false,
 
       return matchesJobSearch(job, query)
     })
-  }, [listedJobs, searchTerm, statusFilter, jobPositionTypeFilter, isJobSeeker, matchFilter, jobMatches])
+  }, [listedJobs, searchTerm, statusFilter, jobPositionTypeFilter, isJobSeeker, matchingEnabled, matchFilter, jobMatches])
 
   const fifoJobs = useMemo(() => {
     return [...filteredJobs].sort((a, b) => {
@@ -797,74 +792,15 @@ function JobPostingPage({ uploads = [], isEmployer = false, isJobSeeker = false,
     return parseSkills(matched?.requiredSkills || "")
   }, [newJobTitle, templateByTitle])
 
-  const degreeMap = useMemo(() => ({
-    "Chief Administrative Officer": { bachelor: "Bachelor's Degree relevant to the job with Master's Degree", master: "Master's Degree relevant to the job" },
-    "Administrative Officer III": { bachelor: "Bachelor's Degree relevant to the job", master: "Master's Degree relevant to the job" },
-    "Senior Administrative Assistant I": { bachelor: "Completion of two years studies in college", master: "Bachelor's Degree" },
-    "Accountant I": { bachelor: "BS Accountancy", master: "Master's Degree in Accountancy" },
-    "Administrative Officer II": { bachelor: "Bachelor's Degree relevant to the job", master: "Master's Degree relevant to the job" },
-    "Administrative Officer I": { bachelor: "Bachelor's Degree relevant to the job", master: "Master's Degree relevant to the job" },
-    "Administrative Aide III (Utility Worker II A)": { bachelor: "Must be able to read and write", master: "High School Graduate" },
-    "English Instructor": { bachelor: "BSEd major in English", master: "Master's Degree in English Education" },
-    "Math Instructor": { bachelor: "BSEd major in Mathematics", master: "Master's Degree in Mathematics Education" },
-    "Social Studies Instructor": { bachelor: "BSEd major in Social Studies", master: "Master's Degree in Social Studies Education" },
-    "Values Education Instructor": { bachelor: "BSEd major in Values Education", master: "Master's Degree in Values Education" },
-    "Professional Education Instructor": { bachelor: "Education Graduate", master: "Master's Degree in Education" },
-    "Special Needs Education Instructor": { bachelor: "BSEd major in Special Needs Education", master: "Master's Degree in Special Needs Education" },
-    "Technology and Livelihood Education Instructor": { bachelor: "BSEd major in TLE", master: "Master's Degree in TLE" },
-    "Tourism Management Instructor": { bachelor: "BS Tourism Management", master: "Master's Degree in Tourism Management" },
-    "Hospitality Management Instructor": { bachelor: "BS Hospitality Management", master: "Master's Degree in Hospitality Management" },
-    "Entrepreneurship Instructor": { bachelor: "BS Entrepreneurship", master: "Master's Degree in Entrepreneurship" },
-    "Biotechnology Instructor": { bachelor: "BS Biology", master: "Master's Degree in Biology" },
-    "Social Work Instructor": { bachelor: "BS Social Work", master: "Master's Degree in Social Work" },
-    "English Language Instructor": { bachelor: "BA English Language", master: "Master's Degree in English Language" },
-    "Faculty Member - Environmental Biology": { bachelor: "BS Biology", master: "Master's Degree in Biology" },
-    "Faculty Member - Medical Biology": { bachelor: "BS Biology", master: "Master's Degree in Medical Biology" },
-    "Faculty Member - Chemistry": { bachelor: "BS Chemistry", master: "Master's Degree in Chemistry" },
-    "Instructor": { bachelor: "Bachelor's Degree in Education", master: "Master's Degree in Education" }
-  }), [])
-
-  const educationMapping = useMemo(() => {
-    const title = String(newJobTitle || "").trim()
-    if (!title) return null
-    let mapping = degreeMap[title]
-    if (!mapping && /instructor/i.test(title)) {
-      mapping = degreeMap["Instructor"]
-    }
-    return mapping || null
-  }, [newJobTitle, degreeMap])
-
-  const educationOptions = useMemo(() => {
-    const extraEducationOptions = [
-      { value: "College Graduate", label: "College Graduate" },
-      { value: "High School Graduate", label: "High School Graduate" },
-      { value: "Doctorate", label: "Doctorate" },
-      { value: "Researcher", label: "Researcher" },
-      { value: "Not Graduate", label: "Not Graduate" }
-    ]
-
-    if (!educationMapping) {
-      return [
-        { value: "Bachelor's Degree", label: "Bachelor's Degree" },
-        { value: "Master's Degree", label: "Master's Degree" },
-        ...extraEducationOptions
-      ]
-    }
-    return [
-      { value: educationMapping.bachelor, label: educationMapping.bachelor },
-      { value: educationMapping.master, label: educationMapping.master },
-      ...extraEducationOptions
-    ]
-  }, [educationMapping])
-
-  useEffect(() => {
-    if (!educationMapping) return
-    const current = String(newMinimumEducation || "")
-    const isGeneric = current === "Bachelor's Degree" || current === "Master's Degree" || !current
-    if (isGeneric) {
-      setNewMinimumEducation(educationMapping.bachelor)
-    }
-  }, [educationMapping, newMinimumEducation])
+  const educationOptions = useMemo(() => [
+    "Primary/Elementary",
+    "Junior High School",
+    "Senior High School",
+    "College/Tertiary",
+    "Technical-Vocational Education",
+    "Masteral",
+    "Doctoral",
+  ].map((level) => ({ value: level, label: level })), [])
 
   const filteredSkillSuggestions = useMemo(() => {
     const existing = new Set(parseSkills(newRequiredSkills).map((item) => item.toLowerCase()))
@@ -949,10 +885,13 @@ function JobPostingPage({ uploads = [], isEmployer = false, isJobSeeker = false,
     }
   }
 
-  const applyTemplate = (templateId) => {
+  const applyTemplate = (templateId, { updateDescription = true } = {}) => {
     const selected = templates.find((item) => String(item.id) === String(templateId))
     if (!selected) return
-    setNewJobDescription(selected.description || "")
+    if (updateDescription) {
+      setNewJobDescription(jobDescriptionForPosition(selected.title || newJobTitle, selected.description))
+      setIsDescriptionAutomatic(true)
+    }
     setNewJobDepartment(selected.department || "")
     setNewJobPositionType(selected.jobPosition || selected.job_position || "Teaching")
     setNewJobItemNo(selected.itemNo || selected.item_no || "")
@@ -971,9 +910,12 @@ function JobPostingPage({ uploads = [], isEmployer = false, isJobSeeker = false,
     setNewPositionsTotal(positionsTotalFormValue(selected.positionsTotal ?? selected.positions_total, selected))
   }
 
-  const applyTemplateFromRecord = (record) => {
+  const applyTemplateFromRecord = (record, { updateDescription = true } = {}) => {
     if (!record) return
-    setNewJobDescription(record.description || "")
+    if (updateDescription) {
+      setNewJobDescription(jobDescriptionForPosition(record.title || newJobTitle, record.description))
+      setIsDescriptionAutomatic(true)
+    }
     setNewJobDepartment(record.department || "")
     setNewJobPositionType(record.jobPosition || record.job_position || "Teaching")
     setNewJobItemNo(record.itemNo || record.item_no || "")
@@ -1003,11 +945,17 @@ function JobPostingPage({ uploads = [], isEmployer = false, isJobSeeker = false,
     const matched = templateByTitle.get(key)
     if (!matched) return
     if (matched.source === "template") {
-      applyTemplate(matched.id)
+      applyTemplate(matched.id, { updateDescription: isDescriptionAutomatic })
       return
     }
-    applyTemplateFromRecord(matched)
+    applyTemplateFromRecord(matched, { updateDescription: isDescriptionAutomatic })
   }, [newJobTitle, templateByTitle])
+
+  useEffect(() => {
+    if (!isCreateModalOpen || isEditingJob || !isDescriptionAutomatic) return
+    const template = templateByTitle.get(newJobTitle.trim().toLowerCase())
+    setNewJobDescription(jobDescriptionForPosition(newJobTitle, template?.description))
+  }, [isCreateModalOpen, isEditingJob, isDescriptionAutomatic, newJobTitle, templateByTitle])
 
   const selectedJobApplicants = useMemo(() => {
     if (!selectedJobTitle) return []
@@ -1196,6 +1144,7 @@ function JobPostingPage({ uploads = [], isEmployer = false, isJobSeeker = false,
   const resetJobForm = () => {
     setNewJobTitle("")
     setNewJobDescription("")
+    setIsDescriptionAutomatic(true)
     setNewJobDepartment("")
     setNewJobPositionType("Teaching")
     setNewJobItemNo("")
@@ -1224,6 +1173,7 @@ function JobPostingPage({ uploads = [], isEmployer = false, isJobSeeker = false,
   const getJobFormDraftPayload = () => ({
     title: newJobTitle,
     description: newJobDescription,
+    descriptionAutomatic: isDescriptionAutomatic,
     department: newJobDepartment,
     jobPosition: newJobPositionType,
     itemNo: newJobItemNo,
@@ -1294,6 +1244,7 @@ function JobPostingPage({ uploads = [], isEmployer = false, isJobSeeker = false,
     skipTemplateApplyRef.current = Boolean(String(draft?.title || "").trim())
     setNewJobTitle(draft?.title || "")
     setNewJobDescription(draft?.description || "")
+    setIsDescriptionAutomatic(draft?.descriptionAutomatic ?? !String(draft?.description || "").trim())
     setNewJobDepartment(draft?.department || "")
     setNewJobPositionType(draft?.jobPosition || "Teaching")
     setNewJobItemNo(draft?.itemNo || "")
@@ -1358,6 +1309,7 @@ function JobPostingPage({ uploads = [], isEmployer = false, isJobSeeker = false,
     setEditingJobId(job.id)
     setNewJobTitle(job.title || "")
     setNewJobDescription(job.description || "")
+    setIsDescriptionAutomatic(false)
     setNewJobDepartment(job.department || "")
     setNewJobPositionType(job.jobPosition || job.job_position || "Teaching")
     setNewJobItemNo(job.itemNo || job.item_no || "")
@@ -1394,8 +1346,7 @@ function JobPostingPage({ uploads = [], isEmployer = false, isJobSeeker = false,
   }
 
   const salaryLabel = useMemo(() => {
-    const type = String(newJobType || "").toLowerCase()
-    if (type.includes("part")) {
+    if (isHourlyEmployment(newJobType)) {
       return { min: "Salary Grade", max: "Hourly Rate" }
     }
     return { min: "Salary Grade", max: "Salary per Month" }
@@ -1438,7 +1389,7 @@ function JobPostingPage({ uploads = [], isEmployer = false, isJobSeeker = false,
     const parsedPositionsTotal = getPositionsPayloadValue()
 
     if (Number.isNaN(minExp) || minExp < 0) {
-      showCreateJobNotice("fail", "Minimum experience must be a valid non-negative number.")
+      showCreateJobNotice("fail", "Years of experience must be a valid non-negative number.")
       scrollCreateJobModalToTop()
       return
     }
@@ -1462,7 +1413,7 @@ function JobPostingPage({ uploads = [], isEmployer = false, isJobSeeker = false,
     }
 
     if (!positionsTotalIsInteger || (!positionsTotalIsMany && parsedPositionsTotal < 1)) {
-      showCreateJobNotice("fail", "Job Vacancy must be a valid whole number of at least 1, or choose No Limit.")
+      showCreateJobNotice("fail", "Job Vacancy must be a valid whole number of at least 1, or choose None.")
       scrollCreateJobModalToTop()
       return
     }
@@ -1567,7 +1518,7 @@ function JobPostingPage({ uploads = [], isEmployer = false, isJobSeeker = false,
     const parsedPositionsTotal = getPositionsPayloadValue()
 
     if (Number.isNaN(minExp) || minExp < 0) {
-      showCreateJobNotice("fail", "Minimum experience must be a valid non-negative number.")
+      showCreateJobNotice("fail", "Years of experience must be a valid non-negative number.")
       scrollCreateJobModalToTop()
       return
     }
@@ -1591,7 +1542,7 @@ function JobPostingPage({ uploads = [], isEmployer = false, isJobSeeker = false,
     }
 
     if (!positionsTotalIsInteger || (!positionsTotalIsMany && parsedPositionsTotal < 1)) {
-      showCreateJobNotice("fail", "Job Vacancy must be a valid whole number of at least 1, or choose No Limit.")
+      showCreateJobNotice("fail", "Job Vacancy must be a valid whole number of at least 1, or choose None.")
       scrollCreateJobModalToTop()
       return
     }
@@ -1689,7 +1640,7 @@ function JobPostingPage({ uploads = [], isEmployer = false, isJobSeeker = false,
   }
 
   const getJobMatchContent = (job) => {
-    if (!isJobSeeker) return null
+    if (!isJobSeeker || !matchingEnabled) return null
     if (!jobSeekerResume) {
       return <span className="job-chip chip-warning">Upload PDS</span>
     }
@@ -1697,7 +1648,7 @@ function JobPostingPage({ uploads = [], isEmployer = false, isJobSeeker = false,
       return <span className="job-chip chip-muted">Checking</span>
     }
 
-    const matchKey = String(job.title || "").trim().toLowerCase()
+    const matchKey = jobMatchKey(job)
     const match = matchKey ? jobMatches[matchKey] : null
     if (jobMatchStatus === "error" || !match || match.score == null) {
       return <span className="job-chip chip-warning">Unavailable</span>
@@ -1731,6 +1682,10 @@ function JobPostingPage({ uploads = [], isEmployer = false, isJobSeeker = false,
 
   return (
     <section className={`jobs-panel jobs-panel-modern ${actionsJobId || isPositioningJobActionsMenu ? "jobs-menu-open" : ""}`}>
+      {isJobSeeker && !matchingEnabled && <div className="profile-matching-notice">
+        <p>Complete your profile to see job matches and apply.</p>
+        <button type="button" className="btn btn-secondary" onClick={onCompleteProfile}>Go to Profile</button>
+      </div>}
       <div className="jobs-hero">
         <div>
           <p className="jobs-kicker">Job Posting</p>
@@ -1796,7 +1751,7 @@ function JobPostingPage({ uploads = [], isEmployer = false, isJobSeeker = false,
           onChange={setJobPositionTypeFilter}
           placeholder="All Positions"
         />
-        {isJobSeeker && (
+        {isJobSeeker && matchingEnabled && (
           <CustomDropdown
             className="jobs-filter"
             options={matchOptions}
@@ -1924,7 +1879,7 @@ function JobPostingPage({ uploads = [], isEmployer = false, isJobSeeker = false,
                   <th className="jobs-dept-col">Department/Units</th>
                   <th className="jobs-type-col">Type</th>
                   <th className="jobs-deadline-col">Post Deadline</th>
-                  {isJobSeeker && <th className="jobs-match-col">Match</th>}
+                  {isJobSeeker && matchingEnabled && <th className="jobs-match-col">Match</th>}
                   {!isJobSeeker && <th className="jobs-applicants-col">Applications</th>}
                   <th className="jobs-slots-col">Job Vacancy</th>
                   <th className="jobs-status-col">Status</th>
@@ -1965,7 +1920,7 @@ function JobPostingPage({ uploads = [], isEmployer = false, isJobSeeker = false,
                     <td className="jobs-dept-cell" data-label="Department/Units">{job.department || "-"}</td>
                     <td className="jobs-type-cell" data-label="Type">{job.type || "-"}</td>
                     <td className="jobs-deadline-cell" data-label="Post Deadline">{deadline}</td>
-                    {isJobSeeker && <td className="jobs-match-cell" data-label="Match">{matchContent}</td>}
+                    {isJobSeeker && matchingEnabled && <td className="jobs-match-cell" data-label="Match">{matchContent}</td>}
                     {!isJobSeeker && (
                       <td className="jobs-applicants-cell" data-label="Applications">
                         <button
@@ -2399,7 +2354,7 @@ function JobPostingPage({ uploads = [], isEmployer = false, isJobSeeker = false,
                         className={requiredDropdownClass(newJobType)}
                         options={employmentTypeOptions}
                         value={newJobType}
-                        onChange={setNewJobType}
+                        onChange={handleEmploymentTypeChange}
                         placeholder={employmentTypeOptions[0]?.label || "Employment type"}
                       />
                     </div>
@@ -2423,7 +2378,7 @@ function JobPostingPage({ uploads = [], isEmployer = false, isJobSeeker = false,
                           onChange={(e) => setNewPositionsTotal(e.target.value === "many" ? "many" : "1")}
                         >
                           <option value="specific">Specific number</option>
-                          <option value="many">No Limit</option>
+                          <option value="many">None</option>
                         </select>
                         {!isManySlotsValue(newPositionsTotal) && (
                           <input
@@ -2490,9 +2445,16 @@ function JobPostingPage({ uploads = [], isEmployer = false, isJobSeeker = false,
                       rows={4}
                       ref={descriptionRef}
                       value={newJobDescription}
-                      onChange={(e) => setNewJobDescription(e.target.value)}
+                      onChange={(e) => { setIsDescriptionAutomatic(false); setNewJobDescription(e.target.value) }}
                       placeholder="Describe the role, responsibilities and what you're looking for...."
                     />
+                    {!isEditingJob && (
+                      <div className="js-panel-subtext">
+                        {isDescriptionAutomatic ? "Automatically filled from Job Position. You can edit this description." : (
+                          <button type="button" className="js-text-btn" disabled={!newJobTitle.trim()} onClick={() => setIsDescriptionAutomatic(true)}>Use automatic description</button>
+                        )}
+                      </div>
+                    )}
                   </div>
                 </section>
 
@@ -2594,7 +2556,7 @@ function JobPostingPage({ uploads = [], isEmployer = false, isJobSeeker = false,
 
                   <div className="modal-grid">
                     <div className="field-group">
-                      <label>Minimum Education</label>
+                      <label>Educational Attainment</label>
                       <CustomDropdown
                         className={requiredDropdownClass(newMinimumEducation)}
                         options={educationOptions}
@@ -2605,7 +2567,7 @@ function JobPostingPage({ uploads = [], isEmployer = false, isJobSeeker = false,
                     </div>
 
                     <div className="field-group">
-                      <label>Minimum Experience (Years)</label>
+                      <label>Years of Experience</label>
                       <input
                         className={requiredInputClass(newMinimumExperienceYears)}
                         type="number"

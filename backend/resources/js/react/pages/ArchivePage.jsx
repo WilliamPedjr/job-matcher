@@ -53,6 +53,7 @@ function ArchivePage({ currentUser = null, onArchiveChanged }) {
   const [notice, setNotice] = useToastState("", "success")
   const [restoringId, setRestoringId] = useState(null)
   const [confirmRestoreItem, setConfirmRestoreItem] = useState(null)
+  const [restorePassword, setRestorePassword] = useState('')
   const [archivePage, setArchivePage] = useState(1)
   const archivePageSize = 10
 
@@ -149,11 +150,18 @@ function ArchivePage({ currentUser = null, onArchiveChanged }) {
   const pageEnd = Math.min(currentArchivePage * archivePageSize, filteredArchives.length)
 
   const restoreArchiveItem = async (archiveId, type) => {
+    if (restoringId != null) return
     const isJobSeeker = type === 'job_seeker'
-    const restoreUrl = isJobSeeker
+    const isPersonnel = type === 'personnel'
+    const isRating = type === 'rating'
+    const restoreUrl = isRating
+      ? `http://localhost:5000/archives/${archiveId}/restore-rating`
+      : isPersonnel
+      ? `http://localhost:5000/archives/${archiveId}/restore-personnel`
+      : isJobSeeker
       ? `http://localhost:5000/archives/${archiveId}/restore-job-seeker`
       : `http://localhost:5000/archives/${archiveId}/restore-job`
-    const fallbackLabel = isJobSeeker ? 'job seeker' : 'job'
+    const fallbackLabel = isRating ? 'ratings' : isPersonnel ? 'personnel account' : isJobSeeker ? 'job seeker' : 'job'
 
     setRestoringId(archiveId)
     setError('')
@@ -161,15 +169,17 @@ function ArchivePage({ currentUser = null, onArchiveChanged }) {
     try {
       const response = await fetch(restoreUrl, {
         method: 'POST',
-        headers: getArchiveActorHeaders(currentUser)
+        headers: { ...getArchiveActorHeaders(currentUser), 'Content-Type': 'application/json', Accept: 'application/json' },
+        body: JSON.stringify(isPersonnel && restorePassword ? { password: restorePassword } : {})
       })
       const payload = await response.json().catch(() => null)
       if (!response.ok) {
         throw new Error(apiMessage(payload, `Failed to restore ${fallbackLabel}.`))
       }
       setArchives((prev) => prev.filter((item) => item.id !== archiveId))
-      setNotice(apiMessage(payload, `${isJobSeeker ? 'Job seeker' : 'Job'} restored successfully.`))
+      setNotice(apiMessage(payload, `${isRating ? 'Ratings' : isPersonnel ? 'Personnel account' : isJobSeeker ? 'Job seeker' : 'Job'} restored successfully.`))
       setConfirmRestoreItem(null)
+      setRestorePassword('')
       onArchiveChanged?.()
     } catch (err) {
       setError(apiMessage(err, `Failed to restore ${fallbackLabel}.`))
@@ -282,12 +292,12 @@ function ArchivePage({ currentUser = null, onArchiveChanged }) {
                     </td>
                     <td>{formatDate(item.deleted_at || item.deletedAt)}</td>
                     <td>
-                      {type === 'job' || type === 'job_seeker' ? (
+                      {type === 'job' || type === 'job_seeker' || type === 'personnel' || type === 'rating' ? (
                         <button
                           type="button"
                           className="archive-restore-btn"
                           disabled={restoringId === item.id}
-                          onClick={() => setConfirmRestoreItem(item)}
+                          onClick={() => { setRestorePassword(''); setConfirmRestoreItem(item) }}
                         >
                           {restoringId === item.id ? 'Restoring...' : 'Restore'}
                         </button>
@@ -346,6 +356,15 @@ function ArchivePage({ currentUser = null, onArchiveChanged }) {
                   <p>
                     Are you sure you want to restore <strong>{recordTitle}</strong> from the archive?
                   </p>
+                  {type === 'personnel' && confirmRestoreItem.requires_password !== false && (
+                    <div className="field-group">
+                      <label htmlFor="restore-personnel-password">New Password</label>
+                      <input id="restore-personnel-password" className="input" type="text" autoComplete="new-password" spellCheck={false} autoCapitalize="none"
+                        minLength={8} maxLength={72} value={restorePassword} disabled={restoringId != null}
+                        onChange={(event) => setRestorePassword(event.target.value)} />
+                      <p>This older archive has no saved password. Enter at least 8 characters for the restored account.</p>
+                    </div>
+                  )}
                   <div className="modal-actions">
                     <button
                       type="button"
@@ -358,7 +377,7 @@ function ArchivePage({ currentUser = null, onArchiveChanged }) {
                     <button
                       type="button"
                       className="btn"
-                      disabled={restoringId === confirmRestoreItem.id}
+                      disabled={restoringId != null || (type === 'personnel' && confirmRestoreItem.requires_password !== false && restorePassword.length < 8)}
                       onClick={() => restoreArchiveItem(confirmRestoreItem.id, type)}
                     >
                       {restoringId === confirmRestoreItem.id ? 'Restoring...' : 'Restore'}

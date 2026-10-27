@@ -1047,7 +1047,20 @@ class ResumeAnalysisService
 
     private function isTrainingRequirement(string $requirement): bool
     {
-        return preg_match('/\b(?:training|trainings|learning|development|seminar|workshop|course|hours?|hrs?|l&d|intervention)\b/i', $requirement) === 1;
+        // Preserve legacy training requirements, but never let a skill such as
+        // "Curriculum Development" reclassify the entire required-skills list.
+        $items = $this->splitSkills($requirement);
+        if (!$items) {
+            return false;
+        }
+
+        foreach ($items as $item) {
+            if (preg_match('/\b(?:training|trainings|seminar|workshop)\b|\b\d+\s*(?:hours?|hrs?)\b/i', $item) !== 1) {
+                return false;
+            }
+        }
+
+        return true;
     }
 
     private function skillRequirementsFromRequirement(string $requirement): array
